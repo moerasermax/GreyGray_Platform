@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>GreyGray.Platform.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <ModuleLayer>Test</ModuleLayer>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Platform\GreyGray.Platform.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\GreyGray.Modules.Identity.Contracts\GreyGray.Modules.Identity.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Catalog\GreyGray.Modules.Catalog.Contracts\GreyGray.Modules.Catalog.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Pricing\GreyGray.Modules.Pricing.Contracts\GreyGray.Modules.Pricing.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Campaign\GreyGray.Modules.Campaign.Contracts\GreyGray.Modules.Campaign.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Inventory\GreyGray.Modules.Inventory.Contracts\GreyGray.Modules.Inventory.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Checkout\GreyGray.Modules.Checkout.Contracts\GreyGray.Modules.Checkout.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ordering\GreyGray.Modules.Ordering.Contracts\GreyGray.Modules.Ordering.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Procurement\GreyGray.Modules.Procurement.Contracts\GreyGray.Modules.Procurement.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Fulfillment\GreyGray.Modules.Fulfillment.Contracts\GreyGray.Modules.Fulfillment.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Payment\GreyGray.Modules.Payment.Contracts\GreyGray.Modules.Payment.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ledger\GreyGray.Modules.Ledger.Contracts\GreyGray.Modules.Ledger.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Notification\GreyGray.Modules.Notification.Contracts\GreyGray.Modules.Notification.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Audit\GreyGray.Modules.Audit.Contracts\GreyGray.Modules.Audit.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Reporting\GreyGray.Modules.Reporting.Contracts\GreyGray.Modules.Reporting.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

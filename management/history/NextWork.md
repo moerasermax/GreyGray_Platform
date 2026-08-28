@@ -1,14 +1,15 @@
 # NextWork
 
-接在第二輪（邊界稽核 ＋ API 契約凍結 ＋ 前端骨架）之後。
+接在第三輪（後端第一波基礎設施）之後。
 **前後端從這裡開始平行**，兩條線互不擋。
 
 ## 後端（Codex）
 
 照 `docs/08-Codex啟動prompt.md`，**一次一波，驗收過再給下一波**。
 
-- [ ] 第一波：BE-1 Outbox ＋ 事件型別登錄 · BE-4 OTel ＋ IClock · BE-8 CI 與部署
-      BE-1 是所有事情的前提；BE-4、BE-8 與它互不相干，可完全並行。
+- [x] 第一波：BE-1 Outbox ＋ 事件型別登錄 · BE-4 OTel ＋ IClock · BE-8 CI 與部署
+      實作、34/34 tests 與 ops self-test 已完成。BE-8 的 live OpenAPI gate 保持 fail-closed，
+      待 BE-6 提供 `/v1` endpoints 後完成最終 schema drift 驗收（見 `HANDOFF_3.md`）。
 - [ ] 第二波：BE-2 消費端冪等 · BE-3 Idempotency 與 Saga Timer
 - [ ] 第三波：BE-5 模組組合根樣板（**先只做 Identity 與 Catalog**）· BE-7 通路接縫進 schema
 - [ ] 第四波：BE-6 hello-world 端對端 —— **這一包通過就是 M0 完成**

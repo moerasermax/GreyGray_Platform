@@ -89,5 +89,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/GreyGray.Architecture.Tests/GreyGray.Architecture.Tests.csproj" />
     <Project Path="tests/GreyGray.Contracts.Tests/GreyGray.Contracts.Tests.csproj" />
+    <Project Path="tests/GreyGray.Platform.Tests/GreyGray.Platform.Tests.csproj" />
   </Folder>
 </Solution>

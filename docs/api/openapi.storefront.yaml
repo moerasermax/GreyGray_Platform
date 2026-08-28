@@ -995,7 +995,7 @@ components:
       properties:
         id: { $ref: '#/components/schemas/Id' }
         name: { type: string }
-        imageUrl: { type: [string, 'null'], description: 圓形分類標的圖。1:1 裁切。 }
+        imageUrl: { type: [string, 'null'], description: '圓形分類標的圖。1:1 裁切。' }
 
     ProductListItem:
       type: object
@@ -1006,7 +1006,7 @@ components:
         shortDescription:
           type: [string, 'null']
           description: 每個商品配 1–2 句描述（前台 UX 規則）。
-        imageUrl: { type: [string, 'null'], description: 統一 1:1 裁切。 }
+        imageUrl: { type: [string, 'null'], description: '統一 1:1 裁切。' }
         priceFrom:
           description: 該商品所有 SKU 的最低售價。無可售 SKU 時為 null。
           oneOf:

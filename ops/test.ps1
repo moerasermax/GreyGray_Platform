@@ -1,4 +1,4 @@
-<#
+﻿<#
     跑 tests/ 底下的所有測試專案。
 
     為什麼不用 dotnet test：
@@ -18,16 +18,20 @@
 [CmdletBinding()]
 param(
     [ValidateSet('Debug', 'Release')]
-    [string]$Configuration = 'Debug'
+    [string]$Configuration = 'Debug',
+
+    [switch]$ValidateOps
 )
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
+$solution = Join-Path $repo 'GreyGray.slnx'
+$testsRoot = Join-Path $repo 'tests'
 
-dotnet build "$repo\GreyGray.slnx" -c $Configuration --nologo
+dotnet build $solution -c $Configuration --nologo
 if ($LASTEXITCODE -ne 0) { throw "建置失敗，測試不跑。" }
 
-$projects = Get-ChildItem -Path "$repo\tests" -Filter '*.csproj' -Recurse -File
+$projects = Get-ChildItem -Path $testsRoot -Filter '*.csproj' -Recurse -File
 if ($projects.Count -eq 0) { throw "tests\ 底下找不到任何測試專案——這比沒有測試更糟。" }
 
 $failed = @()
@@ -35,10 +39,20 @@ $ran = 0
 
 foreach ($project in $projects) {
     $name = [System.IO.Path]::GetFileNameWithoutExtension($project.Name)
-    $exe = Join-Path $project.Directory.FullName "bin\$Configuration\net10.0\$name.exe"
+    $outputDirectory = Join-Path (Join-Path (Join-Path $project.Directory.FullName 'bin') $Configuration) 'net10.0'
+    $executableNames = if ([System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT) {
+        @("$name.exe")
+    }
+    else {
+        @($name)
+    }
+    $exe = $executableNames |
+        ForEach-Object { Join-Path $outputDirectory $_ } |
+        Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+        Select-Object -First 1
 
-    if (-not (Test-Path $exe)) {
-        throw "找不到測試執行檔：$exe（專案 $name 有建置嗎？OutputType 是 Exe 嗎？）"
+    if (-not $exe) {
+        throw "找不到測試執行檔：$outputDirectory（專案 $name 有建置嗎？OutputType 是 Exe 嗎？）"
     }
 
     Write-Host ""
@@ -59,4 +73,7 @@ if ($failed.Count -gt 0) {
 }
 
 Write-Host "✓ $ran 個測試專案全部通過"
+if ($ValidateOps) {
+    & (Join-Path (Join-Path $repo 'ops') 'self-test.ps1') -Configuration $Configuration
+}
 exit 0

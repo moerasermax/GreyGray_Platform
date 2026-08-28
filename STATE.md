@@ -1,19 +1,20 @@
 # 現況
 
-**最後更新**：2026-08-28（第二輪：邊界稽核 ＋ API 契約凍結 ＋ 前端骨架）
+**最後更新**：2026-08-28（後端第一波：BE-1 Outbox ＋ BE-4 可觀測性 ＋ BE-8 CI／部署）
 
 ## 一句話
 
-後端骨架、前端骨架、已凍結的 API 契約三者到位，**業務邏輯一行都還沒寫**。
-前後端從這裡開始平行：後端走 `docs/07-後端派工書.md`，前端走 `docs/06-前端工作包.md`。
+後端第一波基礎設施已落地：Outbox、事件型別登錄、source-generated JSON、OTel 與安全部署工具都有實作與測試；**業務模組與 `/v1` API 端點仍未實作**。因此即時 OpenAPI gate 目前會正確 fail-fast，不可宣稱整條 CI 已全綠。
 
 ## 已完成
 
 | 項目 | 狀態 |
 |---|---|
-| Solution 骨架（50 專案） | ✅ `dotnet build` 0 error 0 warning |
+| Solution（51 專案） | ✅ `dotnet build` 0 error 0 warning |
 | 模組硬邊界 | ✅ **12 條**架構測試全綠（新加的兩條都注入違規驗證過會紅） |
 | 線上格式與事件目錄 | ✅ **16 條**契約測試全綠（`tests/GreyGray.Contracts.Tests`，同樣注入驗證過） |
+| Platform 基礎設施 | ✅ Outbox publisher／dispatcher、44 事件 registry、`PlatformDbContext`、OTel、clock／correlation context |
+| Platform 整合測試 | ✅ **6 條**全綠；真 PostgreSQL 17 Testcontainers，含 rollback、雙 dispatcher、retry |
 | 14 個模組的 Contracts（ID／DTO／介面／44 個事件） | ✅ 可編譯 |
 | Shared.Kernel（Money、Currency、Result、IClock、Dimensions、**JSON**） | ✅ |
 | Platform.Abstractions（事件、Outbox、Idempotency、Saga、**事件型別登錄、IAuditWriter**） | ✅ 介面 |
@@ -21,7 +22,8 @@
 | **API 契約（`docs/05` ＋ 兩份 OpenAPI）** | ✅ v1.0 已凍結，24 ＋ 29 個端點 |
 | **前端 workspace（Next.js ×2 ＋ token ＋ api-client）** | ✅ `pnpm build` 兩個 app 都過 |
 | **設計 token（Soft Seoul ＋ Admin）** | ✅ 對比度實際量過，都達 AA |
-| 三個 Host 的 `Program.cs` | ⚠️ 只有 `/health`，模組尚未接線 |
+| 三個 Host 的 `Program.cs` | ⚠️ OTel 與 `/health` 已接；仍沒有 `/v1` 端點或業務模組接線 |
+| CI／Windows 部署工具 | ⚠️ build、tests、PS 5 self-test、versioned release、NSSM、watchdog 已完成；即時 OpenAPI gate 等 `/v1` 端點後才能綠 |
 
 ## 2026-08-28 第二輪：邊界稽核修掉的六類問題
 
@@ -55,9 +57,7 @@
 
 ## 未完成
 
-**後端**：M0-1 ～ M0-8，見 `docs/03-M0工作包.md` 與 `docs/07-後端派工書.md`。
-`GreyGray.Platform` 目前只有 `OutboxMessage` 的 POCO 與 `IModuleRegistration` 介面，
-**實作一行都還沒有**。
+**後端**：BE-1 與 BE-4 已完成；BE-8 的工具與 fail-closed 門檻已完成，但其 live OpenAPI 驗收依賴 M0-6 的 `/v1` 端點。尚待 BE-2（inbox）、BE-3（idempotency ＋ Saga Timer）、BE-5（Identity／Catalog 組合根）、BE-7（audit／通路 schema）、BE-6（hello-world 垂直切片與 API 接線）。詳見 `docs/03-M0工作包.md` 與 `docs/07-後端派工書.md`。
 
 **前端**：FE-1 ～ FE-8，見 `docs/06-前端工作包.md`。
 目前只有骨架與 token，兩個 app 各只有一頁佔位。
@@ -86,15 +86,31 @@
 ### `Microsoft.OpenApi` pin 在 2.12.2，不要跳 3.x
 `Microsoft.AspNetCore.OpenApi` 的 source generator 產的碼依賴 2.x 的 API 形狀。
 
+### 即時 OpenAPI gate 現在必定紅
+`ops/check-openapi.ps1` 會啟動剛建好的 Storefront／Admin Host 並抓 `/openapi/v1.json`。
+兩個 Host 現在都只有 `/health`，所以 gate 會以 exit 1 fail-fast；這是防止空 schema 假綠，
+不是工具故障。`docs/08` 把 BE-8 排在第一波，但 `docs/03` 的 M0-8 又依賴 M0-6，
+完整驗收只能在 API 端點接線後完成。
+
+### 多個 source-generated `JsonSerializerContext` 不可共用同一個 options instance
+實測會拋出 `InvalidOperationException`：options 被第一個 context 封裝後不能再修改。
+各 Contracts context 必須各呼叫 `GreyGrayJson.CreateOptions()`，設定來源仍只有 ADR-018 那一份。
+
+### YAML flow mapping 內含冒號的文字必須加引號
+Storefront frozen OpenAPI 曾有兩個 `1:1` description 未加引號，嚴格 YAML parser 會判定語法錯誤。
+目前只修正 quoting，沒有改變 API shape。
+
 ### 前端套件版本還沒釘死
 `frontend/*/package.json` 目前用 caret 範圍，靠 `pnpm-lock.yaml` 保證重現。
 第一輪整合完成後應改成精確版本，與 `Directory.Packages.props` 的做法一致。
 
 ## 下一步
 
-1. **後端**：把 `docs/08-Codex啟動prompt.md` 的第一則貼給 Codex（BE-1 / BE-4 / BE-8 三包平行）
-2. **前端**：FE-1（型別 ＋ mock）、FE-2（Soft Seoul 元件庫）、FE-6（後台殼）三包平行
-3. M-1 環境整備可以完全並行
+1. **後端第二波**：BE-2（inbox）與 BE-3（idempotency ＋ Saga Timer）平行
+2. 接著 BE-5（Identity／Catalog 組合根）與 BE-7（audit／通路 schema），再由 BE-6 做 hello-world 垂直切片與 `/v1` API 接線
+3. BE-6 完成後重跑 strict live OpenAPI gate，處理真實 schema drift，完成 M0-8 驗收
+4. **前端**：FE-1（型別 ＋ mock）、FE-2（Soft Seoul 元件庫）、FE-6（後台殼）可平行
+5. M-1 環境整備可以完全並行
 
 ## 待決策
 

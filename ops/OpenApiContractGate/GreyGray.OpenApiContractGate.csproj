@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>GreyGray.OpenApiContractGate</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.OpenApi" />
+    <!-- BE-8 工具不在 solution 內，且不得越界修改中央套件表；版本須與 Host 既有 2.12.2 完全一致。 -->
+    <PackageReference Include="Microsoft.OpenApi.YamlReader" VersionOverride="2.12.2" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore ./GreyGray.slnx --configfile ./ops/NuGet.CI.Config
+
+      - name: Build
+        shell: pwsh
+        run: dotnet build ./GreyGray.slnx -c Release --no-restore --nologo
+
+      - name: Test through repository runner
+        shell: pwsh
+        run: ./ops/test.ps1 -Configuration Release
+
+  windows-contract:
+    needs: build-test
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore .\GreyGray.slnx --configfile .\ops\NuGet.CI.Config
+
+      - name: Build
+        shell: pwsh
+        run: dotnet build .\GreyGray.slnx -c Release --no-restore --nologo
+
+      - name: Validate deployment scripts without deploying
+        shell: powershell
+        run: .\ops\self-test.ps1 -Configuration Release
+
+      - name: Compare AddOpenApi output with frozen contracts
+        shell: pwsh
+        run: .\ops\check-openapi.ps1 -Configuration Release -NoBuild -OutputDirectory "$env:RUNNER_TEMP\greygray-openapi"
+
+      - name: Upload generated OpenAPI evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-openapi
+          path: ${{ runner.temp }}\greygray-openapi
+          if-no-files-found: ignore

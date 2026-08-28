@@ -3,7 +3,7 @@ using GreyGray.Shared.Kernel;
 namespace GreyGray.Platform.Outbox;
 
 /// <summary>
-/// 對應 <c>platform.outbox_message</c>。欄位定義見 db/migrations/0001_platform.sql。
+/// 對應 <c>platform.outbox_message</c>。欄位定義見 db/migrations/0002_platform.sql。
 /// </summary>
 /// <remarks>
 /// <b>TenantId 現在就要存</b>：這張表一旦上線帶了資料，之後要補欄位還得回填歷史訊息。
@@ -35,7 +35,7 @@ public sealed class OutboxMessage
 
     public int Attempts { get; set; }
 
-    public DateTimeOffset? NextAttemptAt { get; set; }
+    public required DateTimeOffset NextAttemptAt { get; set; }
 
     public string? LastError { get; set; }
 
