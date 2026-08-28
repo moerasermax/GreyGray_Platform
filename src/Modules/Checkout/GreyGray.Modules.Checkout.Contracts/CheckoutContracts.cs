@@ -19,6 +19,8 @@ public readonly record struct CartId(Guid Value)
 public readonly record struct CartLineId(Guid Value)
 {
     public static CartLineId New() => new(Guid.CreateVersion7());
+
+    public override string ToString() => Value.ToString("N");
 }
 
 // ── 列舉 ─────────────────────────────────────────────────────────────────
@@ -97,6 +99,10 @@ public sealed record CheckoutCompleted(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "checkout.CheckoutCompleted.v1";
+
+    public override string AggregateType => "Cart";
+
+    public override string AggregateId => CartId.ToString();
 }
 
 public sealed record CheckoutLine(

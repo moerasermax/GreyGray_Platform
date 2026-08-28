@@ -24,6 +24,8 @@ public readonly record struct SkuId(Guid Value)
 public readonly record struct CategoryId(Guid Value)
 {
     public static CategoryId New() => new(Guid.CreateVersion7());
+
+    public override string ToString() => Value.ToString("N");
 }
 
 // ── DTO ──────────────────────────────────────────────────────────────────
@@ -72,6 +74,10 @@ public sealed record SkuPublished(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "catalog.SkuPublished.v1";
+
+    public override string AggregateType => "Sku";
+
+    public override string AggregateId => SkuId.ToString();
 }
 
 public sealed record SkuArchived(
@@ -82,6 +88,10 @@ public sealed record SkuArchived(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "catalog.SkuArchived.v1";
+
+    public override string AggregateType => "Sku";
+
+    public override string AggregateId => SkuId.ToString();
 }
 
 /// <summary>
@@ -98,4 +108,8 @@ public sealed record SkuAttributesChanged(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "catalog.SkuAttributesChanged.v1";
+
+    public override string AggregateType => "Sku";
+
+    public override string AggregateId => SkuId.ToString();
 }

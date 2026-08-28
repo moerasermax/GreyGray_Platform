@@ -110,6 +110,10 @@ public sealed record CustomerRegistered(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "iam.CustomerRegistered.v1";
+
+    public override string AggregateType => "Customer";
+
+    public override string AggregateId => CustomerId.ToString();
 }
 
 public sealed record CustomerDeactivated(
@@ -121,4 +125,8 @@ public sealed record CustomerDeactivated(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "iam.CustomerDeactivated.v1";
+
+    public override string AggregateType => "Customer";
+
+    public override string AggregateId => CustomerId.ToString();
 }

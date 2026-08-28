@@ -18,6 +18,8 @@ public readonly record struct LotId(Guid Value)
 public readonly record struct ReservationId(Guid Value)
 {
     public static ReservationId New() => new(Guid.CreateVersion7());
+
+    public override string ToString() => Value.ToString("N");
 }
 
 // ── 列舉 ─────────────────────────────────────────────────────────────────
@@ -98,6 +100,10 @@ public sealed record LotCreated(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "inventory.LotCreated.v1";
+
+    public override string AggregateType => "Lot";
+
+    public override string AggregateId => LotId.ToString();
 }
 
 public sealed record StockReserved(
@@ -110,6 +116,10 @@ public sealed record StockReserved(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "inventory.StockReserved.v1";
+
+    public override string AggregateType => "Reservation";
+
+    public override string AggregateId => ReservationId.ToString();
 }
 
 public sealed record StockReleased(
@@ -120,6 +130,10 @@ public sealed record StockReleased(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "inventory.StockReleased.v1";
+
+    public override string AggregateType => "Reservation";
+
+    public override string AggregateId => ReservationId.ToString();
 }
 
 /// <summary>
@@ -139,4 +153,8 @@ public sealed record StockCostAllocated(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "inventory.StockCostAllocated.v1";
+
+    public override string AggregateType => "Lot";
+
+    public override string AggregateId => LotId.ToString();
 }

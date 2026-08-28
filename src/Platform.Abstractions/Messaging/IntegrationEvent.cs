@@ -25,15 +25,45 @@ public interface IIntegrationEvent
     /// </summary>
     TenantId TenantId { get; }
 
+    /// <summary>
+    /// 發出這個事件的聚合型別，例如 <c>Order</c>、<c>Campaign</c>。
+    /// 對應 <c>platform.outbox_message.aggregate_type</c>（NOT NULL）。
+    /// </summary>
+    /// <remarks>
+    /// 查問題時第一個會用到的就是「這張單發過哪些事件」，靠的是
+    /// <c>(aggregate_type, aggregate_id)</c> 這組索引。所以它不是可選的診斷欄位，
+    /// 而是事件契約的一部分——由事件自己宣告，不由呼叫端填，避免同一種事件在不同呼叫點填出不同的值。
+    /// </remarks>
+    string AggregateType { get; }
+
+    /// <summary>
+    /// 聚合實例的識別，例如訂單編號。對應 <c>platform.outbox_message.aggregate_id</c>（NOT NULL）。
+    /// </summary>
+    string AggregateId { get; }
+
     /// <summary>穩定的事件型別名，例如 <c>ordering.OrderPlaced.v1</c>。改名等於破壞契約。</summary>
     static abstract string EventType { get; }
 }
 
-/// <summary>整合事件的共同欄位。各模組的事件 record 繼承這個。</summary>
+/// <summary>
+/// 整合事件的共同欄位。各模組的事件 record 繼承這個。
+/// </summary>
+/// <remarks>
+/// <see cref="AggregateType"/> 與 <see cref="AggregateId"/> 宣告成 <c>abstract</c>，
+/// 目的是讓<b>編譯器</b>逼每個事件把它們填掉——這兩欄在 <c>platform.outbox_message</c> 是 NOT NULL，
+/// 漏填的後果是執行期 INSERT 失敗，而那時已經在交易裡了。
+/// </remarks>
 public abstract record IntegrationEventBase(
     Guid EventId,
     DateTimeOffset OccurredAt,
-    TenantId TenantId);
+    TenantId TenantId)
+{
+    /// <inheritdoc cref="IIntegrationEvent.AggregateType" />
+    public abstract string AggregateType { get; }
+
+    /// <inheritdoc cref="IIntegrationEvent.AggregateId" />
+    public abstract string AggregateId { get; }
+}
 
 /// <summary>
 /// 事件消費者。同一個事件可以有多個 handler，各自獨立重試、獨立進死信。

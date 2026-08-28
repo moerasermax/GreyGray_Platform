@@ -9,6 +9,20 @@
 --
 -- 密碼不要寫在這裡。用 psql 變數帶進來：
 --   psql -v mod_pw="$(pass show greygray/db/module)" -f 0001_schemas_and_roles.sql
+--
+-- ────────────────────────────────────────────────────────────────────────────
+-- ⚠ 每一份 migration 都必須遵守的規則：建表前先 SET ROLE greygray_owner
+--
+-- 底下用的是 ALTER DEFAULT PRIVILEGES ... FOR ROLE greygray_owner。
+-- 這個語法只對「由 greygray_owner 建立的物件」生效。
+-- 若某份 migration 忘了 SET ROLE，表的 owner 會是執行 migration 的那個部署帳號，
+-- 於是所有預設權限一條都不會套上去——15 個模組 role 對那些表的權限是「零」。
+--
+-- 症狀是執行期的 permission denied for table，而錯誤訊息完全不會指向真正的原因。
+-- CREATE SCHEMA ... AUTHORIZATION 只決定 schema 的 owner，不影響表的 owner，救不了這件事。
+--
+-- 所以：0002 起的每一份 migration，BEGIN 之後第一行就是 SET ROLE greygray_owner，
+-- 並在結尾用 owner 檢查斷言（見 0002 末段）。不要靠人記得，靠斷言。
 -- ============================================================================
 
 \set ON_ERROR_STOP on
@@ -28,6 +42,17 @@ BEGIN
     -- schema 的 owner，只給 migration 用
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'greygray_owner') THEN
         CREATE ROLE greygray_owner NOLOGIN NOBYPASSRLS;
+    END IF;
+END
+$$;
+
+-- 部署帳號必須是 greygray_owner 的成員，否則底下的 ALTER DEFAULT PRIVILEGES
+-- 與後續 migration 的 SET ROLE 都會被拒絕。
+-- 這一句需要 superuser 或對該 role 有 ADMIN OPTION——部署帳號本來就是高權限，執行後撤回。
+DO $$
+BEGIN
+    IF NOT pg_has_role(CURRENT_USER, 'greygray_owner', 'MEMBER') THEN
+        EXECUTE format('GRANT greygray_owner TO %I', CURRENT_USER);
     END IF;
 END
 $$;

@@ -16,11 +16,15 @@ public readonly record struct CampaignId(Guid Value)
 public readonly record struct CampaignOfferId(Guid Value)
 {
     public static CampaignOfferId New() => new(Guid.CreateVersion7());
+
+    public override string ToString() => Value.ToString("N");
 }
 
 public readonly record struct TripCostId(Guid Value)
 {
     public static TripCostId New() => new(Guid.CreateVersion7());
+
+    public override string ToString() => Value.ToString("N");
 }
 
 // ── 列舉 ─────────────────────────────────────────────────────────────────
@@ -103,6 +107,10 @@ public sealed record CampaignPublished(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "campaign.CampaignPublished.v1";
+
+    public override string AggregateType => "Campaign";
+
+    public override string AggregateId => CampaignId.ToString();
 }
 
 /// <summary>截團。Procurement 訂閱後產出採購清單。</summary>
@@ -114,6 +122,10 @@ public sealed record CampaignClosed(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "campaign.CampaignClosed.v1";
+
+    public override string AggregateType => "Campaign";
+
+    public override string AggregateId => CampaignId.ToString();
 }
 
 /// <summary>
@@ -132,6 +144,10 @@ public sealed record TripCostRecorded(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "campaign.TripCostRecorded.v1";
+
+    public override string AggregateType => "Campaign";
+
+    public override string AggregateId => CampaignId.ToString();
 }
 
 public sealed record CampaignCancelled(
@@ -143,6 +159,10 @@ public sealed record CampaignCancelled(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "campaign.CampaignCancelled.v1";
+
+    public override string AggregateType => "Campaign";
+
+    public override string AggregateId => CampaignId.ToString();
 }
 
 /// <summary>該團所有訂單皆已出貨，可以結團算毛利了。Reporting 訂閱。</summary>
@@ -154,4 +174,8 @@ public sealed record CampaignSettled(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "campaign.CampaignSettled.v1";
+
+    public override string AggregateType => "Campaign";
+
+    public override string AggregateId => CampaignId.ToString();
 }

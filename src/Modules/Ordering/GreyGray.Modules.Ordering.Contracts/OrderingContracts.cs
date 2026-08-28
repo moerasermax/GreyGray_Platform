@@ -154,6 +154,10 @@ public sealed record OrderPlaced(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "ordering.OrderPlaced.v1";
+
+    public override string AggregateType => "Order";
+
+    public override string AggregateId => OrderId.ToString();
 }
 
 public sealed record OrderPlacedLine(
@@ -175,6 +179,10 @@ public sealed record OrderPaid(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "ordering.OrderPaid.v1";
+
+    public override string AggregateType => "Order";
+
+    public override string AggregateId => OrderId.ToString();
 }
 
 /// <summary>Fulfillment 訂閱後開始揀貨打包。</summary>
@@ -188,6 +196,10 @@ public sealed record OrderReadyToShip(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "ordering.OrderReadyToShip.v1";
+
+    public override string AggregateType => "Order";
+
+    public override string AggregateId => OrderId.ToString();
 }
 
 /// <summary>簽收且鑑賞期屆滿。Ledger 訂閱後把預收轉收入。</summary>
@@ -201,6 +213,10 @@ public sealed record OrderCompleted(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "ordering.OrderCompleted.v1";
+
+    public override string AggregateType => "Order";
+
+    public override string AggregateId => OrderId.ToString();
 }
 
 public sealed record OrderCancelled(
@@ -214,6 +230,10 @@ public sealed record OrderCancelled(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "ordering.OrderCancelled.v1";
+
+    public override string AggregateType => "Order";
+
+    public override string AggregateId => OrderId.ToString();
 }
 
 /// <summary>單一品項取消（現場缺貨）。<b>訂單不整張作廢</b>，其餘 line 續行。</summary>
@@ -229,6 +249,10 @@ public sealed record OrderLineCancelled(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "ordering.OrderLineCancelled.v1";
+
+    public override string AggregateType => "Order";
+
+    public override string AggregateId => OrderId.ToString();
 }
 
 /// <summary>Payment 訂閱後去跟金流商建立交易。</summary>
@@ -243,6 +267,10 @@ public sealed record PaymentRequested(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "ordering.PaymentRequested.v1";
+
+    public override string AggregateType => "Order";
+
+    public override string AggregateId => OrderId.ToString();
 }
 
 /// <summary>Payment 訂閱後執行退款（原路或轉儲值金）。</summary>
@@ -258,4 +286,8 @@ public sealed record RefundRequested(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "ordering.RefundRequested.v1";
+
+    public override string AggregateType => "Order";
+
+    public override string AggregateId => OrderId.ToString();
 }

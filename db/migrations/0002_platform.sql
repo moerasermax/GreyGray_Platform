@@ -9,6 +9,12 @@
 
 BEGIN;
 
+-- ⚠ 這一行不是裝飾。0001 的 ALTER DEFAULT PRIVILEGES 是 FOR ROLE greygray_owner，
+-- 只對「由 greygray_owner 建立的物件」生效。少了這行，表會屬於執行 migration 的部署帳號，
+-- 15 個模組 role 對這四張表的權限會是零，而錯誤要等到執行期才浮出來。
+-- 檔案末尾有 owner 斷言，忘了這行會在 COMMIT 前就爆掉。
+SET ROLE greygray_owner;
+
 -- ── 1. Transactional Outbox ────────────────────────────────────────────
 -- 業務寫入與事件發布同一個交易，要嘛都成功，要嘛都不發生。
 CREATE TABLE IF NOT EXISTS platform.outbox_message (
@@ -128,5 +134,39 @@ COMMENT ON TABLE platform.saga_timer IS
 --   1002 = saga timer scanner
 --   1003 = 每日對帳與告警
 
+
+-- ── 6. 保留期清理由誰做 ────────────────────────────────────────────────
+-- 14 個模組 role 對 platform 只有 SELECT / INSERT / UPDATE（見 0001），沒有 DELETE，
+-- 這是刻意的：模組不該刪別人的 outbox 訊息。
+-- greygray_platform 這個 role 有完整 DML，Worker 的保留期清理走它。
+
+
+RESET ROLE;
+
+-- ── 7. Owner 斷言：忘了 SET ROLE 就在這裡爆，不要等到執行期 ────────────
+-- 這是「任何斷言某件事成立的檢查，都要能真的失敗」的實作。
+-- 拿掉上面的 SET ROLE 再跑一次，這裡會 RAISE EXCEPTION 並讓整個交易 rollback。
+DO $$
+DECLARE
+    wrong_owner text;
+BEGIN
+    SELECT string_agg(format('%s.%s (owner=%s)', schemaname, tablename, tableowner), ', ')
+    INTO wrong_owner
+    FROM pg_tables
+    WHERE schemaname IN (
+        'iam', 'catalog', 'campaign', 'pricing', 'inventory', 'checkout', 'ordering',
+        'procurement', 'fulfillment', 'payment', 'ledger', 'notify', 'audit', 'reporting',
+        'platform'
+    )
+      AND tableowner <> 'greygray_owner';
+
+    IF wrong_owner IS NOT NULL THEN
+        RAISE EXCEPTION
+            'Table owner 不是 greygray_owner：%。ALTER DEFAULT PRIVILEGES 不會套到這些表上，'
+            '模組 role 會拿不到任何權限。migration 開頭少了 SET ROLE greygray_owner。',
+            wrong_owner;
+    END IF;
+END
+$$;
 
 COMMIT;

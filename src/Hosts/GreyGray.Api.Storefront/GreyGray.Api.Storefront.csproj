@@ -10,6 +10,16 @@
     <ProjectReference Include="..\..\Platform\GreyGray.Platform.csproj" />
   </ItemGroup>
 
+  <!--
+    Storefront 是公開行程，它載入哪些模組就等於它持有哪幾個 schema 的 DB 登入。
+    所以這裡只放「客人這條路徑真的會用到」的模組——少一個模組就少一份可被波及的資料。
+    刻意不在這裡的：
+      Notification.Infra  發送由 Worker 做；客人不查通知紀錄（M1a 無此功能）
+      Reporting.Infra     報表是 Admin 專屬
+    Audit.Infra 必須在：讀客戶明文個資要同步留痕（IAuditWriter，ADR-017）。
+    Ledger.Infra 必須在：客人要查儲值金餘額（IStoredValueQuery）。
+    要加回來請先說明客人的哪個操作需要它。
+  -->
   <ItemGroup Label="模組組合根：只允許 Infra 的 Add*Module() 擴充方法；不得參考任何 *.Core">
     <ProjectReference Include="..\..\Modules\Identity\GreyGray.Modules.Identity.Infra\GreyGray.Modules.Identity.Infra.csproj" />
     <ProjectReference Include="..\..\Modules\Catalog\GreyGray.Modules.Catalog.Infra\GreyGray.Modules.Catalog.Infra.csproj" />
@@ -22,9 +32,7 @@
     <ProjectReference Include="..\..\Modules\Fulfillment\GreyGray.Modules.Fulfillment.Infra\GreyGray.Modules.Fulfillment.Infra.csproj" />
     <ProjectReference Include="..\..\Modules\Payment\GreyGray.Modules.Payment.Infra\GreyGray.Modules.Payment.Infra.csproj" />
     <ProjectReference Include="..\..\Modules\Ledger\GreyGray.Modules.Ledger.Infra\GreyGray.Modules.Ledger.Infra.csproj" />
-    <ProjectReference Include="..\..\Modules\Notification\GreyGray.Modules.Notification.Infra\GreyGray.Modules.Notification.Infra.csproj" />
     <ProjectReference Include="..\..\Modules\Audit\GreyGray.Modules.Audit.Infra\GreyGray.Modules.Audit.Infra.csproj" />
-    <ProjectReference Include="..\..\Modules\Reporting\GreyGray.Modules.Reporting.Infra\GreyGray.Modules.Reporting.Infra.csproj" />
   </ItemGroup>
 
   <ItemGroup>

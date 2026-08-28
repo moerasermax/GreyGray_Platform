@@ -72,6 +72,10 @@ public sealed record NotificationSent(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "notify.NotificationSent.v1";
+
+    public override string AggregateType => "Notification";
+
+    public override string AggregateId => NotificationId.ToString();
 }
 
 public sealed record NotificationFailed(
@@ -85,4 +89,8 @@ public sealed record NotificationFailed(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "notify.NotificationFailed.v1";
+
+    public override string AggregateType => "Notification";
+
+    public override string AggregateId => NotificationId.ToString();
 }

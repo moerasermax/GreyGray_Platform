@@ -19,9 +19,35 @@ public sealed class ModuleBoundaryTests
         "Procurement", "Fulfillment", "Payment", "Ledger", "Notification", "Audit", "Reporting",
     ];
 
+    /// <summary>
+    /// 支撐模組。規則是<b>不被任何業務模組依賴</b>——它們只訂閱事件。
+    /// </summary>
+    /// <remarks>
+    /// 這是判斷邊界切得對不對的快速檢查：如果 Ordering 需要參考 Notification 才能發通知，
+    /// 邊界就已經破了。<b>支撐模組之間可以互相發事件</b>（notify → Audit、
+    /// Reporting → Notification），那不算破口，因為業務模組沒有因此被綁住（ADR-017）。
+    /// </remarks>
+    private static readonly string[] SupportModules =
+    [
+        "Notification", "Audit", "Reporting",
+    ];
+
     private static readonly string[] Hosts =
     [
         "GreyGray.Api.Storefront", "GreyGray.Api.Admin", "GreyGray.Worker",
+    ];
+
+    /// <summary>Contracts 不該碰到的套件。出現任何一個都代表持久層或 Web 相依漏進了公開契約。</summary>
+    private static readonly string[] ForbiddenInContracts =
+    [
+        "Microsoft.EntityFrameworkCore",
+        "Microsoft.EntityFrameworkCore.Design",
+        "Npgsql",
+        "Npgsql.EntityFrameworkCore.PostgreSQL",
+        "Microsoft.AspNetCore.OpenApi",
+        "Microsoft.Extensions.Hosting",
+        "Microsoft.Extensions.DependencyInjection",
+        "Testcontainers.PostgreSql",
     ];
 
     private static readonly ProjectGraph Graph = ProjectGraph.Load();
@@ -96,15 +122,63 @@ public sealed class ModuleBoundaryTests
         }
     }
 
-    [Fact(DisplayName = "Host 不得參考任何 Core（含遞移）")]
+    [Fact(DisplayName = "Host 不得直接參考任何 Core")]
     public void Hosts_must_not_reference_core_directly()
     {
+        // 註：遞移到 Core 是必然的（Host → Infra → Core），擋不了也不該擋。
+        // 真正的防線是 Core 裡的型別全部 internal——Host 看得到組件，用不到型別。
         foreach (var host in Hosts)
         {
             Refs(host).Where(IsCore).ShouldBeEmpty(
                 $"{host} 直接參考了某個模組的 Core。" +
                 "組合根只能呼叫 *.Infra 公開的 Add*Module() 擴充方法。");
         }
+    }
+
+    [Fact(DisplayName = "業務模組不得依賴支撐模組（Notification / Audit / Reporting）")]
+    public void Business_modules_must_not_depend_on_support_modules()
+    {
+        var businessModules = Modules.Except(SupportModules, StringComparer.Ordinal).ToArray();
+
+        foreach (var module in businessModules)
+        {
+            foreach (var layer in new[] { "Contracts", "Core", "Infra" })
+            {
+                var self = $"GreyGray.Modules.{module}.{layer}";
+                var offending = Refs(self).Where(IsSupportModuleProject).ToArray();
+
+                offending.ShouldBeEmpty(
+                    $"{self} 參考了 {string.Join(", ", offending)}。" +
+                    "支撐模組只訂閱事件，不被任何業務模組依賴——" +
+                    "「Ordering 需要參考 Notification 才能發通知」就是邊界已經破了的樣子。" +
+                    "需要同步留痕請用 GreyGray.Platform.Abstractions 的 IAuditWriter（ADR-017）；" +
+                    "需要通知客人就發事件，讓 Notification 自己訂。");
+            }
+        }
+    }
+
+    [Fact(DisplayName = "Contracts 不得宣告持久層或 Web 的套件相依")]
+    public void Contracts_must_not_declare_infrastructure_packages()
+    {
+        foreach (var module in Modules)
+        {
+            var self = $"GreyGray.Modules.{module}.Contracts";
+            var offending = Packages(self)
+                .Where(p => ForbiddenInContracts.Contains(p, StringComparer.OrdinalIgnoreCase))
+                .ToArray();
+
+            offending.ShouldBeEmpty(
+                $"{self} 宣告了 {string.Join(", ", offending)}。" +
+                "Contracts 是別人唯一能參考的組件，它把基礎設施相依傳染出去就沒完了。" +
+                "只擋 ProjectReference 擋不住這條——所以這個測試看的是 PackageReference。");
+        }
+
+        Packages("GreyGray.Platform.Abstractions")
+            .Where(p => ForbiddenInContracts.Contains(p, StringComparer.OrdinalIgnoreCase))
+            .ShouldBeEmpty("Platform.Abstractions 是全專案相依最廣的組件，必須保持零基礎設施相依。");
+
+        Packages("GreyGray.Shared.Kernel")
+            .ShouldBeEmpty("Shared.Kernel 不得有任何套件相依，只用 BCL。");
     }
 
     [Fact(DisplayName = "Shared.Kernel 必須是相依圖的葉子")]
@@ -186,6 +260,14 @@ public sealed class ModuleBoundaryTests
         => Graph.References.TryGetValue(project, out var refs)
             ? refs
             : throw new InvalidOperationException($"相依圖裡沒有專案 {project}——測試的前提壞了，不是通過。");
+
+    private static IReadOnlyList<string> Packages(string project)
+        => Graph.Packages.TryGetValue(project, out var packages)
+            ? packages
+            : throw new InvalidOperationException($"相依圖裡沒有專案 {project}——測試的前提壞了，不是通過。");
+
+    private static bool IsSupportModuleProject(string name)
+        => SupportModules.Any(m => name.StartsWith($"GreyGray.Modules.{m}.", StringComparison.Ordinal));
 
     private static bool IsCore(string name)
         => name.StartsWith("GreyGray.Modules.", StringComparison.Ordinal)

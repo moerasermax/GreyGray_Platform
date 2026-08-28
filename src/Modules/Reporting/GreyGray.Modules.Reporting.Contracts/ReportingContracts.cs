@@ -82,4 +82,8 @@ public sealed record ReportGenerated(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "reporting.ReportGenerated.v1";
+
+    public override string AggregateType => "Report";
+
+    public override string AggregateId => ReportCode;
 }

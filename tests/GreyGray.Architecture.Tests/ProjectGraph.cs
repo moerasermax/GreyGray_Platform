@@ -14,14 +14,29 @@ namespace GreyGray.Architecture.Tests;
 /// </remarks>
 internal sealed class ProjectGraph
 {
-    private ProjectGraph(IReadOnlyDictionary<string, IReadOnlyList<string>> references, string repoRoot)
+    private ProjectGraph(
+        IReadOnlyDictionary<string, IReadOnlyList<string>> references,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> packages,
+        string repoRoot)
     {
         References = references;
+        Packages = packages;
         RepoRoot = repoRoot;
     }
 
     /// <summary>專案名（不含 .csproj）→ 它直接參考的專案名。</summary>
     public IReadOnlyDictionary<string, IReadOnlyList<string>> References { get; }
+
+    /// <summary>
+    /// 專案名 → 它宣告的 NuGet 套件名。
+    /// </summary>
+    /// <remarks>
+    /// 為什麼要一起解析：只擋 ProjectReference 擋不住「Contracts 直接
+    /// <c>PackageReference Microsoft.EntityFrameworkCore</c>」這種繞法。
+    /// 那會讓持久層相依從 Contracts 傳染到每一個參考它的模組，
+    /// 而 <c>Contracts_must_not_reach_persistence</c> 完全看不到。
+    /// </remarks>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> Packages { get; }
 
     public string RepoRoot { get; }
 
@@ -29,6 +44,7 @@ internal sealed class ProjectGraph
     {
         var repoRoot = FindRepoRoot();
         var map = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        var packages = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
 
         foreach (var dir in new[] { "src", "tests" })
         {
@@ -41,7 +57,9 @@ internal sealed class ProjectGraph
             foreach (var path in Directory.EnumerateFiles(root, "*.csproj", SearchOption.AllDirectories))
             {
                 var name = Path.GetFileNameWithoutExtension(path);
-                map[name] = ParseProjectReferences(path);
+                var doc = XDocument.Load(path);
+                map[name] = ParseIncludes(doc, "ProjectReference", stripExtension: true);
+                packages[name] = ParseIncludes(doc, "PackageReference", stripExtension: false);
             }
         }
 
@@ -51,7 +69,7 @@ internal sealed class ProjectGraph
                 $"在 {repoRoot} 底下找不到任何 csproj——架構測試會變成空跑通過，這比沒有測試更糟。");
         }
 
-        return new ProjectGraph(map, repoRoot);
+        return new ProjectGraph(map, packages, repoRoot);
     }
 
     /// <summary>某個專案「遞移」參考到的全部專案。</summary>
@@ -77,16 +95,16 @@ internal sealed class ProjectGraph
         return seen;
     }
 
-    private static IReadOnlyList<string> ParseProjectReferences(string csprojPath)
+    private static IReadOnlyList<string> ParseIncludes(XDocument doc, string elementName, bool stripExtension)
     {
-        var doc = XDocument.Load(csprojPath);
-
         return
         [
-            .. doc.Descendants("ProjectReference")
+            .. doc.Descendants(elementName)
                 .Select(e => (string?)e.Attribute("Include"))
                 .Where(v => !string.IsNullOrWhiteSpace(v))
-                .Select(v => Path.GetFileNameWithoutExtension(v!.Replace('\\', Path.DirectorySeparatorChar)))
+                .Select(v => stripExtension
+                    ? Path.GetFileNameWithoutExtension(v!.Replace('\\', Path.DirectorySeparatorChar))
+                    : v!.Trim())
         ];
     }
 

@@ -17,6 +17,8 @@ public readonly record struct PaymentId(Guid Value)
 public readonly record struct RefundId(Guid Value)
 {
     public static RefundId New() => new(Guid.CreateVersion7());
+
+    public override string ToString() => Value.ToString("N");
 }
 
 // ── 列舉 ─────────────────────────────────────────────────────────────────
@@ -111,6 +113,10 @@ public sealed record PaymentCaptured(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "payment.PaymentCaptured.v1";
+
+    public override string AggregateType => "Payment";
+
+    public override string AggregateId => PaymentId.ToString();
 }
 
 public sealed record PaymentFailed(
@@ -125,6 +131,10 @@ public sealed record PaymentFailed(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "payment.PaymentFailed.v1";
+
+    public override string AggregateType => "Payment";
+
+    public override string AggregateId => PaymentId.ToString();
 }
 
 public sealed record PaymentRefunded(
@@ -141,6 +151,10 @@ public sealed record PaymentRefunded(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "payment.PaymentRefunded.v1";
+
+    public override string AggregateType => "Payment";
+
+    public override string AggregateId => PaymentId.ToString();
 }
 
 /// <summary>
@@ -161,6 +175,10 @@ public sealed record PayoutSettled(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "payment.PayoutSettled.v1";
+
+    public override string AggregateType => "PayoutBatch";
+
+    public override string AggregateId => SettlementBatchRef;
 }
 
 /// <summary>對帳差異。<b>差異告警要按金流商分家</b>，混在一起看不出是哪家的問題。</summary>
@@ -176,4 +194,8 @@ public sealed record ReconciliationDiscrepancyFound(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "payment.ReconciliationDiscrepancyFound.v1";
+
+    public override string AggregateType => "Reconciliation";
+
+    public override string AggregateId => $"{Provider}:{StatementDate:yyyy-MM-dd}";
 }

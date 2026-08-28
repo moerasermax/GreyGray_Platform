@@ -15,6 +15,10 @@
   </ItemGroup>
 
   <ItemGroup Label="其他模組的契約——只能是 Contracts，永遠不可以是 Core">
+    <!-- 訂閱 reporting.ReportGenerated.v1 -->
+    <ProjectReference Include="..\..\Reporting\GreyGray.Modules.Reporting.Contracts\GreyGray.Modules.Reporting.Contracts.csproj" />
+    <!-- 訂閱 ledger.LiabilityExceededCash.v1 → 每日告警 -->
+    <ProjectReference Include="..\..\Ledger\GreyGray.Modules.Ledger.Contracts\GreyGray.Modules.Ledger.Contracts.csproj" />
     <ProjectReference Include="..\..\Procurement\GreyGray.Modules.Procurement.Contracts\GreyGray.Modules.Procurement.Contracts.csproj" />
     <ProjectReference Include="..\..\Ordering\GreyGray.Modules.Ordering.Contracts\GreyGray.Modules.Ordering.Contracts.csproj" />
     <ProjectReference Include="..\..\Fulfillment\GreyGray.Modules.Fulfillment.Contracts\GreyGray.Modules.Fulfillment.Contracts.csproj" />

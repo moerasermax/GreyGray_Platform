@@ -25,6 +25,8 @@ public readonly record struct FeeRuleSetId(Guid Value)
 public readonly record struct FeeRuleId(Guid Value)
 {
     public static FeeRuleId New() => new(Guid.CreateVersion7());
+
+    public override string ToString() => Value.ToString("N");
 }
 
 // ── 列舉 ─────────────────────────────────────────────────────────────────
@@ -138,4 +140,8 @@ public sealed record FeeRuleSetPublished(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "pricing.FeeRuleSetPublished.v1";
+
+    public override string AggregateType => "FeeRuleSet";
+
+    public override string AggregateId => RuleSetId.ToString();
 }

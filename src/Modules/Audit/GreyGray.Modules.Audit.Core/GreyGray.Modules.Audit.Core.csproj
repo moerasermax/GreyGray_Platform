@@ -15,6 +15,8 @@
   </ItemGroup>
 
   <ItemGroup Label="其他模組的契約——只能是 Contracts，永遠不可以是 Core">
+    <!-- 訂閱 notify.NotificationSent/Failed.v1 -->
+    <ProjectReference Include="..\..\Notification\GreyGray.Modules.Notification.Contracts\GreyGray.Modules.Notification.Contracts.csproj" />
     <ProjectReference Include="..\..\Identity\GreyGray.Modules.Identity.Contracts\GreyGray.Modules.Identity.Contracts.csproj" />
     <ProjectReference Include="..\..\Catalog\GreyGray.Modules.Catalog.Contracts\GreyGray.Modules.Catalog.Contracts.csproj" />
     <ProjectReference Include="..\..\Campaign\GreyGray.Modules.Campaign.Contracts\GreyGray.Modules.Campaign.Contracts.csproj" />

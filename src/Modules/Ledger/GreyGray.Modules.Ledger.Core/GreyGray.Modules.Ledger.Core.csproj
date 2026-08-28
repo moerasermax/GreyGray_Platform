@@ -15,6 +15,8 @@
   </ItemGroup>
 
   <ItemGroup Label="其他模組的契約——只能是 Contracts，永遠不可以是 Core">
+    <!-- 訂閱 procurement.GoodsReceived.v1 → DR 存貨 / CR 現金 -->
+    <ProjectReference Include="..\..\Procurement\GreyGray.Modules.Procurement.Contracts\GreyGray.Modules.Procurement.Contracts.csproj" />
     <ProjectReference Include="..\..\Payment\GreyGray.Modules.Payment.Contracts\GreyGray.Modules.Payment.Contracts.csproj" />
     <ProjectReference Include="..\..\Campaign\GreyGray.Modules.Campaign.Contracts\GreyGray.Modules.Campaign.Contracts.csproj" />
     <ProjectReference Include="..\..\Inventory\GreyGray.Modules.Inventory.Contracts\GreyGray.Modules.Inventory.Contracts.csproj" />

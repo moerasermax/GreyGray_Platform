@@ -239,6 +239,104 @@ Identity, Catalog
 「代購」這個詞仍會出現在文件裡，但它從此是**業務領域的描述**，不是專案名稱。
 唯二保留舊名的地方是外部資源的實際標題：藍圖 artifact 與 planner 提醒。
 
+---
+
+## ADR-016　`platform` schema 是刻意的共用例外，outbox 由模組自己的 DbContext 寫
+**狀態**：已採納（2026-08-28，本次稽核發現三份文件互相矛盾後補的裁決）
+
+原本三句話同時存在而且不可能同時成立：
+
+1. M0-1：「`PublishAsync` 只寫 outbox，**且必須參與呼叫端的交易**（同一個 DbContext／同一條連線）」
+2. M0-1：「產出 `src/Platform/PlatformDbContext.cs`」
+3. M0-5：「每個模組一個 DbContext，**不要**在任何一個 DbContext 裡 map 別的模組的表」
+
+若 outbox 只存在於獨立的 `PlatformDbContext`，它就是另一條連線、另一個交易，
+第 1 條的原子性保證直接失效——事件會在業務資料 rollback 之後照樣送出去。
+
+**裁決**：
+
+- `platform` schema 的三張表（`outbox_message`、`processed_message`、`saga_timer`）
+  由 `GreyGray.Platform` 提供一個 `ModelBuilder` 擴充方法，**每個模組的 DbContext 都套用它**。
+  對應的 EF 實體型別由 Platform 擁有，模組不得自己重新定義。
+- 這**不是**破例跨 schema JOIN。禁止的是跨 schema **JOIN 業務資料**；
+  這裡是同一條交易寫兩張表，沒有任何 JOIN，而且 0001 已經把 platform 的權限
+  明確 GRANT 給 14 個模組 role，資料庫層本來就承認這個例外。
+- `PlatformDbContext` 仍然存在，但它的職責收斂成**只有背景與 BFF 才用得到的部分**：
+  dispatcher 的批次撈取、`idempotency_key`、saga timer 掃描。它用 `greygray_platform` 這個 role。
+- `idempotency_key` 不需要參與業務交易——它的協定是 begin → 做事 → complete 三段式，
+  本來就跨交易。
+
+**M0-5 那句話的正確版本**：不要在任何一個 DbContext 裡 map **別的業務模組**的表。`platform` 除外。
+
+---
+
+## ADR-017　支撐模組的精確規則：不被業務模組依賴；支撐之間可以
+**狀態**：已採納（2026-08-28，本次稽核發現原規則與事件目錄自相矛盾後補的裁決）
+
+原本的說法是「支撐群（Notification／Audit／Reporting）**只有進箭頭，沒有出箭頭**」。
+但 `docs/02-事件與狀態機.md` 的事件目錄自己就有三條出箭頭：
+`notify.NotificationSent → Audit`、`reporting.ReportGenerated → Notification`、
+以及 Notification 要訂 `ledger.LiabilityExceededCash`。含糊放著，平行開發的人會各自解讀。
+
+**精確版本**：
+
+- **業務模組（其餘 11 個）不得參考 Notification／Audit／Reporting 的任何組件。** 沒有例外。
+  由 `Architecture.Tests` 的 `Business_modules_must_not_depend_on_support_modules` 斷言。
+- **支撐模組之間可以互相訂閱事件。** 那不算破口——業務模組沒有因此被綁住，
+  而「拆掉 Reporting 不影響任何業務模組」這個性質仍然成立。
+
+**連帶處置：`IAuditWriter` 移到 `GreyGray.Platform.Abstractions.Audit`。**
+
+個資存取留痕是**同步**的：`ICustomerDirectory.GetContactAsync` 讀出客戶明文的那一刻就要留一筆，
+事後補事件等於留下一段沒有稽核的空窗。若 `IAuditWriter` 留在 `Audit.Contracts`，
+`Identity.Core` 就必須參考支撐模組，上面那條規則第一天就要開例外。
+
+稽核寫入實際上是**橫切的平台能力**，不是模組能力，所以它屬於 `Platform.Abstractions`。
+`AuditCategory` 一起搬。參數改用 `Guid?` 而非 `StaffId?`／`CustomerId?`——
+`Platform.Abstractions` 只能參考 `Shared.Kernel`（有測試斷言），而稽核本來就是泛型接收端。
+
+`Audit.Contracts` 留下的是查詢面：`AuditRecord`、`IAuditQuery`、`AuditRecorded`。
+
+---
+
+## ADR-018　JSON 線上格式一次定死，來源唯一
+**狀態**：已採納（2026-08-28，本次稽核）
+
+**問題**：44 個整合事件會由多人（或多個 agent）平行寫。System.Text.Json 的預設行為會把
+`readonly record struct CustomerId(Guid Value)` 序列化成 `{"value":"…"}`、把 enum 序列化成數字。
+各自帶各自的 `JsonSerializerOptions`，payload 形狀就會分歧。
+
+**而 outbox 裡的 JSON 一旦有正式資料就改不動了**——改形狀等於讓所有未派送的訊息反序列化失敗。
+所以這件事必須在寫第一行業務邏輯之前定死。
+
+**唯一來源**：`GreyGray.Shared.Kernel.Json.GreyGrayJson.Options`。
+outbox payload 與 HTTP API **用同一組設定**。
+
+| 型別 | 線上形狀 |
+|---|---|
+| property 名稱 | camelCase |
+| 所有 GUID —— **強型別 `XxxId` 與裸 `Guid` 都算** | 字串，32 字元十六進位，無連字號：`"0198c3d4…"` |
+| `Money` | `{"amountMinor": 18000, "currency": "TWD"}` |
+| 所有 enum | 字串（`"ConvenienceStore"`，不是 `1`）|
+| `DateTimeOffset` | ISO 8601 含位移 |
+| `DateOnly` | `"2026-08-28"` |
+| null | **照寫不省略** |
+| 中日韓文字 | 不轉義（否則備註與姓名在 DB 裡變成 `\uXXXX`，SQL 查不動）|
+
+**金額為什麼用 JSON number 而不是字串**：`long` 最小單位的值域遠在 IEEE-754 安全整數
+範圍內（±2^53），JavaScript 端 `JSON.parse` 不會失真。會失真的是「元」為單位的小數，
+而那正是本專案不用 `decimal` 的原因。
+
+**不提供「元」欄位**：多一個衍生欄位就多一個對不起來的機會。顯示是前端的事。
+
+**裸 `Guid` 為什麼也要管**：`IIntegrationEvent.EventId` 是 `Guid` 不是強型別 ID，
+System.Text.Json 預設會寫成帶連字號的形式。放著不管的話同一個 payload 裡會有兩種格式，
+而 `eventId` 正是消費端去重的 key（`platform.processed_message` 的主鍵之一）。
+一邊用 `Guid.Parse` 比、一邊用字串比，就會出現「同一則訊息被處理兩次」，
+而那種 bug 只會在正式環境的重送路徑上出現。2026-08-28 覆驗時實測抓到，已修。
+
+---
+
 ## 待決策
 
 ### 歷史會員與訂單的遷移

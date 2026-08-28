@@ -18,6 +18,8 @@ public readonly record struct ShipmentId(Guid Value)
 public readonly record struct PackageId(Guid Value)
 {
     public static PackageId New() => new(Guid.CreateVersion7());
+
+    public override string ToString() => Value.ToString("N");
 }
 
 // ── 列舉 ─────────────────────────────────────────────────────────────────
@@ -84,6 +86,10 @@ public sealed record ShipmentDispatched(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "fulfillment.ShipmentDispatched.v1";
+
+    public override string AggregateType => "Shipment";
+
+    public override string AggregateId => ShipmentId.ToString();
 }
 
 public sealed record ShipmentDelivered(
@@ -95,6 +101,10 @@ public sealed record ShipmentDelivered(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "fulfillment.ShipmentDelivered.v1";
+
+    public override string AggregateType => "Shipment";
+
+    public override string AggregateId => ShipmentId.ToString();
 }
 
 /// <summary>
@@ -111,6 +121,10 @@ public sealed record ReturnReceived(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "fulfillment.ReturnReceived.v1";
+
+    public override string AggregateType => "Shipment";
+
+    public override string AggregateId => ShipmentId.ToString();
 }
 
 public sealed record ShipmentLost(
@@ -123,4 +137,8 @@ public sealed record ShipmentLost(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "fulfillment.ShipmentLost.v1";
+
+    public override string AggregateType => "Shipment";
+
+    public override string AggregateId => ShipmentId.ToString();
 }

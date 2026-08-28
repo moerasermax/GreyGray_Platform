@@ -131,6 +131,10 @@ public sealed record ItemPurchased(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "procurement.ItemPurchased.v1";
+
+    public override string AggregateType => "PurchaseItem";
+
+    public override string AggregateId => PurchaseItemId.ToString();
 }
 
 /// <summary>
@@ -148,6 +152,10 @@ public sealed record GoodsReceived(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "procurement.GoodsReceived.v1";
+
+    public override string AggregateType => "Campaign";
+
+    public override string AggregateId => CampaignId.ToString();
 }
 
 /// <summary>缺貨。Ordering 訂閱後取消該 OrderLine 並觸發退款。</summary>
@@ -162,6 +170,10 @@ public sealed record ItemUnavailable(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "procurement.ItemUnavailable.v1";
+
+    public override string AggregateType => "PurchaseItem";
+
+    public override string AggregateId => PurchaseItemId.ToString();
 }
 
 /// <summary>
@@ -183,6 +195,10 @@ public sealed record ItemPriceChanged(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "procurement.ItemPriceChanged.v1";
+
+    public override string AggregateType => "PurchaseItem";
+
+    public override string AggregateId => PurchaseItemId.ToString();
 }
 
 /// <summary>詢價結案（客人回了，或逾時自動放行）。Audit 訂閱保存軌跡。</summary>
@@ -196,4 +212,8 @@ public sealed record InquiryResolved(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "procurement.InquiryResolved.v1";
+
+    public override string AggregateType => "Inquiry";
+
+    public override string AggregateId => InquiryId.ToString();
 }

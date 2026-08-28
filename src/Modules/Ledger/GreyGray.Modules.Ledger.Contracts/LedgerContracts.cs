@@ -204,6 +204,10 @@ public sealed record JournalPosted(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "ledger.JournalPosted.v1";
+
+    public override string AggregateType => "JournalEntry";
+
+    public override string AggregateId => EntryId.ToString();
 }
 
 /// <summary>負債科目合計超過現金餘額。每日檢查，觸發即告警。</summary>
@@ -216,4 +220,8 @@ public sealed record LiabilityExceededCash(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "ledger.LiabilityExceededCash.v1";
+
+    public override string AggregateType => "LedgerDailyCheck";
+
+    public override string AggregateId => $"{OccurredAt:yyyy-MM-dd}";
 }
