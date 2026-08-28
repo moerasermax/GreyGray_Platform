@@ -4,14 +4,14 @@
 
 ## 一句話
 
-骨架完成並可編譯：48 個專案、14 個模組的完整契約、10 條架構測試全綠（且實測會擋下違規）。
+骨架完成並可編譯：49 個專案、14 個模組的完整契約、10 條架構測試全綠（且實測會擋下違規）。
 業務邏輯一行都還沒寫——那是 M0-1 之後的事，工作包在 `docs/03-M0工作包.md`。
 
 ## 已完成
 
 | 項目 | 狀態 |
 |---|---|
-| Solution 骨架（48 專案） | ✅ `dotnet build` 0 error 0 warning |
+| Solution 骨架（49 專案） | ✅ `dotnet build` 0 error 0 warning |
 | 模組硬邊界（assembly 分離） | ✅ 10 條架構測試全綠（且實測會擋下違規） |
 | 14 個模組的 Contracts（ID／DTO／介面／事件） | ✅ 可編譯 |
 | Shared.Kernel（Money、Currency、Result、IClock、Dimensions） | ✅ |

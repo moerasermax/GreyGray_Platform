@@ -19,7 +19,7 @@
 ## 目錄
 
 ```
-Daigou.slnx                     48 個專案
+Daigou.slnx                     49 個專案
 Directory.Build.props           TargetFramework、Nullable、TreatWarningsAsErrors
 Directory.Packages.props        中央套件版本管理（版本一律釘死）
 dotnet.config                   dotnet test 的 MTP opt-in（此 SDK 版本尚未生效，見 ops/test.ps1）
