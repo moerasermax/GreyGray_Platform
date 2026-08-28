@@ -49,8 +49,16 @@
 【什麼時候停下來問人】
 - 契約缺欄位、型別對不上 → **不要自己在前端補**，回報。
   契約是凍結的，改它要走 docs/05 的流程。
-- 要動 packages/ui/src/tokens/** → 回報。那是全站視覺的單一來源。
 - 所有權表沒寫到的檔案 → 回報。
+- packages/ui/src/tokens/** —— 分兩種，不要一律回報：
+  * **新增** token（補一個原本沒有的角色）→ 你可以決定，但交付說明要列出
+    新增了什麼、為什麼原本的不夠用，並附實測對比度數字。
+  * **修改既有 token 的值** → 一定回報。既有值一動，所有已經做完的畫面
+    都會跟著變，而那些畫面是別人驗收過的。
+
+  （第一波實例：後台缺「疊在有色底上的文字」這個角色，--ga-fg-muted 只在
+  --ga-bg 上量過，放到 danger-subtle 上只有 3.90:1。主 agent 新增
+  --ga-fg-on-tint 與 --ga-primary-text 解決，沒動任何既有值——那是對的做法。）
 ```
 
 ---
@@ -265,6 +273,50 @@ FE-7、FE-8 依賴你做出來的殼與元件，但那是下一波，你不要�
 外加共通的三條：
 
 1. `git status` / `git diff --stat` 有沒有越出所有權表
-2. `pnpm typecheck` 與 `pnpm build` 全綠（貼實際輸出，不是「已完成」四個字）
+2. `pnpm typecheck`、`pnpm test` 與 `pnpm build` 全綠
+   （貼實際輸出，不是「已完成」四個字。**三道都要在 workspace 根目錄跑**，
+   不要只跑 `--filter` 某一個套件——第一波就是這樣漏掉一個紅的）
 3. 三個人回報的「契約有問題的地方」要合在一起看——
    同一個欄位被兩個人各自獨立提出來，那就不是誤會，是契約真的有洞
+
+---
+
+# 驗收紀錄
+
+## 第一波（FE-1 / FE-2 / FE-6）—— 2026-08-28 通過
+
+驗 `a9e1636`。機械驗收由 Claude 在乾淨 worktree 獨立跑過一次，
+修掉一個缺陷後在 `-fe` 樹上再跑一次確認。
+
+```
+pnpm install --frozen-lockfile   ✅
+pnpm typecheck                   ✅ 4 個專案
+pnpm test                        ✅ api-client 27 條（admin smoke 13 ＋ storefront smoke 14）
+pnpm build                       ✅ storefront: / · /_not-found · /kitchen-sink
+                                    admin:      / · /_not-found · /login
+git status                       ✅ 乾淨
+```
+
+**修掉的缺陷**：`pnpm test` 在 workspace 根目錄是紅的。
+兩個 app 的 `test` script 是 `vitest run`，但沒有測試檔，vitest 直接 `exit 1`，
+連帶讓 `pnpm --recursive test` 整個失敗。主 agent 回報「全綠」是因為它跑的是
+`--filter @greygray/api-client test`。已改成 `vitest run --passWithNoTests`。
+
+**兩個查證後沒事的**：
+- `--gg-sheet-max-h` 在 diff 裡看起來被刪，實際是在檔案內搬位置，
+  `soft-seoul.css` 仍定義、`BottomSheet.tsx` 仍使用。
+- `money.ts` 只改檔頭文件，行為零變化（並把「台幣經 ICU 是 `$` 不是 `NT$`」寫對）。
+
+**所有權**：六類無主檔全被動到（`layout.tsx`／`globals.css`／`next.config.ts`／
+`package.json`／`tokens/**`／`money.ts`），但全部由主 agent 在收尾 commit 改，
+且每一項都附了理由。token 是純新增 6 個、沒動任何既有值。
+這正是升級路徑該有的樣子——規則已據此改成「新增可自決、改既有值要回報」。
+
+**沒有獨立重跑的**：瀏覽器視覺驗收（四寬度無水平捲動、33 站鍵盤焦點、
+兩套主題對比度、msw 端到端）。那些是主 agent 跑真瀏覽器做的，有數字有記錄，
+採信但未重做。
+
+**留給第二波的一題**：契約的 `unitPriceLabel` 範例寫 `NT$780／32 顆`，
+但共用的 `formatMoney` 對台幣輸出 `$780`（zh-TW 是台幣本地語系，ICU 就給 `$`）。
+同一張商品卡上會同時出現兩種寫法。**這是產品決定，不是前端能自己定的**——
+要嘛契約改成 `$`，要嘛 `formatMoney` 對 TWD 特別加 `NT$` 前綴。
