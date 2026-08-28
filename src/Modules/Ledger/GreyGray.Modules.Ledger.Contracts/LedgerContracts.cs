@@ -19,6 +19,14 @@ public readonly record struct EntryId(Guid Value)
     public static EntryId New() => new(Guid.CreateVersion7());
 
     public override string ToString() => Value.ToString("N");
+
+    public static bool operator <(EntryId left, EntryId right) => left.Value.CompareTo(right.Value) < 0;
+
+    public static bool operator >(EntryId left, EntryId right) => left.Value.CompareTo(right.Value) > 0;
+
+    public static bool operator <=(EntryId left, EntryId right) => left.Value.CompareTo(right.Value) <= 0;
+
+    public static bool operator >=(EntryId left, EntryId right) => left.Value.CompareTo(right.Value) >= 0;
 }
 
 // ── 列舉 ─────────────────────────────────────────────────────────────────
@@ -163,6 +171,18 @@ public sealed record LiabilityVsCash(
     public bool IsBreached => CustomerLiabilityTotal > CashTotal;
 }
 
+public sealed record JournalSearch(
+    string? SourceModule,
+    string? SourceRef,
+    DateOnly? From,
+    DateOnly? To,
+    string? Cursor,
+    int Limit = 50);
+
+public sealed record JournalPage(
+    IReadOnlyList<JournalEntryView> Items,
+    string? NextCursor);
+
 // ── 同步契約 ─────────────────────────────────────────────────────────────
 
 public interface ILedgerQuery
@@ -180,6 +200,10 @@ public interface ILedgerQuery
         CancellationToken cancellationToken);
 
     Task<Result<LiabilityVsCash>> GetLiabilityVsCashAsync(CancellationToken cancellationToken);
+
+    Task<Result<JournalPage>> SearchAsync(
+        JournalSearch search,
+        CancellationToken cancellationToken);
 }
 
 public interface IStoredValueQuery

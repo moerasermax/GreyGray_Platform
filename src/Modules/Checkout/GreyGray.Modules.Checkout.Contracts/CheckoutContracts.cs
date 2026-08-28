@@ -23,21 +23,6 @@ public readonly record struct CartLineId(Guid Value)
     public override string ToString() => Value.ToString("N");
 }
 
-// ── 列舉 ─────────────────────────────────────────────────────────────────
-
-/// <summary>
-/// 履約模式。這是雙模式唯一的分岔點——
-/// <b>存貨從哪來、成本何時確定</b>。帳務科目兩者完全相同。
-/// </summary>
-public enum FulfillmentMode
-{
-    /// <summary>現貨：台灣本地批發，賣之前已進貨（庫存驅動）。下單即扣可用量，狀態機短路。</summary>
-    Stock = 1,
-
-    /// <summary>預購：出國現場採購，賣之後才去買（訂單驅動）。下單只登記需求，走完整 Saga。</summary>
-    Preorder = 2,
-}
-
 /// <summary>
 /// 混合訂單的出貨策略。<b>客人下單時就要選，不是出貨時才問</b>。
 /// </summary>
@@ -58,7 +43,22 @@ public sealed record CartLine(
     FulfillmentMode Mode,
     CampaignOfferId? CampaignOffer,
     int Quantity,
-    Money UnitPrice);
+    Money UnitPrice)
+{
+    public ProductId ProductId { get; init; }
+
+    public string Name { get; init; } = string.Empty;
+
+    public string? VariantName { get; init; }
+
+    public string? ImageUrl { get; init; }
+
+    public CampaignId? CampaignId { get; init; }
+
+    public Money LineTotal => UnitPrice.MultiplyByQuantity(Quantity);
+
+    public string? AvailabilityWarning { get; init; }
+}
 
 public sealed record CartView(
     CartId Id,
@@ -68,14 +68,94 @@ public sealed record CartView(
     ShippingPolicy ShippingPolicy,
     PricingSnapshot? Quote)
 {
+    public Money GoodsTotal { get; init; } = Money.Zero(Currency.TWD);
+
+    public bool HasMixedModes { get; init; }
+
     public Money? GrandTotal { get; init; }
 }
+
+public sealed record CheckoutQuote(
+    PricingSnapshot Snapshot,
+    Money GoodsTotal,
+    Money GrandTotal);
+
+public sealed record AddCartLineRequest(
+    CartId CartId,
+    CustomerId? CustomerId,
+    SkuId SkuId,
+    FulfillmentMode Mode,
+    CampaignOfferId? CampaignOfferId,
+    int Quantity);
+
+public sealed record UpdateCartLineRequest(
+    CartId CartId,
+    CustomerId? CustomerId,
+    CartLineId LineId,
+    int Quantity);
+
+public sealed record RemoveCartLineRequest(
+    CartId CartId,
+    CustomerId? CustomerId,
+    CartLineId LineId);
+
+public sealed record QuoteCartRequest(
+    CartId CartId,
+    CustomerId? CustomerId,
+    DeliveryMethod DeliveryMethod);
+
+public sealed record CompleteCheckoutRequest(
+    CartId CartId,
+    CustomerId CustomerId,
+    DeliveryMethod DeliveryMethod,
+    ShippingPolicy ShippingPolicy,
+    AddressId? ShippingAddressId,
+    string? ConvenienceStoreCode,
+    string? BuyerNote,
+    string IdempotencyKey);
 
 // ── 同步契約 ─────────────────────────────────────────────────────────────
 
 public interface ICheckoutQuery
 {
     Task<Result<CartView>> GetCartAsync(CartId id, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Storefront BFF 的 Checkout input port。BFF 只負責 session、idempotency 與 HTTP mapping；
+/// 購物車 ownership、驗證、報價與結帳規則都留在模組內。
+/// </summary>
+public interface ICheckoutApplication
+{
+    Task<Result<CartView>> GetCartAsync(
+        CartId cartId,
+        CustomerId? customerId,
+        CancellationToken cancellationToken);
+
+    Task<Result<CartView>> AddLineAsync(
+        AddCartLineRequest request,
+        CancellationToken cancellationToken);
+
+    Task<Result<CartView>> UpdateLineAsync(
+        UpdateCartLineRequest request,
+        CancellationToken cancellationToken);
+
+    Task<Result<CartView>> RemoveLineAsync(
+        RemoveCartLineRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>純詢價：不得修改 Cart，也不得呼叫 Pricing.FreezeAsync。</summary>
+    Task<Result<CheckoutQuote>> QuoteAsync(
+        QuoteCartRequest request,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 驗證並凍結報價，然後把 CheckoutCompleted 與 Cart 完成狀態寫進同一工作單元。
+    /// BFF 可將回傳事件同步交給 Ordering 建單；outbox 的非同步重送會由 Ordering 冪等吸收。
+    /// </summary>
+    Task<Result<CheckoutCompleted>> CompleteAsync(
+        CompleteCheckoutRequest request,
+        CancellationToken cancellationToken);
 }
 
 // ── 對外事件 ─────────────────────────────────────────────────────────────
@@ -103,6 +183,11 @@ public sealed record CheckoutCompleted(
     public override string AggregateType => "Cart";
 
     public override string AggregateId => CartId.ToString();
+
+    /// <summary>超商取貨時由綠界電子地圖回傳；其他配送方式為 null。</summary>
+    public string? ConvenienceStoreCode { get; init; }
+
+    public string? BuyerNote { get; init; }
 }
 
 public sealed record CheckoutLine(

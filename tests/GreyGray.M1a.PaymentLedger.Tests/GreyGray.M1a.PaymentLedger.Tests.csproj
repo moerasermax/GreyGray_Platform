@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>GreyGray.M1a.PaymentLedger.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <ModuleLayer>Test</ModuleLayer>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Shouldly" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Modules\Payment\GreyGray.Modules.Payment.Infra\GreyGray.Modules.Payment.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ledger\GreyGray.Modules.Ledger.Infra\GreyGray.Modules.Ledger.Infra.csproj" />
+  </ItemGroup>
+
+</Project>

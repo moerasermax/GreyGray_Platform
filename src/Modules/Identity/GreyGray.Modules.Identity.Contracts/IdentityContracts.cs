@@ -78,6 +78,67 @@ public sealed record ShippingAddress(
     string District,
     string StreetAddress);
 
+/// <summary>前台註冊輸入；HTTP idempotency 與 session cookie 由 Host/Platform 負責。</summary>
+public sealed record RegisterCustomerInput(
+    string PhoneNumber,
+    string Password,
+    string DisplayName,
+    string? Email,
+    string? ReferralCode);
+
+public sealed record CustomerLoginInput(string PhoneNumber, string Password);
+
+public sealed record CustomerProfile(
+    CustomerId Id,
+    string DisplayName,
+    MemberTier Tier,
+    bool IsActive,
+    string PhoneNumberMasked,
+    string? Email,
+    bool LineLinked);
+
+public sealed record UpdateCustomerProfileInput(string? DisplayName, string? Email)
+{
+    /// <summary>
+    /// PATCH body 明確帶 <c>"email": null</c> 時設為 true，以區分省略 email 與清除 email。
+    /// </summary>
+    public bool EmailSpecified { get; init; }
+}
+
+public sealed record ShippingAddressInput(
+    string RecipientName,
+    string PhoneNumber,
+    string PostalCode,
+    string City,
+    string District,
+    string StreetAddress,
+    bool IsDefault);
+
+public sealed record CustomerShippingAddress(
+    AddressId Id,
+    string RecipientName,
+    string PhoneNumber,
+    string PostalCode,
+    string City,
+    string District,
+    string StreetAddress,
+    bool IsDefault);
+
+public sealed record StaffLoginInput(string Email, string Password);
+
+public sealed record StaffProfile(
+    StaffId Id,
+    string DisplayName,
+    string Email,
+    StaffRole Role);
+
+/// <summary>非 HTTP 的員工建檔接縫，供受控 bootstrap/營運工具使用。</summary>
+public sealed record CreateStaffInput(
+    string DisplayName,
+    string Email,
+    string Password,
+    StaffRole Role);
+
 // ── 同步契約（跨模組唯一允許的直接呼叫面）─────────────────────────────
 
 public interface ICustomerDirectory
@@ -103,6 +164,71 @@ public interface ICustomerProvisioning
     Task<Result<CustomerSummary>> CreateAsync(
         string displayName,
         CancellationToken cancellationToken);
+}
+
+/// <summary>客戶帳號與個人資料 input port；成功登入後的 session 由呼叫端建立。</summary>
+public interface ICustomerAccounts
+{
+    Task<Result<CustomerProfile>> RegisterAsync(
+        RegisterCustomerInput input,
+        CancellationToken cancellationToken);
+
+    Task<Result<CustomerProfile>> AuthenticateAsync(
+        CustomerLoginInput input,
+        CancellationToken cancellationToken);
+
+    Task<Result<CustomerProfile>> GetProfileAsync(
+        CustomerId customerId,
+        CancellationToken cancellationToken);
+
+    Task<Result<CustomerProfile>> UpdateProfileAsync(
+        CustomerId customerId,
+        UpdateCustomerProfileInput input,
+        CancellationToken cancellationToken);
+}
+
+public interface ICustomerAddressBook
+{
+    Task<Result<IReadOnlyList<CustomerShippingAddress>>> ListAsync(
+        CustomerId customerId,
+        CancellationToken cancellationToken);
+
+    Task<Result<CustomerShippingAddress>> AddAsync(
+        CustomerId customerId,
+        ShippingAddressInput input,
+        CancellationToken cancellationToken);
+
+    Task<Result<CustomerShippingAddress>> UpdateAsync(
+        CustomerId customerId,
+        AddressId addressId,
+        ShippingAddressInput input,
+        CancellationToken cancellationToken);
+
+    Task<Result> DeleteAsync(
+        CustomerId customerId,
+        AddressId addressId,
+        CancellationToken cancellationToken);
+}
+
+public interface IStaffAccounts
+{
+    Task<Result<StaffProfile>> AuthenticateAsync(
+        StaffLoginInput input,
+        CancellationToken cancellationToken);
+
+    Task<Result<StaffProfile>> GetProfileAsync(
+        StaffId staffId,
+        CancellationToken cancellationToken);
+
+    Task<Result<StaffProfile>> CreateAsync(
+        CreateStaffInput input,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>角色階層不是 enum 大小比較；Operator 與 Accountant 是平行角色。</summary>
+public interface IStaffRolePolicy
+{
+    bool Allows(StaffRole actualRole, StaffRole requiredRole);
 }
 
 public interface IStaffDirectory

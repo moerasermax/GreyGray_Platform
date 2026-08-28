@@ -97,10 +97,12 @@ public sealed class CustomerNotificationFlowTests : IAsyncLifetime
         await using (var worker = StartWorker(repoRoot))
         {
             await WaitUntilAsync(
-                async () => await ScalarAsync<int>("""
-                    SELECT count(*)::int
-                    FROM notify.notification;
-                    """, cancellationToken) == 1,
+                async () => await ScalarAsync<bool>("""
+                    SELECT
+                        (SELECT count(*) = 1 FROM notify.notification)
+                        AND (SELECT count(*) = 1 FROM platform.processed_message)
+                        AND (SELECT bool_and(processed_at IS NOT NULL) FROM platform.outbox_message);
+                    """, cancellationToken),
                 worker,
                 cancellationToken);
 

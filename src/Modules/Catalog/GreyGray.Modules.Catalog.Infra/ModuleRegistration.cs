@@ -1,7 +1,13 @@
 using GreyGray.Platform.Modules;
+using GreyGray.Modules.Catalog.Contracts;
+using GreyGray.Modules.Catalog.Core;
+using GreyGray.Platform.Messaging;
+using GreyGray.Platform.Outbox;
+using GreyGray.Shared.Kernel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace GreyGray.Modules.Catalog.Infra;
 
@@ -45,6 +51,30 @@ internal sealed class CatalogModule : IModuleRegistration
 
             options.UseNpgsql(connectionString);
         });
+
+        services.TryAddSingleton<EventTypeRegistry>();
+        services.AddScoped<CatalogRepository>();
+        services.AddScoped<ICatalogRepository>(serviceProvider =>
+            serviceProvider.GetRequiredService<CatalogRepository>());
+        services.AddScoped<CatalogService>(serviceProvider =>
+        {
+            var dbContext = serviceProvider.GetRequiredService<CatalogDbContext>();
+            var publisher = new OutboxEventPublisher<CatalogDbContext>(
+                dbContext,
+                serviceProvider.GetRequiredService<ICorrelationContext>(),
+                serviceProvider.GetRequiredService<EventTypeRegistry>());
+            return new CatalogService(
+                serviceProvider.GetRequiredService<ICatalogRepository>(),
+                publisher,
+                serviceProvider.GetRequiredService<IClock>(),
+                serviceProvider.GetRequiredService<ICorrelationContext>());
+        });
+        services.AddScoped<ICatalogQuery>(serviceProvider =>
+            serviceProvider.GetRequiredService<CatalogService>());
+        services.AddScoped<IStorefrontCatalogQuery>(serviceProvider =>
+            serviceProvider.GetRequiredService<CatalogService>());
+        services.AddScoped<ICatalogAdministration>(serviceProvider =>
+            serviceProvider.GetRequiredService<CatalogService>());
 
         return services;
     }

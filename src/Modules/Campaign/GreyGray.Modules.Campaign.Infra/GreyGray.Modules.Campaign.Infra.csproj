@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\GreyGray.Modules.Campaign.Core\GreyGray.Modules.Campaign.Core.csproj" />
+    <ProjectReference Include="..\..\..\Platform\GreyGray.Platform.csproj" />
   </ItemGroup>
 
   <ItemGroup>

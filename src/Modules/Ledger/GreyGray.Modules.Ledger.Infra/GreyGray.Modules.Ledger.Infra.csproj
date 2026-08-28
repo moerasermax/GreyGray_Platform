@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\GreyGray.Modules.Ledger.Core\GreyGray.Modules.Ledger.Core.csproj" />
+    <ProjectReference Include="..\..\..\Platform\GreyGray.Platform.csproj" />
   </ItemGroup>
 
   <ItemGroup>

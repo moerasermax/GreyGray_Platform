@@ -28,6 +28,12 @@ public readonly record struct CategoryId(Guid Value)
     public override string ToString() => Value.ToString("N");
 }
 
+public enum FulfillmentMode
+{
+    Stock = 0,
+    Preorder = 1,
+}
+
 // ── DTO ──────────────────────────────────────────────────────────────────
 
 /// <summary>
@@ -48,7 +54,96 @@ public sealed record SkuSnapshot(
     public string? UnitOfMeasure { get; init; }
 
     public int? UnitCount { get; init; }
+
+    /// <summary>
+    /// 現貨公開售價；預購售價仍只可取自 CampaignOffer，不能用這個欄位取代開團凍結價。
+    /// </summary>
+    public Money? ListPrice { get; init; }
 }
+
+public sealed record CategoryInput(string Name, string? ImageUrl, int SortOrder);
+
+public sealed record CategoryView(
+    CategoryId Id,
+    string Name,
+    string? ImageUrl,
+    int SortOrder);
+
+/// <summary>符合 frozen AdminSkuInput；M1a 起重量與三邊尺寸皆為必要值。</summary>
+public sealed record AdminSkuInput(
+    string Name,
+    string? VariantName,
+    int WeightGram,
+    Dimensions Size,
+    string? UnitOfMeasure,
+    int? UnitCount,
+    Money? ListPrice,
+    bool IsActive);
+
+public sealed record AdminSkuView(
+    SkuId Id,
+    ProductId ProductId,
+    string Name,
+    string? VariantName,
+    int WeightGram,
+    Dimensions Size,
+    string? UnitOfMeasure,
+    int? UnitCount,
+    Money? ListPrice,
+    bool IsActive);
+
+/// <summary>
+/// frozen AdminProductInput 不含 SKU；商品可先建為空 SKU 集，首個 SKU 必須另走
+/// <see cref="ICatalogAdministration.CreateSkuAsync"/>。
+/// </summary>
+public sealed record AdminProductInput(
+    string Name,
+    string? Description,
+    string? ShortDescription,
+    CategoryId? CategoryId,
+    FulfillmentMode Mode,
+    IReadOnlyList<string>? Images,
+    bool IsActive);
+
+public sealed record AdminProductView(
+    ProductId Id,
+    string Name,
+    string? Description,
+    string? ShortDescription,
+    CategoryId? CategoryId,
+    FulfillmentMode Mode,
+    IReadOnlyList<string> Images,
+    bool IsActive,
+    IReadOnlyList<AdminSkuView> Skus);
+
+public sealed record StorefrontProductListItem(
+    ProductId Id,
+    string Name,
+    string? ShortDescription,
+    string? ImageUrl,
+    Money? PriceFrom,
+    string? UnitPriceLabel,
+    FulfillmentMode Mode);
+
+public sealed record StorefrontProductDetail(
+    ProductId Id,
+    string Name,
+    string? Description,
+    string? ShortDescription,
+    CategoryId? CategoryId,
+    IReadOnlyList<string> Images,
+    FulfillmentMode Mode,
+    IReadOnlyList<AdminSkuView> Skus);
+
+public sealed record CursorPage<T>(IReadOnlyList<T> Items, string? NextCursor);
+
+public sealed record ProductSearch(
+    string? Query,
+    CategoryId? CategoryId,
+    FulfillmentMode? Mode,
+    bool IncludeArchived,
+    string? Cursor,
+    int Limit);
 
 // ── 同步契約 ─────────────────────────────────────────────────────────────
 
@@ -59,6 +154,60 @@ public interface ICatalogQuery
     /// <summary>批次取，給 Checkout 詢價與 Pricing 算材積重用。缺任何一個都算失敗。</summary>
     Task<Result<IReadOnlyList<SkuSnapshot>>> GetSkusAsync(
         IReadOnlyCollection<SkuId> ids,
+        CancellationToken cancellationToken);
+}
+
+public interface IStorefrontCatalogQuery
+{
+    Task<IReadOnlyList<CategoryView>> ListCategoriesAsync(CancellationToken cancellationToken);
+
+    Task<Result<CursorPage<StorefrontProductListItem>>> ListProductsAsync(
+        ProductSearch search,
+        CancellationToken cancellationToken);
+
+    Task<Result<StorefrontProductDetail>> GetProductAsync(
+        ProductId productId,
+        CancellationToken cancellationToken);
+}
+
+public interface ICatalogAdministration
+{
+    Task<IReadOnlyList<CategoryView>> ListCategoriesAsync(CancellationToken cancellationToken);
+
+    Task<Result<CategoryView>> CreateCategoryAsync(
+        CategoryInput input,
+        CancellationToken cancellationToken);
+
+    Task<Result<CategoryView>> UpdateCategoryAsync(
+        CategoryId categoryId,
+        CategoryInput input,
+        CancellationToken cancellationToken);
+
+    Task<Result<CursorPage<AdminProductView>>> ListProductsAsync(
+        ProductSearch search,
+        CancellationToken cancellationToken);
+
+    Task<Result<AdminProductView>> GetProductAsync(
+        ProductId productId,
+        CancellationToken cancellationToken);
+
+    Task<Result<AdminProductView>> CreateProductAsync(
+        AdminProductInput input,
+        CancellationToken cancellationToken);
+
+    Task<Result<AdminProductView>> UpdateProductAsync(
+        ProductId productId,
+        AdminProductInput input,
+        CancellationToken cancellationToken);
+
+    Task<Result<AdminSkuView>> CreateSkuAsync(
+        ProductId productId,
+        AdminSkuInput input,
+        CancellationToken cancellationToken);
+
+    Task<Result<AdminSkuView>> UpdateSkuAsync(
+        SkuId skuId,
+        AdminSkuInput input,
         CancellationToken cancellationToken);
 }
 

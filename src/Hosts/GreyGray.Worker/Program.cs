@@ -1,7 +1,14 @@
 using GreyGray.Worker;
+using GreyGray.Modules.Campaign.Infra;
 using GreyGray.Modules.Catalog.Infra;
+using GreyGray.Modules.Checkout.Infra;
 using GreyGray.Modules.Identity.Infra;
+using GreyGray.Modules.Inventory.Infra;
+using GreyGray.Modules.Ledger.Infra;
 using GreyGray.Modules.Notification.Infra;
+using GreyGray.Modules.Ordering.Infra;
+using GreyGray.Modules.Payment.Infra;
+using GreyGray.Modules.Pricing.Infra;
 using GreyGray.Platform;
 using GreyGray.Platform.Messaging;
 using GreyGray.Platform.Observability;
@@ -51,9 +58,16 @@ builder.Services.AddHostedService<SagaTimerDispatchWorker>();
 builder.Services
     .AddIdentityModule(builder.Configuration)
     .AddCatalogModule(builder.Configuration)
+    .AddCampaignModule(builder.Configuration)
+    .AddPricingModule(builder.Configuration)
+    .AddInventoryModule(builder.Configuration)
+    .AddCheckoutModule(builder.Configuration)
+    .AddOrderingModule(builder.Configuration)
+    .AddPaymentModule(builder.Configuration)
+    .AddLedgerModule(builder.Configuration)
     .AddNotificationModule(builder.Configuration);
 
-// TODO(M0-5)：逐一複製到其餘模組；Worker 最終需要全部模組的 handler。
+// M1b 之後再把 Procurement/Fulfillment 等後續模組的 handler 納入。
 // TODO(M3-6)：Cloudflare Queues consumer —— 拉取 webhook 緩衝層的訊息。
 
 var host = builder.Build();

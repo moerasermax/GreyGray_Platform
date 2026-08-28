@@ -6,6 +6,7 @@ using GreyGray.Modules.Inventory.Contracts;
 using GreyGray.Modules.Pricing.Contracts;
 using GreyGray.Platform.Abstractions.Messaging;
 using GreyGray.Shared.Kernel;
+using FulfillmentMode = GreyGray.Modules.Catalog.Contracts.FulfillmentMode;
 
 namespace GreyGray.Modules.Ordering.Contracts;
 
@@ -111,7 +112,14 @@ public sealed record OrderLineView(
     int Quantity,
     Money UnitPrice,
     CampaignId? CampaignId,
-    LotId? ConsumedLot);
+    LotId? ConsumedLot)
+{
+    public CampaignOfferId? CampaignOfferId { get; init; }
+
+    public Money LineTotal => UnitPrice.MultiplyByQuantity(Quantity);
+
+    public Money? RefundedAmount { get; init; }
+}
 
 public sealed record OrderView(
     OrderId Id,
@@ -124,7 +132,41 @@ public sealed record OrderView(
     Money ShippingFee,
     Money GrandTotal,
     IReadOnlyList<OrderLineView> Lines,
-    DateTimeOffset PlacedAt);
+    DateTimeOffset PlacedAt)
+{
+    public string OrderNumber { get; init; } = string.Empty;
+
+    public DeliveryMethod DeliveryMethod { get; init; }
+
+    public AddressId? ShippingAddressId { get; init; }
+
+    public string? ConvenienceStoreCode { get; init; }
+
+    public string? BuyerNote { get; init; }
+
+    public Money? PaidAmount { get; init; }
+
+    public DateTimeOffset? PaymentDueAt { get; init; }
+
+    public string? CancellationReason { get; init; }
+
+    public IReadOnlyList<string> QuoteExplain { get; init; } = [];
+}
+
+public sealed record OrderPage<T>(IReadOnlyList<T> Items, string? NextCursor);
+
+public sealed record CustomerOrderListRequest(
+    CustomerId CustomerId,
+    OrderStatus? Status,
+    OrderId? Cursor,
+    int Limit = 20);
+
+public sealed record AdminOrderListRequest(
+    string? Query,
+    OrderStatus? Status,
+    CampaignId? CampaignId,
+    OrderId? Cursor,
+    int Limit = 20);
 
 // ── 同步契約 ─────────────────────────────────────────────────────────────
 
@@ -134,6 +176,59 @@ public interface IOrderQuery
 
     Task<Result<IReadOnlyList<OrderView>>> GetByCampaignAsync(
         CampaignId campaignId,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>Storefront/Admin BFF 與整合事件 adapter 共用的 Ordering input port。</summary>
+public interface IOrderingApplication
+{
+    /// <summary>以 CartId 與 checkout idempotency key 去重；重送回傳原訂單。</summary>
+    Task<Result<OrderView>> CreateFromCheckoutAsync(
+        CheckoutCompleted checkout,
+        CancellationToken cancellationToken);
+
+    Task<Result<OrderPage<OrderView>>> ListCustomerAsync(
+        CustomerOrderListRequest request,
+        CancellationToken cancellationToken);
+
+    Task<Result<OrderView>> GetCustomerAsync(
+        CustomerId customerId,
+        OrderId orderId,
+        CancellationToken cancellationToken);
+
+    Task<Result<OrderView>> CancelCustomerAsync(
+        CustomerId customerId,
+        OrderId orderId,
+        string? reason,
+        CancellationToken cancellationToken);
+
+    Task<Result<OrderPage<OrderView>>> ListAdminAsync(
+        AdminOrderListRequest request,
+        CancellationToken cancellationToken);
+
+    Task<Result<OrderView>> GetAdminAsync(
+        OrderId orderId,
+        CancellationToken cancellationToken);
+
+    Task<Result<OrderView>> CancelAdminAsync(
+        OrderId orderId,
+        string reason,
+        RefundDestination refundTo,
+        CancellationToken cancellationToken);
+
+    Task<Result> RecordPaymentCapturedAsync(
+        OrderId orderId,
+        Money amount,
+        CancellationToken cancellationToken);
+
+    Task<Result> RecordPaymentFailedAsync(
+        OrderId orderId,
+        string failureCode,
+        CancellationToken cancellationToken);
+
+    Task<Result> RecordPaymentRefundedAsync(
+        OrderId orderId,
+        Money amount,
         CancellationToken cancellationToken);
 }
 

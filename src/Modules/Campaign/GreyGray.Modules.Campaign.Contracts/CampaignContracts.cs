@@ -83,6 +83,93 @@ public sealed record CampaignOffer(
     Money? TargetPurchasePrice,
     bool IsActive);
 
+/// <summary>前台開團列表項目；是否仍收單由模組依狀態與時鐘計算。</summary>
+public sealed record StorefrontCampaignListItem(
+    CampaignId Id,
+    string Title,
+    string Destination,
+    DateOnly DepartAt,
+    DateOnly ReturnAt,
+    DateTimeOffset ClosesAt,
+    CampaignStatus Status,
+    bool IsAcceptingOrders,
+    string? CoverImageUrl);
+
+/// <summary>前台開團商品，包含凍結售價與顯示所需的商品快照。</summary>
+public sealed record StorefrontCampaignOffer(
+    CampaignOfferId Id,
+    SkuId SkuId,
+    ProductId ProductId,
+    string Name,
+    string? VariantName,
+    string? ImageUrl,
+    Money SellingPrice,
+    string? UnitPriceLabel,
+    bool IsActive);
+
+/// <summary>前台開團詳情。</summary>
+public sealed record StorefrontCampaignDetail(
+    StorefrontCampaignListItem Campaign,
+    string? Description,
+    IReadOnlyList<StorefrontCampaignOffer> Offers);
+
+/// <summary>後台建立或修改草稿的輸入。</summary>
+public sealed record CampaignDraftInput(
+    string Title,
+    string Destination,
+    DateOnly DepartAt,
+    DateOnly ReturnAt,
+    DateTimeOffset ClosesAt,
+    string? Description,
+    string? CoverImageUrl);
+
+/// <summary>後台開團清單項目。</summary>
+public sealed record AdminCampaignView(
+    CampaignId Id,
+    string Title,
+    string Destination,
+    DateOnly DepartAt,
+    DateOnly ReturnAt,
+    DateTimeOffset ClosesAt,
+    CampaignStatus Status,
+    int OrderCount,
+    Money? TripCostTotal,
+    string? Description,
+    string? CoverImageUrl);
+
+/// <summary>後台開團商品。</summary>
+public sealed record AdminCampaignOfferView(
+    CampaignOfferId Id,
+    SkuId SkuId,
+    string Name,
+    string? VariantName,
+    Money SellingPrice,
+    Money? TargetPurchasePrice,
+    bool IsActive,
+    int OrderedQuantity);
+
+/// <summary>後台開團詳情。</summary>
+public sealed record AdminCampaignDetail(
+    AdminCampaignView Campaign,
+    IReadOnlyList<AdminCampaignOfferView> Offers);
+
+/// <summary>加入開團商品的輸入。</summary>
+public sealed record CampaignOfferInput(
+    SkuId SkuId,
+    Money SellingPrice,
+    Money? TargetPurchasePrice);
+
+/// <summary>以 opaque cursor 讀取開團清單。</summary>
+public sealed record CampaignPageRequest(
+    CampaignStatus? Status = null,
+    string? Cursor = null,
+    int Limit = 20);
+
+/// <summary>開團清單分頁。</summary>
+public sealed record CampaignPage<TItem>(
+    IReadOnlyList<TItem> Items,
+    string? NextCursor);
+
 // ── 同步契約 ─────────────────────────────────────────────────────────────
 
 public interface ICampaignQuery
@@ -93,6 +180,87 @@ public interface ICampaignQuery
 
     /// <summary>下單前驗證：這個團還在收單嗎、這個商品還開著嗎。</summary>
     Task<Result<bool>> IsAcceptingOrdersAsync(CampaignId id, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Campaign Core 判斷商品是否已有訂單及能否結團所需的最小訂單投影。
+/// 由 Ordering 的組合層實作，避免 Campaign 依賴 Ordering 的內部狀態機。
+/// </summary>
+public interface ICampaignOrderQuery
+{
+    Task<Result<CampaignOrderSnapshot>> GetAsync(
+        CampaignId campaignId,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>一個開團的訂單統計，不暴露 Ordering 聚合。</summary>
+public sealed record CampaignOrderSnapshot(
+    int OrderCount,
+    IReadOnlyDictionary<SkuId, int> OrderedQuantityBySku,
+    bool AllOrdersShipped);
+
+/// <summary>Storefront BFF 可呼叫的開團 input port。</summary>
+public interface ICampaignStorefront
+{
+    Task<Result<CampaignPage<StorefrontCampaignListItem>>> ListAsync(
+        CampaignPageRequest request,
+        CancellationToken cancellationToken);
+
+    Task<Result<StorefrontCampaignDetail>> GetDetailAsync(
+        CampaignId id,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>Admin BFF 可呼叫的開團 input port；所有狀態規則仍由 Campaign Core 判斷。</summary>
+public interface ICampaignAdministration
+{
+    Task<Result<CampaignPage<AdminCampaignView>>> ListAsync(
+        CampaignPageRequest request,
+        CancellationToken cancellationToken);
+
+    Task<Result<AdminCampaignDetail>> GetDetailAsync(
+        CampaignId id,
+        CancellationToken cancellationToken);
+
+    Task<Result<AdminCampaignView>> CreateDraftAsync(
+        CampaignDraftInput input,
+        CancellationToken cancellationToken);
+
+    Task<Result<AdminCampaignView>> UpdateDraftAsync(
+        CampaignId id,
+        CampaignDraftInput input,
+        CancellationToken cancellationToken);
+
+    Task<Result<AdminCampaignView>> PublishAsync(
+        CampaignId id,
+        CancellationToken cancellationToken);
+
+    Task<Result<AdminCampaignView>> CloseAsync(
+        CampaignId id,
+        CancellationToken cancellationToken);
+
+    Task<Result<AdminCampaignView>> CancelAsync(
+        CampaignId id,
+        string reason,
+        CancellationToken cancellationToken);
+
+    Task<Result<AdminCampaignView>> SettleAsync(
+        CampaignId id,
+        CancellationToken cancellationToken);
+
+    Task<Result<IReadOnlyList<AdminCampaignOfferView>>> GetOffersAsync(
+        CampaignId id,
+        CancellationToken cancellationToken);
+
+    Task<Result<AdminCampaignOfferView>> AddOfferAsync(
+        CampaignId id,
+        CampaignOfferInput input,
+        CancellationToken cancellationToken);
+
+    Task<Result> RemoveOfferAsync(
+        CampaignId campaignId,
+        CampaignOfferId offerId,
+        CancellationToken cancellationToken);
 }
 
 // ── 對外事件 ─────────────────────────────────────────────────────────────

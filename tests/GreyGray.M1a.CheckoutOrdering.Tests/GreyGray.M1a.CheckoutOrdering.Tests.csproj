@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>GreyGray.M1a.CheckoutOrdering.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <ModuleLayer>Test</ModuleLayer>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Modules\Checkout\GreyGray.Modules.Checkout.Infra\GreyGray.Modules.Checkout.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ordering\GreyGray.Modules.Ordering.Infra\GreyGray.Modules.Ordering.Infra.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,5 +1,6 @@
 using GreyGray.Modules.Identity.Contracts;
 using GreyGray.Modules.Identity.Core;
+using GreyGray.Platform.Abstractions.Audit;
 using GreyGray.Platform.Messaging;
 using GreyGray.Platform.Modules;
 using GreyGray.Platform.Outbox;
@@ -53,22 +54,71 @@ internal sealed class IdentityModule : IModuleRegistration
         });
 
         services.TryAddSingleton<EventTypeRegistry>();
+        services.AddSingleton(serviceProvider =>
+        {
+            var configuredKey = configuration["Identity:DataProtectionKey"];
+            if (string.IsNullOrWhiteSpace(configuredKey))
+            {
+                throw new InvalidOperationException(
+                    "缺少 Identity 個資保護金鑰 'Identity:DataProtectionKey'；" +
+                    "請設定 Base64 編碼的 32-byte AES-256 金鑰後再使用 Identity 帳號服務。");
+            }
+
+            return new IdentityDataProtector(configuredKey);
+        });
+        services.AddSingleton<IIdentityDataProtector>(serviceProvider =>
+            serviceProvider.GetRequiredService<IdentityDataProtector>());
+        services.AddSingleton<PasswordHasher>();
+        services.AddSingleton<IStaffRolePolicy, StaffRolePolicy>();
+        services.AddScoped<IdentityCustomerRepository>();
+        services.AddScoped<IIdentityRepository>(serviceProvider =>
+            serviceProvider.GetRequiredService<IdentityCustomerRepository>());
+        services.AddScoped<ICustomerRepository>(serviceProvider =>
+            serviceProvider.GetRequiredService<IdentityCustomerRepository>());
+        services.AddScoped<CustomerAccountService>(serviceProvider =>
+        {
+            var dbContext = serviceProvider.GetRequiredService<IdentityDbContext>();
+            return new CustomerAccountService(
+                serviceProvider.GetRequiredService<IIdentityRepository>(),
+                serviceProvider.GetRequiredService<IdentityDataProtector>(),
+                serviceProvider.GetRequiredService<PasswordHasher>(),
+                CreatePublisher(dbContext, serviceProvider),
+                serviceProvider.GetRequiredService<IClock>(),
+                serviceProvider.GetRequiredService<ICorrelationContext>());
+        });
+        services.AddScoped<ICustomerAccounts>(serviceProvider =>
+            serviceProvider.GetRequiredService<CustomerAccountService>());
+        services.AddScoped<ICustomerAddressBook, CustomerAddressService>();
+        services.AddScoped<ICustomerDirectory>(serviceProvider =>
+            new CustomerDirectoryService(
+                serviceProvider.GetRequiredService<IIdentityRepository>(),
+                serviceProvider.GetRequiredService<IIdentityDataProtector>(),
+                serviceProvider.GetService<IAuditWriter>(),
+                serviceProvider.GetRequiredService<ICorrelationContext>()));
+        services.AddScoped<StaffAccountService>();
+        services.AddScoped<IStaffAccounts>(serviceProvider =>
+            serviceProvider.GetRequiredService<StaffAccountService>());
+        services.AddScoped<IStaffDirectory>(serviceProvider =>
+            serviceProvider.GetRequiredService<StaffAccountService>());
         services.AddScoped<ICustomerProvisioning>(serviceProvider =>
         {
             var dbContext = serviceProvider.GetRequiredService<IdentityDbContext>();
-            var publisher = new OutboxEventPublisher<IdentityDbContext>(
-                dbContext,
-                serviceProvider.GetRequiredService<ICorrelationContext>(),
-                serviceProvider.GetRequiredService<EventTypeRegistry>());
-
             return new CustomerProvisioningService(
-                new IdentityCustomerRepository(dbContext),
+                serviceProvider.GetRequiredService<ICustomerRepository>(),
                 dbContext,
-                publisher,
+                CreatePublisher(dbContext, serviceProvider),
                 serviceProvider.GetRequiredService<IClock>(),
                 serviceProvider.GetRequiredService<ICorrelationContext>());
         });
 
         return services;
     }
+
+    private static OutboxEventPublisher<IdentityDbContext> CreatePublisher(
+        IdentityDbContext dbContext,
+        IServiceProvider serviceProvider) =>
+        new(
+            dbContext,
+            serviceProvider.GetRequiredService<ICorrelationContext>(),
+            serviceProvider.GetRequiredService<EventTypeRegistry>());
 }

@@ -14,8 +14,4 @@
     <ProjectReference Include="..\..\..\Platform.Abstractions\GreyGray.Platform.Abstractions.csproj" />
   </ItemGroup>
 
-  <ItemGroup Label="其他模組的契約——只能是 Contracts，永遠不可以是 Core">
-    <ProjectReference Include="..\..\Ordering\GreyGray.Modules.Ordering.Contracts\GreyGray.Modules.Ordering.Contracts.csproj" />
-  </ItemGroup>
-
 </Project>

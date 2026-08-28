@@ -74,6 +74,21 @@ public sealed record ProviderCapability(
     bool SupportsHomeDelivery,
     bool SupportsEInvoice);
 
+/// <summary>前端原封不動 POST 到金流商的導轉資料；簽章永遠只在後端產生。</summary>
+public sealed record PaymentInitiation(
+    PaymentProvider Provider,
+    string Method,
+    Uri Action,
+    IReadOnlyDictionary<string, string> Fields,
+    DateTimeOffset ExpiresAt);
+
+public sealed record PaymentInitiationRequest(
+    OrderId OrderId,
+    Money GoodsAmount,
+    Money ShippingAmount,
+    string Description,
+    Uri ReturnUrl);
+
 // ── 同步契約 ─────────────────────────────────────────────────────────────
 
 public interface IPaymentQuery
@@ -86,6 +101,18 @@ public interface IPaymentQuery
 
     /// <summary>Checkout 用來過濾配送方式。</summary>
     Task<Result<IReadOnlyList<ProviderCapability>>> GetEnabledProvidersAsync(
+        CancellationToken cancellationToken);
+}
+
+/// <summary>Payment 模組的同步寫入入口。Webhook 原始欄位交由模組內的 provider adapter 驗證。</summary>
+public interface IPaymentCommand
+{
+    Task<Result<PaymentInitiation>> InitiateAsync(
+        PaymentInitiationRequest request,
+        CancellationToken cancellationToken);
+
+    Task<Result> HandleEcpayCallbackAsync(
+        IReadOnlyDictionary<string, string> fields,
         CancellationToken cancellationToken);
 }
 

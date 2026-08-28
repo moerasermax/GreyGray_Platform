@@ -1,0 +1,1238 @@
+using System.Security.Cryptography;
+using System.Text;
+using GreyGray.Modules.Campaign.Contracts;
+using GreyGray.Modules.Catalog.Contracts;
+using GreyGray.Modules.Checkout.Contracts;
+using GreyGray.Modules.Identity.Contracts;
+using GreyGray.Modules.Inventory.Contracts;
+using GreyGray.Modules.Ledger.Contracts;
+using GreyGray.Modules.Ordering.Contracts;
+using GreyGray.Modules.Payment.Contracts;
+using GreyGray.Modules.Pricing.Contracts;
+using GreyGray.Platform.Abstractions.Idempotency;
+using GreyGray.Platform.Abstractions.Sessions;
+using GreyGray.Platform.Http;
+using GreyGray.Shared.Kernel;
+
+namespace GreyGray.Api.Storefront;
+
+internal static class M1aEndpoints
+{
+    private const string SessionCookie = "gg_session";
+    private const string CartCookie = "gg_cart";
+
+    public static IEndpointRouteBuilder MapM1aStorefrontEndpoints(this IEndpointRouteBuilder endpoints)
+    {
+        var api = endpoints.MapGroup("/v1");
+        MapAuth(api);
+        MapMe(api);
+        MapCatalog(api);
+        MapCampaign(api);
+        MapCart(api);
+        MapOrders(api);
+        MapPayment(api);
+        return endpoints;
+    }
+
+    private static void MapAuth(RouteGroupBuilder api)
+    {
+        api.MapPost("/auth/register", async (
+            RegisterCustomerInput input,
+            HttpContext context,
+            ICustomerAccounts accounts,
+            ISessionStore sessions,
+            IIdempotencyStore idempotency,
+            CancellationToken cancellationToken) =>
+            await BffHttp.ExecuteIdempotentAsync(
+                context,
+                idempotency,
+                "storefront:auth:register",
+                input,
+                async token =>
+                {
+                    var registered = await accounts.RegisterAsync(input, token);
+                    if (registered.IsFailure)
+                    {
+                        return Result<CustomerMe>.Failure(registered.Error);
+                    }
+
+                    var me = ToMe(registered.Value);
+                    await CreateSessionAsync(context, sessions, me, token);
+                    return me;
+                },
+                StatusCodes.Status201Created,
+                cancellationToken,
+                (me, token) => CreateSessionAsync(context, sessions, me, token)));
+
+        api.MapPost("/auth/login", async (
+            CustomerLoginInput input,
+            HttpContext context,
+            ICustomerAccounts accounts,
+            ISessionStore sessions,
+            IIdempotencyStore idempotency,
+            CancellationToken cancellationToken) =>
+            await BffHttp.ExecuteIdempotentAsync(
+                context,
+                idempotency,
+                "storefront:auth:login",
+                input,
+                async token =>
+                {
+                    var authenticated = await accounts.AuthenticateAsync(input, token);
+                    if (authenticated.IsFailure)
+                    {
+                        return Result<CustomerMe>.Failure(authenticated.Error);
+                    }
+
+                    var me = ToMe(authenticated.Value);
+                    await CreateSessionAsync(context, sessions, me, token);
+                    return me;
+                },
+                StatusCodes.Status200OK,
+                cancellationToken,
+                (me, token) => CreateSessionAsync(context, sessions, me, token)));
+
+        api.MapPost("/auth/logout", async (
+            HttpContext context,
+            ISessionStore sessions,
+            IIdempotencyStore idempotency,
+            CancellationToken cancellationToken) =>
+        {
+            var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+            if (customer is null)
+            {
+                return BffHttp.Unauthorized();
+            }
+
+            return await BffHttp.ExecuteIdempotentAsync(
+                context,
+                idempotency,
+                $"storefront:{customer}:auth:logout",
+                request: null,
+                async token =>
+                {
+                    await BffHttp.DeleteSessionAsync(context, sessions, SessionCookie, token);
+                    return Result.Success();
+                },
+                cancellationToken);
+        });
+    }
+
+    private static void MapMe(RouteGroupBuilder api)
+    {
+        api.MapGet("/me", async (
+            HttpContext context,
+            ISessionStore sessions,
+            ICustomerAccounts accounts,
+            CancellationToken cancellationToken) =>
+        {
+            var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+            if (customer is null)
+            {
+                return BffHttp.Unauthorized();
+            }
+
+            var result = await accounts.GetProfileAsync(customer.Value, cancellationToken);
+            return result.IsSuccess
+                ? Results.Ok(ToMe(result.Value))
+                : BffHttp.Problem(result.Error);
+        });
+
+        api.MapPatch("/me", async (
+            UpdateCustomerProfileInput input,
+            HttpContext context,
+            ISessionStore sessions,
+            ICustomerAccounts accounts,
+            IIdempotencyStore idempotency,
+            CancellationToken cancellationToken) =>
+        {
+            var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+            if (customer is null)
+            {
+                return BffHttp.Unauthorized();
+            }
+
+            return await BffHttp.ExecuteIdempotentAsync(
+                context,
+                idempotency,
+                $"storefront:{customer}:me:update",
+                input,
+                async token =>
+                {
+                    var updated = await accounts.UpdateProfileAsync(customer.Value, input, token);
+                    return updated.IsSuccess
+                        ? Result<CustomerMe>.Success(ToMe(updated.Value))
+                        : Result<CustomerMe>.Failure(updated.Error);
+                },
+                StatusCodes.Status200OK,
+                cancellationToken);
+        });
+
+        api.MapGet("/me/addresses", async (
+            HttpContext context,
+            ISessionStore sessions,
+            ICustomerAddressBook addresses,
+            CancellationToken cancellationToken) =>
+        {
+            var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+            if (customer is null)
+            {
+                return BffHttp.Unauthorized();
+            }
+
+            var result = await addresses.ListAsync(customer.Value, cancellationToken);
+            return result.IsSuccess ? Results.Ok(result.Value) : BffHttp.Problem(result.Error);
+        });
+
+        api.MapPost("/me/addresses", async (
+            ShippingAddressInput input,
+            HttpContext context,
+            ISessionStore sessions,
+            ICustomerAddressBook addresses,
+            IIdempotencyStore idempotency,
+            CancellationToken cancellationToken) =>
+        {
+            var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+            if (customer is null)
+            {
+                return BffHttp.Unauthorized();
+            }
+
+            return await BffHttp.ExecuteIdempotentAsync(
+                context,
+                idempotency,
+                $"storefront:{customer}:addresses:add",
+                input,
+                token => addresses.AddAsync(customer.Value, input, token),
+                StatusCodes.Status201Created,
+                cancellationToken);
+        });
+
+        api.MapPut("/me/addresses/{addressId}", async (
+            string addressId,
+            ShippingAddressInput input,
+            HttpContext context,
+            ISessionStore sessions,
+            ICustomerAddressBook addresses,
+            IIdempotencyStore idempotency,
+            CancellationToken cancellationToken) =>
+        {
+            var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+            if (customer is null)
+            {
+                return BffHttp.Unauthorized();
+            }
+
+            if (!TryId(addressId, out var id))
+            {
+                return BffHttp.Problem(new Error("identity.address-not-found", "找不到地址。"));
+            }
+
+            return await BffHttp.ExecuteIdempotentAsync(
+                context,
+                idempotency,
+                $"storefront:{customer}:addresses:{addressId}:update",
+                input,
+                token => addresses.UpdateAsync(customer.Value, new AddressId(id), input, token),
+                StatusCodes.Status200OK,
+                cancellationToken);
+        });
+
+        api.MapDelete("/me/addresses/{addressId}", async (
+            string addressId,
+            HttpContext context,
+            ISessionStore sessions,
+            ICustomerAddressBook addresses,
+            IIdempotencyStore idempotency,
+            CancellationToken cancellationToken) =>
+        {
+            var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+            if (customer is null)
+            {
+                return BffHttp.Unauthorized();
+            }
+
+            if (!TryId(addressId, out var id))
+            {
+                return BffHttp.Problem(new Error("identity.address-not-found", "找不到地址。"));
+            }
+
+            return await BffHttp.ExecuteIdempotentAsync(
+                context,
+                idempotency,
+                $"storefront:{customer}:addresses:{addressId}:delete",
+                request: null,
+                token => addresses.DeleteAsync(customer.Value, new AddressId(id), token),
+                cancellationToken);
+        });
+
+        api.MapGet("/me/stored-value", async (
+            HttpContext context,
+            ISessionStore sessions,
+            IStoredValueQuery storedValue,
+            CancellationToken cancellationToken) =>
+        {
+            var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+            if (customer is null)
+            {
+                return BffHttp.Unauthorized();
+            }
+
+            var result = await storedValue.GetBalanceAsync(customer.Value, cancellationToken);
+            return result.IsSuccess
+                ? Results.Ok(new StoredValueResponse(result.Value))
+                : BffHttp.Problem(result.Error);
+        });
+    }
+
+    private static void MapCatalog(RouteGroupBuilder api)
+    {
+        api.MapGet("/categories", async (
+            IStorefrontCatalogQuery catalog,
+            CancellationToken cancellationToken) =>
+            Results.Ok((await catalog.ListCategoriesAsync(cancellationToken))
+                .Select(category => new CategoryResponse(category.Id, category.Name, category.ImageUrl))
+                .ToArray()));
+
+        api.MapGet("/products", async (
+            string? q,
+            string? categoryId,
+            FulfillmentMode? mode,
+            string? cursor,
+            int? limit,
+            IStorefrontCatalogQuery catalog,
+            CancellationToken cancellationToken) =>
+        {
+            CategoryId? category = null;
+            if (categoryId is not null)
+            {
+                if (!TryId(categoryId, out var parsed))
+                {
+                    return BffHttp.Problem(new Error("catalog.invalid-category-id", "分類識別格式錯誤。"));
+                }
+
+                category = new CategoryId(parsed);
+            }
+
+            var result = await catalog.ListProductsAsync(
+                new ProductSearch(q, category, mode, false, cursor, limit ?? 20),
+                cancellationToken);
+            return result.IsSuccess
+                ? Results.Ok(new ProductPageResponse(
+                    result.Value.Items.Select(ToProductListItem).ToArray(),
+                    result.Value.NextCursor))
+                : BffHttp.Problem(result.Error);
+        });
+
+        api.MapGet("/products/{productId}", async (
+            string productId,
+            IStorefrontCatalogQuery catalog,
+            IInventoryQuery inventory,
+            CancellationToken cancellationToken) =>
+        {
+            if (!TryId(productId, out var parsed))
+            {
+                return BffHttp.Problem(new Error("catalog.product-not-found", "找不到商品。"));
+            }
+
+            var result = await catalog.GetProductAsync(new ProductId(parsed), cancellationToken);
+            return result.IsSuccess
+                ? Results.Ok(await ToProductDetailAsync(result.Value, inventory, cancellationToken))
+                : BffHttp.Problem(result.Error);
+        });
+    }
+
+    private static void MapCampaign(RouteGroupBuilder api)
+    {
+        api.MapGet("/campaigns", async (
+            CampaignStatus? status,
+            string? cursor,
+            int? limit,
+            ICampaignStorefront campaigns,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await campaigns.ListAsync(
+                new CampaignPageRequest(status, cursor, limit ?? 20),
+                cancellationToken);
+            return result.IsSuccess ? Results.Ok(result.Value) : BffHttp.Problem(result.Error);
+        });
+
+        api.MapGet("/campaigns/{campaignId}", async (
+            string campaignId,
+            ICampaignStorefront campaigns,
+            CancellationToken cancellationToken) =>
+        {
+            if (!TryId(campaignId, out var parsed))
+            {
+                return BffHttp.Problem(new Error("campaign.not-found", "找不到指定的開團。"));
+            }
+
+            var result = await campaigns.GetDetailAsync(new CampaignId(parsed), cancellationToken);
+            return result.IsSuccess
+                ? Results.Ok(ToCampaignDetail(result.Value))
+                : BffHttp.Problem(result.Error);
+        });
+    }
+
+    private static void MapCart(RouteGroupBuilder api)
+    {
+        api.MapGet("/cart", async (
+            HttpContext context,
+            ISessionStore sessions,
+            ICheckoutApplication checkout,
+            CancellationToken cancellationToken) =>
+        {
+            var cartId = GetOrCreateCartId(context);
+            var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+            var result = await checkout.GetCartAsync(cartId, customer, cancellationToken);
+            return result.IsSuccess ? Results.Ok(ToCart(result.Value)) : BffHttp.Problem(result.Error);
+        });
+
+        api.MapPost("/cart/lines", async (
+            AddCartLineInput input,
+            HttpContext context,
+            ISessionStore sessions,
+            ICheckoutApplication checkout,
+            IIdempotencyStore idempotency,
+            CancellationToken cancellationToken) =>
+        {
+            var cartId = GetOrCreateCartId(context);
+            var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+            var request = new AddCartLineRequest(
+                cartId,
+                customer,
+                input.SkuId,
+                input.Mode,
+                input.CampaignOfferId,
+                input.Quantity);
+            return await BffHttp.ExecuteIdempotentAsync(
+                context,
+                idempotency,
+                "storefront:cart:lines:add",
+                request,
+                async token =>
+                {
+                    var added = await checkout.AddLineAsync(request, token);
+                    if (added.IsFailure && added.Error.Code == "checkout.cart-already-completed")
+                    {
+                        cartId = CartId.New();
+                        SetCartCookie(context.Response, cartId);
+                        added = await checkout.AddLineAsync(request with { CartId = cartId }, token);
+                    }
+
+                    return added.IsSuccess
+                        ? Result<CartResponse>.Success(ToCart(added.Value))
+                        : Result<CartResponse>.Failure(added.Error);
+                },
+                StatusCodes.Status200OK,
+                cancellationToken);
+        });
+
+        api.MapPatch("/cart/lines/{lineId}", async (
+            string lineId,
+            UpdateCartLineInput input,
+            HttpContext context,
+            ISessionStore sessions,
+            ICheckoutApplication checkout,
+            IIdempotencyStore idempotency,
+            CancellationToken cancellationToken) =>
+        {
+            if (!TryId(lineId, out var parsed))
+            {
+                return BffHttp.Problem(new Error("checkout.cart-line-not-found", "找不到購物車品項。"));
+            }
+
+            var request = new UpdateCartLineRequest(
+                GetOrCreateCartId(context),
+                await GetCustomerAsync(context, sessions, cancellationToken),
+                new CartLineId(parsed),
+                input.Quantity);
+            return await BffHttp.ExecuteIdempotentAsync(
+                context,
+                idempotency,
+                "storefront:cart:lines:update",
+                request,
+                async token =>
+                {
+                    var updated = await checkout.UpdateLineAsync(request, token);
+                    return updated.IsSuccess
+                        ? Result<CartResponse>.Success(ToCart(updated.Value))
+                        : Result<CartResponse>.Failure(updated.Error);
+                },
+                StatusCodes.Status200OK,
+                cancellationToken);
+        });
+
+        api.MapDelete("/cart/lines/{lineId}", async (
+            string lineId,
+            HttpContext context,
+            ISessionStore sessions,
+            ICheckoutApplication checkout,
+            IIdempotencyStore idempotency,
+            CancellationToken cancellationToken) =>
+        {
+            if (!TryId(lineId, out var parsed))
+            {
+                return BffHttp.Problem(new Error("checkout.cart-line-not-found", "找不到購物車品項。"));
+            }
+
+            var request = new RemoveCartLineRequest(
+                GetOrCreateCartId(context),
+                await GetCustomerAsync(context, sessions, cancellationToken),
+                new CartLineId(parsed));
+            return await BffHttp.ExecuteIdempotentAsync(
+                context,
+                idempotency,
+                "storefront:cart:lines:remove",
+                request,
+                async token =>
+                {
+                    var removed = await checkout.RemoveLineAsync(request, token);
+                    return removed.IsSuccess
+                        ? Result<CartResponse>.Success(ToCart(removed.Value))
+                        : Result<CartResponse>.Failure(removed.Error);
+                },
+                StatusCodes.Status200OK,
+                cancellationToken);
+        });
+
+        api.MapPost("/cart/quote", async (
+            QuoteCartInput input,
+            HttpContext context,
+            ISessionStore sessions,
+            ICheckoutApplication checkout,
+            CancellationToken cancellationToken) =>
+        {
+            var request = new QuoteCartRequest(
+                GetOrCreateCartId(context),
+                await GetCustomerAsync(context, sessions, cancellationToken),
+                input.DeliveryMethod);
+            var quote = await checkout.QuoteAsync(request, cancellationToken);
+            return quote.IsSuccess
+                ? Results.Ok(ToQuote(quote.Value))
+                : BffHttp.Problem(quote.Error);
+        });
+
+        api.MapPost("/cart/checkout", async (
+            CompleteCheckoutInput input,
+            HttpContext context,
+            ISessionStore sessions,
+            ICheckoutApplication checkout,
+            IOrderingApplication ordering,
+            ICatalogQuery catalog,
+            ICustomerDirectory customers,
+            IIdempotencyStore idempotency,
+            CancellationToken cancellationToken) =>
+        {
+            var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+            if (customer is null)
+            {
+                return BffHttp.Unauthorized();
+            }
+
+            if (!context.Request.Headers.TryGetValue("Idempotency-Key", out var key))
+            {
+                return BffHttp.Problem(
+                    new Error("request.idempotency-key-required", "缺少 Idempotency-Key header。"),
+                    StatusCodes.Status400BadRequest);
+            }
+
+            var request = new CompleteCheckoutRequest(
+                GetOrCreateCartId(context),
+                customer.Value,
+                input.DeliveryMethod,
+                input.ShippingPolicy,
+                input.ShippingAddressId,
+                input.ConvenienceStoreCode,
+                input.BuyerNote,
+                key.ToString().Trim());
+            return await BffHttp.ExecuteIdempotentAsync(
+                context,
+                idempotency,
+                "storefront:cart:checkout",
+                request,
+                async token =>
+                {
+                    var completed = await checkout.CompleteAsync(request, token);
+                    if (completed.IsFailure)
+                    {
+                        return Result<OrderResponse>.Failure(completed.Error);
+                    }
+
+                    var order = await ordering.CreateFromCheckoutAsync(completed.Value, token);
+                    return order.IsSuccess
+                        ? await ToOrderAsync(order.Value, catalog, customers, token)
+                        : Result<OrderResponse>.Failure(order.Error);
+                },
+                StatusCodes.Status201Created,
+                cancellationToken);
+        });
+    }
+
+    private static void MapOrders(RouteGroupBuilder api)
+    {
+        api.MapGet("/orders", async (
+            OrderStatus? status,
+            string? cursor,
+            int? limit,
+            HttpContext context,
+            ISessionStore sessions,
+            IOrderingApplication ordering,
+            CancellationToken cancellationToken) =>
+        {
+            var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+            if (customer is null)
+            {
+                return BffHttp.Unauthorized();
+            }
+
+            OrderId? after = null;
+            if (cursor is not null)
+            {
+                if (!TryId(cursor, out var parsed))
+                {
+                    return BffHttp.Problem(new Error("ordering.invalid-cursor", "游標格式錯誤。"));
+                }
+
+                after = new OrderId(parsed);
+            }
+
+            var result = await ordering.ListCustomerAsync(
+                new CustomerOrderListRequest(customer.Value, status, after, limit ?? 20),
+                cancellationToken);
+            if (result.IsFailure)
+            {
+                return BffHttp.Problem(result.Error);
+            }
+
+            var items = new List<OrderListItemResponse>(result.Value.Items.Count);
+            foreach (var order in result.Value.Items)
+            {
+                items.Add(ToOrderListItem(order));
+            }
+
+            return Results.Ok(new OrderPageResponse(items, result.Value.NextCursor));
+        });
+
+        api.MapGet("/orders/{orderId}", async (
+            string orderId,
+            HttpContext context,
+            ISessionStore sessions,
+            IOrderingApplication ordering,
+            ICatalogQuery catalog,
+            ICustomerDirectory customers,
+            CancellationToken cancellationToken) =>
+        {
+            var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+            if (customer is null)
+            {
+                return BffHttp.Unauthorized();
+            }
+
+            if (!TryId(orderId, out var parsed))
+            {
+                return BffHttp.Problem(new Error("ordering.order-not-found", "找不到訂單。"));
+            }
+
+            var result = await ordering.GetCustomerAsync(customer.Value, new OrderId(parsed), cancellationToken);
+            if (result.IsFailure)
+            {
+                return BffHttp.Problem(result.Error);
+            }
+
+            var mapped = await ToOrderAsync(result.Value, catalog, customers, cancellationToken);
+            return mapped.IsSuccess ? Results.Ok(mapped.Value) : BffHttp.Problem(mapped.Error);
+        });
+
+        api.MapPost("/orders/{orderId}/cancel", async (
+            string orderId,
+            CancelOrderInput? input,
+            HttpContext context,
+            ISessionStore sessions,
+            IOrderingApplication ordering,
+            ICatalogQuery catalog,
+            ICustomerDirectory customers,
+            IIdempotencyStore idempotency,
+            CancellationToken cancellationToken) =>
+        {
+            var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+            if (customer is null)
+            {
+                return BffHttp.Unauthorized();
+            }
+
+            if (!TryId(orderId, out var parsed))
+            {
+                return BffHttp.Problem(new Error("ordering.order-not-found", "找不到訂單。"));
+            }
+
+            var request = new CancelCustomerOrderRequest(customer.Value, new OrderId(parsed), input?.Reason);
+            return await BffHttp.ExecuteIdempotentAsync(
+                context,
+                idempotency,
+                "storefront:orders:cancel",
+                request,
+                async token =>
+                {
+                    var cancelled = await ordering.CancelCustomerAsync(
+                        request.CustomerId,
+                        request.OrderId,
+                        request.Reason,
+                        token);
+                    return cancelled.IsSuccess
+                        ? await ToOrderAsync(cancelled.Value, catalog, customers, token)
+                        : Result<OrderResponse>.Failure(cancelled.Error);
+                },
+                StatusCodes.Status200OK,
+                cancellationToken);
+        });
+    }
+
+    private static void MapPayment(RouteGroupBuilder api)
+    {
+        api.MapPost("/orders/{orderId}/payment", async (
+            string orderId,
+            HttpContext context,
+            ISessionStore sessions,
+            IOrderingApplication ordering,
+            IPaymentCommand payments,
+            IIdempotencyStore idempotency,
+            CancellationToken cancellationToken) =>
+        {
+            var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+            if (customer is null)
+            {
+                return BffHttp.Unauthorized();
+            }
+
+            if (!TryId(orderId, out var parsed))
+            {
+                return BffHttp.Problem(new Error("ordering.order-not-found", "找不到訂單。"));
+            }
+
+            var id = new OrderId(parsed);
+            return await BffHttp.ExecuteIdempotentAsync(
+                context,
+                idempotency,
+                "storefront:orders:payment",
+                new { customerId = customer.Value, orderId = id },
+                async token =>
+                {
+                    var order = await ordering.GetCustomerAsync(customer.Value, id, token);
+                    if (order.IsFailure)
+                    {
+                        return Result<PaymentInitiation>.Failure(order.Error);
+                    }
+
+                    if (order.Value.Status == OrderStatus.Cancelled)
+                    {
+                        return Result<PaymentInitiation>.Failure(
+                            "ordering.order-cancelled",
+                            "已取消的訂單不能付款。");
+                    }
+
+                    var returnUrl = new Uri(
+                        $"{context.Request.Scheme}://{context.Request.Host}/v1/webhooks/ecpay");
+                    return await payments.InitiateAsync(
+                        new PaymentInitiationRequest(
+                            id,
+                            order.Value.GoodsTotal,
+                            order.Value.ShippingFee,
+                            $"GreyGray {order.Value.OrderNumber}",
+                            returnUrl),
+                        token);
+                },
+                StatusCodes.Status200OK,
+                cancellationToken);
+        });
+
+        api.MapPost("/webhooks/ecpay", async (
+            HttpContext context,
+            IPaymentCommand payments,
+            IIdempotencyStore idempotency,
+            CancellationToken cancellationToken) =>
+        {
+            var form = await context.Request.ReadFormAsync(cancellationToken);
+            var fields = form.ToDictionary(pair => pair.Key, pair => pair.Value.ToString(), StringComparer.Ordinal);
+            if (!fields.TryGetValue("MerchantTradeNo", out var merchantTradeNo) ||
+                string.IsNullOrWhiteSpace(merchantTradeNo))
+            {
+                return BffHttp.Problem(new Error("payment.invalid-callback", "綠界回呼缺少交易編號。"));
+            }
+
+            var canonical = string.Join(
+                "&",
+                fields.OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                    .Select(pair => $"{pair.Key}={pair.Value}"));
+            var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
+            var scope = "webhook:ecpay";
+            var key = merchantTradeNo.Trim();
+            var (outcome, _) = await idempotency.TryBeginAsync(key, scope, hash, cancellationToken);
+            if (outcome == IdempotencyOutcome.AlreadyCompleted)
+            {
+                return Results.Text("1|OK", "text/plain", Encoding.UTF8);
+            }
+
+            if (outcome == IdempotencyOutcome.InFlight)
+            {
+                return Results.StatusCode(StatusCodes.Status409Conflict);
+            }
+
+            if (outcome == IdempotencyOutcome.KeyReusedWithDifferentPayload)
+            {
+                return BffHttp.Problem(
+                    new Error("payment.callback-payload-mismatch", "同一交易編號的回呼內容不一致。"));
+            }
+
+            try
+            {
+                var result = await payments.HandleEcpayCallbackAsync(fields, cancellationToken);
+                if (result.IsFailure)
+                {
+                    await idempotency.AbandonAsync(key, scope, cancellationToken);
+                    return BffHttp.Problem(result.Error);
+                }
+
+                await idempotency.CompleteAsync(key, scope, "1|OK", cancellationToken);
+                return Results.Text("1|OK", "text/plain", Encoding.UTF8);
+            }
+            catch
+            {
+                await idempotency.AbandonAsync(key, scope, CancellationToken.None);
+                throw;
+            }
+        });
+    }
+
+    private static async Task<CustomerId?> GetCustomerAsync(
+        HttpContext context,
+        ISessionStore sessions,
+        CancellationToken cancellationToken)
+    {
+        var session = await BffHttp.GetSessionAsync(
+            context,
+            sessions,
+            SessionCookie,
+            SessionSubjectKind.Customer,
+            cancellationToken);
+        return session is not null && Guid.TryParseExact(session.SubjectId, "N", out var id)
+            ? new CustomerId(id)
+            : null;
+    }
+
+    private static CartId GetOrCreateCartId(HttpContext context)
+    {
+        if (context.Request.Cookies.TryGetValue(CartCookie, out var raw) &&
+            Guid.TryParseExact(raw, "N", out var parsed))
+        {
+            return new CartId(parsed);
+        }
+
+        var cartId = CartId.New();
+        SetCartCookie(context.Response, cartId);
+        return cartId;
+    }
+
+    private static void SetCartCookie(HttpResponse response, CartId cartId) =>
+        response.Cookies.Append(CartCookie, cartId.ToString(), new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = true,
+            SameSite = SameSiteMode.Lax,
+            Path = "/",
+            MaxAge = TimeSpan.FromDays(30),
+            IsEssential = true,
+        });
+
+    private static async Task CreateSessionAsync(
+        HttpContext context,
+        ISessionStore sessions,
+        CustomerMe me,
+        CancellationToken cancellationToken)
+    {
+        var token = await sessions.CreateAsync(
+            me.Id.ToString(),
+            SessionSubjectKind.Customer,
+            TenantId.Default,
+            role: null,
+            cancellationToken);
+        BffHttp.SetSessionCookie(context.Response, SessionCookie, token);
+    }
+
+    private static bool TryId(string raw, out Guid id) => Guid.TryParseExact(raw, "N", out id);
+
+    private static CustomerMe ToMe(CustomerProfile profile) => new(
+        profile.Id,
+        profile.DisplayName,
+        profile.Tier,
+        profile.IsActive,
+        profile.Email,
+        profile.PhoneNumberMasked,
+        profile.LineLinked);
+
+    private static CartResponse ToCart(CartView cart) => new(
+        cart.Id,
+        cart.Lines.Select(line => new CartLineResponse(
+            line.Id,
+            line.SkuId,
+            line.ProductId,
+            line.Name,
+            line.VariantName,
+            line.ImageUrl,
+            line.Mode,
+            line.CampaignId,
+            line.CampaignOffer,
+            line.Quantity,
+            line.UnitPrice,
+            line.LineTotal,
+            line.AvailabilityWarning)).ToArray(),
+        cart.GoodsTotal,
+        cart.HasMixedModes,
+        cart.Quote is null
+            ? null
+            : new QuoteResponse(
+                cart.Quote.DeliveryMethod,
+                cart.GoodsTotal,
+                cart.Quote.ShippingFee,
+                cart.GrandTotal ?? cart.GoodsTotal.Add(cart.Quote.ShippingFee),
+                cart.Quote.ActualWeightGram,
+                cart.Quote.VolumetricWeightGram,
+                cart.Quote.BillableWeightGram,
+                cart.Quote.AppliedStrategy,
+                cart.Quote.Explain));
+
+    private static QuoteResponse ToQuote(CheckoutQuote quote) => new(
+        quote.Snapshot.DeliveryMethod,
+        quote.GoodsTotal,
+        quote.Snapshot.ShippingFee,
+        quote.GrandTotal,
+        quote.Snapshot.ActualWeightGram,
+        quote.Snapshot.VolumetricWeightGram,
+        quote.Snapshot.BillableWeightGram,
+        quote.Snapshot.AppliedStrategy,
+        quote.Snapshot.Explain);
+
+    private static OrderListItemResponse ToOrderListItem(OrderView order) =>
+        new(
+            order.Id,
+            order.OrderNumber,
+            order.Status,
+            order.GrandTotal,
+            order.PlacedAt,
+            order.Lines.Count,
+            null);
+
+    private static async Task<Result<OrderResponse>> ToOrderAsync(
+        OrderView order,
+        ICatalogQuery catalog,
+        ICustomerDirectory customers,
+        CancellationToken cancellationToken)
+    {
+        var lines = new List<OrderLineResponse>(order.Lines.Count);
+        foreach (var line in order.Lines)
+        {
+            var sku = await catalog.GetSkuAsync(line.SkuId, cancellationToken);
+            if (sku.IsFailure)
+            {
+                return Result<OrderResponse>.Failure(
+                    "ordering.catalog-snapshot-unavailable",
+                    $"訂單品項 {line.Id} 的商品資料無法讀取。");
+            }
+
+            lines.Add(new OrderLineResponse(
+                line.Id,
+                line.SkuId,
+                sku.Value.ProductId,
+                sku.Value.Name,
+                sku.Value.VariantName,
+                null,
+                line.Mode,
+                line.Status,
+                line.Quantity,
+                line.UnitPrice,
+                line.LineTotal,
+                line.CampaignId,
+                line.RefundedAmount));
+        }
+
+        ShippingAddressResponse? address = null;
+        if (order.ShippingAddressId is not null)
+        {
+            var found = await customers.GetAddressAsync(order.ShippingAddressId.Value, cancellationToken);
+            if (found.IsSuccess)
+            {
+                address = new ShippingAddressResponse(
+                    found.Value.Id,
+                    found.Value.RecipientName,
+                    found.Value.PhoneNumber,
+                    found.Value.PostalCode,
+                    found.Value.City,
+                    found.Value.District,
+                    found.Value.StreetAddress,
+                    false);
+            }
+        }
+
+        return new OrderResponse(
+            order.Id,
+            order.OrderNumber,
+            order.Status,
+            order.ShippingPolicy,
+            order.DeliveryMethod,
+            order.GoodsTotal,
+            order.ShippingFee,
+            order.GrandTotal,
+            order.PaidAmount,
+            lines,
+            address,
+            order.ConvenienceStoreCode,
+            order.PlacedAt,
+            order.PaymentDueAt,
+            order.QuoteExplain);
+    }
+
+    private static ProductListItemResponse ToProductListItem(StorefrontProductListItem item) => new(
+        item.Id,
+        item.Name,
+        item.ShortDescription,
+        item.ImageUrl,
+        item.PriceFrom,
+        item.UnitPriceLabel,
+        [],
+        false,
+        item.Mode,
+        null);
+
+    private static async Task<ProductDetailResponse> ToProductDetailAsync(
+        StorefrontProductDetail product,
+        IInventoryQuery inventory,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyDictionary<SkuId, int> availability = new Dictionary<SkuId, int>();
+        if (product.Mode == FulfillmentMode.Stock)
+        {
+            var result = await inventory.GetAvailabilityAsync(
+                product.Skus.Select(sku => sku.Id).ToArray(),
+                cancellationToken);
+            if (result.IsSuccess)
+            {
+                availability = result.Value.ToDictionary(value => value.SkuId, value => value.Available);
+            }
+        }
+
+        return new ProductDetailResponse(
+            product.Id,
+            product.Name,
+            product.Description,
+            product.ShortDescription,
+            product.Images,
+            product.CategoryId,
+            product.Mode,
+            null,
+            product.Skus.Select(sku => new SkuResponse(
+                sku.Id,
+                sku.Name,
+                sku.VariantName,
+                sku.WeightGram,
+                sku.Size,
+                sku.UnitOfMeasure,
+                sku.UnitCount,
+                sku.IsActive,
+                availability.GetValueOrDefault(sku.Id),
+                product.Mode == FulfillmentMode.Stock ? sku.ListPrice : null,
+                null)).ToArray(),
+            false);
+    }
+
+    private static CampaignDetailResponse ToCampaignDetail(StorefrontCampaignDetail detail) => new(
+        detail.Campaign.Id,
+        detail.Campaign.Title,
+        detail.Campaign.Destination,
+        detail.Campaign.DepartAt,
+        detail.Campaign.ReturnAt,
+        detail.Campaign.ClosesAt,
+        detail.Campaign.Status,
+        detail.Campaign.IsAcceptingOrders,
+        detail.Campaign.CoverImageUrl,
+        detail.Description,
+        detail.Offers);
+
+    private sealed record CustomerMe(
+        CustomerId Id,
+        string DisplayName,
+        MemberTier Tier,
+        bool IsActive,
+        string? Email,
+        string PhoneNumberMasked,
+        bool LineLinked);
+
+    private sealed record StoredValueResponse(Money Balance);
+
+    private sealed record CategoryResponse(CategoryId Id, string Name, string? ImageUrl);
+
+    private sealed record ProductPageResponse(
+        IReadOnlyList<ProductListItemResponse> Items,
+        string? NextCursor);
+
+    private sealed record ProductListItemResponse(
+        ProductId Id,
+        string Name,
+        string? ShortDescription,
+        string? ImageUrl,
+        Money? PriceFrom,
+        string? UnitPriceLabel,
+        IReadOnlyList<string> Badges,
+        bool IsFavorited,
+        FulfillmentMode Mode,
+        CampaignId? CampaignId);
+
+    private sealed record SkuResponse(
+        SkuId Id,
+        string Name,
+        string? VariantName,
+        int WeightGram,
+        Dimensions Size,
+        string? UnitOfMeasure,
+        int? UnitCount,
+        bool IsActive,
+        int Available,
+        Money? Price,
+        CampaignOfferId? CampaignOfferId);
+
+    private sealed record ProductDetailResponse(
+        ProductId Id,
+        string Name,
+        string? Description,
+        string? ShortDescription,
+        IReadOnlyList<string> Images,
+        CategoryId? CategoryId,
+        FulfillmentMode Mode,
+        StorefrontCampaignListItem? Campaign,
+        IReadOnlyList<SkuResponse> Skus,
+        bool IsFavorited);
+
+    private sealed record CampaignDetailResponse(
+        CampaignId Id,
+        string Title,
+        string Destination,
+        DateOnly DepartAt,
+        DateOnly ReturnAt,
+        DateTimeOffset ClosesAt,
+        CampaignStatus Status,
+        bool IsAcceptingOrders,
+        string? CoverImageUrl,
+        string? Description,
+        IReadOnlyList<StorefrontCampaignOffer> Offers);
+
+    private sealed record AddCartLineInput(
+        SkuId SkuId,
+        FulfillmentMode Mode,
+        CampaignOfferId? CampaignOfferId,
+        int Quantity);
+
+    private sealed record UpdateCartLineInput(int Quantity);
+
+    private sealed record QuoteCartInput(DeliveryMethod DeliveryMethod);
+
+    private sealed record CompleteCheckoutInput(
+        DeliveryMethod DeliveryMethod,
+        ShippingPolicy ShippingPolicy,
+        AddressId? ShippingAddressId,
+        string? ConvenienceStoreCode,
+        string? BuyerNote);
+
+    private sealed record CancelOrderInput(string? Reason);
+
+    private sealed record CancelCustomerOrderRequest(
+        CustomerId CustomerId,
+        OrderId OrderId,
+        string? Reason);
+
+    private sealed record CartLineResponse(
+        CartLineId Id,
+        SkuId SkuId,
+        ProductId ProductId,
+        string Name,
+        string? VariantName,
+        string? ImageUrl,
+        FulfillmentMode Mode,
+        CampaignId? CampaignId,
+        CampaignOfferId? CampaignOfferId,
+        int Quantity,
+        Money UnitPrice,
+        Money LineTotal,
+        string? AvailabilityWarning);
+
+    private sealed record CartResponse(
+        CartId Id,
+        IReadOnlyList<CartLineResponse> Lines,
+        Money GoodsTotal,
+        bool HasMixedModes,
+        QuoteResponse? Quote);
+
+    private sealed record QuoteResponse(
+        DeliveryMethod DeliveryMethod,
+        Money GoodsTotal,
+        Money ShippingFee,
+        Money GrandTotal,
+        int ActualWeightGram,
+        int VolumetricWeightGram,
+        int BillableWeightGram,
+        ShippingStrategyKind AppliedStrategy,
+        IReadOnlyList<string> Explain);
+
+    private sealed record OrderListItemResponse(
+        OrderId Id,
+        string OrderNumber,
+        OrderStatus Status,
+        Money GrandTotal,
+        DateTimeOffset PlacedAt,
+        int LineCount,
+        string? ThumbnailUrl);
+
+    private sealed record OrderPageResponse(
+        IReadOnlyList<OrderListItemResponse> Items,
+        string? NextCursor);
+
+    private sealed record ShippingAddressResponse(
+        AddressId Id,
+        string RecipientName,
+        string PhoneNumber,
+        string PostalCode,
+        string City,
+        string District,
+        string StreetAddress,
+        bool IsDefault);
+
+    private sealed record OrderLineResponse(
+        OrderLineId Id,
+        SkuId SkuId,
+        ProductId ProductId,
+        string Name,
+        string? VariantName,
+        string? ImageUrl,
+        FulfillmentMode Mode,
+        OrderLineStatus Status,
+        int Quantity,
+        Money UnitPrice,
+        Money LineTotal,
+        CampaignId? CampaignId,
+        Money? RefundedAmount);
+
+    private sealed record OrderResponse(
+        OrderId Id,
+        string OrderNumber,
+        OrderStatus Status,
+        ShippingPolicy ShippingPolicy,
+        DeliveryMethod DeliveryMethod,
+        Money GoodsTotal,
+        Money ShippingFee,
+        Money GrandTotal,
+        Money? PaidAmount,
+        IReadOnlyList<OrderLineResponse> Lines,
+        ShippingAddressResponse? ShippingAddress,
+        string? ConvenienceStoreName,
+        DateTimeOffset PlacedAt,
+        DateTimeOffset? PaymentDueAt,
+        IReadOnlyList<string> QuoteExplain);
+}

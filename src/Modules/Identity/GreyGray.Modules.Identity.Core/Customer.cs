@@ -43,6 +43,8 @@ internal sealed class Customer
         DateTimeOffset createdAt) =>
         new(id, tenantId, displayName, createdAt);
 
+    public void UpdateDisplayName(string displayName) => DisplayName = displayName;
+
     public CustomerSummary ToSummary() => new(Id, DisplayName, Tier, IsActive);
 }
 

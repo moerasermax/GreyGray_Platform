@@ -111,6 +111,18 @@ public sealed record PricingSnapshot(
     IReadOnlyList<string> Explain,
     DateTimeOffset CreatedAt);
 
+/// <summary>前台報價顯示模型；商品總額由呼叫端提供，運費由 Pricing 計算。</summary>
+public sealed record PricingQuoteResult(
+    DeliveryMethod DeliveryMethod,
+    Money GoodsTotal,
+    Money ShippingFee,
+    Money GrandTotal,
+    int ActualWeightGram,
+    int VolumetricWeightGram,
+    int BillableWeightGram,
+    ShippingStrategyKind AppliedStrategy,
+    IReadOnlyList<string> Explain);
+
 // ── 同步契約 ─────────────────────────────────────────────────────────────
 
 public interface IPricingQuotation

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>GreyGray.M1a.Inventory.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <ModuleLayer>Test</ModuleLayer>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Npgsql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Modules\Inventory\GreyGray.Modules.Inventory.Core\GreyGray.Modules.Inventory.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Inventory\GreyGray.Modules.Inventory.Infra\GreyGray.Modules.Inventory.Infra.csproj" />
+  </ItemGroup>
+
+</Project>

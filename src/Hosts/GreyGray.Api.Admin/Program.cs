@@ -1,6 +1,16 @@
 using System.Diagnostics;
+using GreyGray.Api.Admin;
+using GreyGray.Modules.Campaign.Infra;
 using GreyGray.Modules.Catalog.Infra;
+using GreyGray.Modules.Checkout.Infra;
 using GreyGray.Modules.Identity.Infra;
+using GreyGray.Modules.Inventory.Infra;
+using GreyGray.Modules.Ledger.Infra;
+using GreyGray.Modules.Ordering.Infra;
+using GreyGray.Modules.Payment.Infra;
+using GreyGray.Modules.Pricing.Infra;
+using GreyGray.Platform;
+using GreyGray.Platform.Http;
 using GreyGray.Platform.Observability;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -18,7 +28,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
+builder.Services.ConfigureHttpJsonOptions(options =>
+    BffHttp.ApplyGreyGrayJson(options.SerializerOptions));
 builder.Services.AddGreyGrayRuntimeContext();
+builder.Services.AddGreyGrayApiPlatform(builder.Configuration);
 builder.Services
     .AddOpenTelemetry()
     .ConfigureResource(resource => resource.AddService("GreyGray.Api.Admin"))
@@ -31,7 +44,14 @@ builder.Services
 // TODO(M0-1..3)：AddPlatform() —— Outbox、Idempotency、Saga Timer。
 builder.Services
     .AddIdentityModule(builder.Configuration)
-    .AddCatalogModule(builder.Configuration);
+    .AddCatalogModule(builder.Configuration)
+    .AddCampaignModule(builder.Configuration)
+    .AddPricingModule(builder.Configuration)
+    .AddInventoryModule(builder.Configuration)
+    .AddCheckoutModule(builder.Configuration)
+    .AddOrderingModule(builder.Configuration)
+    .AddPaymentModule(builder.Configuration)
+    .AddLedgerModule(builder.Configuration);
 
 // TODO(M0-5)：Identity／Catalog 樣板驗收後，逐一複製到其餘模組。
 // TODO(M1a-2)：Cloudflare Access JWT 驗證 —— 驗 CF 公鑰、比對 aud，
@@ -43,6 +63,8 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
+
+app.MapM1aAdminEndpoints();
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();
