@@ -69,10 +69,14 @@ Set-Cookie: gg_session=<opaque>; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age
 **M1a 的登入方式**：手機號碼 ＋ 密碼。
 LINE Login 綁定排 M1b（LIFF 內免登入是 M1b 才有的體驗）。
 
-> ⚠ **這一節有一個未決依賴**：歷史會員是否從租用平台遷移（`docs/00-decisions.md` 末段）。
-> 匯出檔的實際欄位會反過來決定 `Identity` 的欄位設計，
-> 因此 `POST /v1/auth/register` 的欄位在那題有答案之前算**暫定**。
-> 前端請把註冊表單的欄位集中在一處，不要散在多個元件裡。
+> **2026-08-28 定案（ADR-019）**：**不遷移**歷史會員與訂單。
+> 因此 `POST /v1/auth/register` 的欄位**不再是暫定**——
+> `phoneNumber` / `password` / `displayName` / `email` / `referralCode` 就是定案。
+>
+> Google 帳號串接排在 M1a 之後，屆時是**新增** `googleLinked` 這類綁定旗標
+> （`Me` 已經有 `lineLinked` 的形狀），是加欄位不是改欄位，不算破壞性變更。
+> 前端仍然建議把註冊表單的欄位集中在一處——不是因為會變，
+> 而是之後要在同一個流程裡插入 OAuth 的入口。
 
 ---
 
@@ -236,7 +240,7 @@ GET /v1/orders?cursor=0198c3d4e5f607189abc0123456789ab&limit=20
 
 | 方法 | 路徑 | 里程碑 | 說明 |
 |---|---|---|---|
-| `POST` | `/v1/auth/register` | M1a | 註冊（欄位暫定，見 §2） |
+| `POST` | `/v1/auth/register` | M1a | 註冊（欄位已定案，見 §2 與 ADR-019） |
 | `POST` | `/v1/auth/login` | M1a | 手機號碼 ＋ 密碼 |
 | `POST` | `/v1/auth/logout` | M1a | |
 | `GET` | `/v1/me` | M1a | 目前登入的客戶 |

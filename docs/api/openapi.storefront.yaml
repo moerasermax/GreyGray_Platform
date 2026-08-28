@@ -49,8 +49,8 @@ paths:
       tags: [auth]
       summary: 註冊
       description: |
-        **欄位暫定。** 歷史會員是否從租用平台遷移尚未決定，
-        匯出檔的實際欄位會反過來決定這裡的設計（`docs/00-decisions.md` 末段）。
+        **欄位已定案（ADR-019）。** 歷史會員與訂單不從租用平台遷移，
+        客人在新站重新註冊；Google 帳號串接排在 M1a 之後。
       security: []
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -929,11 +929,10 @@ components:
     RegisterRequest:
       type: object
       description: |
-        **欄位暫定。** 歷史會員是否從租用平台遷移尚未決定（`docs/00-decisions.md` 末段），
-        匯出檔的實際欄位會反過來決定這裡的設計。
+        **欄位已定案（ADR-019）。** 歷史會員與訂單不從租用平台遷移，客人在新站重新註冊。
 
         前端請把這份表單的欄位集中在一個 schema 檔裡，不要散在多個元件——
-        那題有答案之後這裡會變。
+        Google 帳號串接排在 M1a 之後，屆時要在同一個流程裡插入 OAuth 的入口。
       required: [phoneNumber, password, displayName]
       properties:
         phoneNumber:
