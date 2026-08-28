@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter, Noto_Sans_TC, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
+import { MockBootstrap } from './_mock/MockBootstrap';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -46,7 +47,10 @@ export default function RootLayout({
       lang="zh-Hant-TW"
       className={`${inter.variable} ${notoSansTC.variable} ${jetbrainsMono.variable}`}
     >
-      <body>{children}</body>
+      <body>
+        <MockBootstrap />
+        {children}
+      </body>
     </html>
   );
 }

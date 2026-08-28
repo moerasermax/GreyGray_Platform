@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Nunito, Noto_Sans_TC } from 'next/font/google';
 import './globals.css';
+import { MockBootstrap } from './_mock/MockBootstrap';
 
 /*
  * 字體用 next/font 自架，不要用 <link> 拉 Google Fonts——
@@ -44,7 +45,10 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="zh-Hant-TW" className={`${nunito.variable} ${notoSansTC.variable}`}>
-      <body>{children}</body>
+      <body>
+        <MockBootstrap />
+        {children}
+      </body>
     </html>
   );
 }

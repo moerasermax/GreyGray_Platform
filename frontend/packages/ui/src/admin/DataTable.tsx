@@ -56,7 +56,7 @@ export function DataTable<T>({
     <div className="overflow-x-auto rounded-card border border-border-soft bg-surface shadow-card">
       <table className="w-full min-w-full border-collapse text-sm">
         <thead>
-          <tr className="border-b border-border-soft bg-surface-sunken text-left text-fg-muted">
+          <tr className="border-b border-border-soft bg-surface-sunken text-left text-fg-on-tint">
             {columns.map((column) => {
               const isSorted = sortKey === column.key;
               return (

@@ -87,10 +87,16 @@ export interface FormatMoneyOptions {
  * 把 `Money` 轉成畫面上的字串。
  *
  * ```ts
- * formatMoney({ amountMinor: 18000, currency: 'TWD' })  // "NT$180"
- * formatMoney({ amountMinor: 18050, currency: 'TWD' }, { showDecimals: true })  // "NT$180.50"
+ * formatMoney({ amountMinor: 18000, currency: 'TWD' })  // "$180"
+ * formatMoney({ amountMinor: 18050, currency: 'TWD' }, { showDecimals: true })  // "$180.50"
  * formatMoney({ amountMinor: 1000, currency: 'JPY' })   // "¥1,000"  ← 不是 ¥10
+ * formatMoney({ amountMinor: 78000, currency: 'USD' })  // "US$780"
  * ```
+ *
+ * **台幣是 `$` 不是 `NT$`。** zh-TW 是台幣的本地語系，ICU 就給不加前綴的 `$`；
+ * 外幣才會帶國別前綴（`US$`、`HK$`），所以同一個畫面上兩者仍然分得出來。
+ * 若之後決定台幣也要顯示成 `NT$`（例如帳務報表要寄給國外會計），
+ * 改這裡一處即可，不要在呼叫端自己加前綴。
  */
 export function formatMoney(money: Money, options: FormatMoneyOptions = {}): string {
   const digits = minorUnitDigits(money.currency);

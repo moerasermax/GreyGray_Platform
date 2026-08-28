@@ -21,7 +21,7 @@ export function ErrorState({ title, traceId, onRetry, className }: ErrorStatePro
       <ErrorIcon className="h-10 w-10 text-danger" />
       <p className="text-sm font-medium text-fg">{title}</p>
       {traceId ? (
-        <p className="gg-numeric text-xs text-fg-subtle">追蹤碼 {traceId}</p>
+        <p className="gg-numeric text-xs text-fg-muted">追蹤碼 {traceId}</p>
       ) : null}
       {onRetry ? (
         <button

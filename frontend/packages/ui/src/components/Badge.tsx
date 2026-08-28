@@ -15,11 +15,11 @@ export function Badge({ variant, label, className, ...rest }: BadgeProps) {
   const style = (() => {
     switch (variant) {
       case 'New':
-        return 'border border-info/20 bg-info/10 text-info';
+        return 'border border-info/20 bg-info-subtle text-info';
       case 'Popular':
-        return 'border border-primary/20 bg-primary/10 text-primary-text';
+        return 'border border-primary/20 bg-primary-subtle text-primary-text';
       case 'LastCall':
-        return 'border border-warning/20 bg-warning/10 text-warning';
+        return 'border border-warning/20 bg-warning-subtle text-warning-text';
       default:
         return 'border border-border-soft bg-surface-sunken text-fg-muted';
     }

@@ -25,14 +25,29 @@
   --ga-border-strong: #cbd5e1;
 
   --ga-fg: #0f172a;
-  --ga-fg-muted: #64748b;   /* 在 #f8fafc 上 4.76:1 ✓ */
+  --ga-fg-muted: #64748b;   /* 只保證在 --ga-bg (#f8fafc) 上 4.76:1 ✓ */
   --ga-fg-subtle: #94a3b8;  /* 只給非文字的圖示與分隔線，不要放文字 */
+
+  /*
+   * 疊在任何 *-subtle 有色底上的文字**一律用這個**。
+   * --ga-fg-muted 只在 --ga-bg 上被量過；放到 surface-sunken 上是 4.34:1、
+   * 放到 danger-subtle 上是 3.90:1，兩個都不到 4.5。這個實測：
+   *   在 --ga-surface-sunken (#f1f5f9) 上 9.45:1 ✓
+   *   在 --ga-danger-subtle  (#fee2e2) 上 8.47:1 ✓
+   *   在 --ga-primary-subtle (#fce7f3) 上 8.80:1 ✓
+   */
+  --ga-fg-on-tint: #334155;
 
   /* ── 品牌記號。後台只用一點點，讓兩個 app 認得出是同一個產品 ────── */
   --ga-primary: #db2777;
   --ga-primary-hover: #be185d;
   --ga-on-primary: #ffffff;
   --ga-primary-subtle: #fce7f3;
+  /*
+   * 淺底上的粉紅文字（側邊選單作用中那一項）。跟前台的 --gg-primary-text 同一個道理：
+   * --ga-primary 直接放在 --ga-primary-subtle 上只有 3.91:1，這個是 5.14:1 ✓
+   */
+  --ga-primary-text: #be185d;
 
   /* ── 狀態燈。訂單狀態、對帳差異、庫存水位都吃這組 ───────────────── */
   --ga-success: #15803d;
@@ -117,11 +132,13 @@
     --ga-fg: #e2e8f0;
     --ga-fg-muted: #94a3b8;
     --ga-fg-subtle: #64748b;
+    --ga-fg-on-tint: #cbd5e1;  /* 在 #450a0a 上 10.79:1 ✓ */
 
     --ga-primary: #f472b6;
     --ga-primary-hover: #f9a8d4;
     --ga-on-primary: #500724;
     --ga-primary-subtle: #4c0519;
+    --ga-primary-text: #f472b6;  /* 在 #4c0519 上 5.88:1 ✓ */
 
     --ga-success: #4ade80;
     --ga-success-subtle: #052e16;
@@ -150,11 +167,13 @@
   --ga-fg: #e2e8f0;
   --ga-fg-muted: #94a3b8;
   --ga-fg-subtle: #64748b;
+  --ga-fg-on-tint: #cbd5e1;  /* 在 #450a0a 上 10.79:1 ✓ */
 
   --ga-primary: #f472b6;
   --ga-primary-hover: #f9a8d4;
   --ga-on-primary: #500724;
   --ga-primary-subtle: #4c0519;
+  --ga-primary-text: #f472b6;  /* 在 #4c0519 上 5.88:1 ✓ */
 
   --ga-success: #4ade80;
   --ga-success-subtle: #052e16;

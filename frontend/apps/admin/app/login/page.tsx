@@ -72,7 +72,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="mt-6 rounded-sm border border-border-soft bg-surface-sunken p-3 text-xs text-fg-muted">
+        <div className="mt-6 rounded-sm border border-border-soft bg-surface-sunken p-3 text-xs text-fg-on-tint">
           <p className="font-medium text-fg">開發用測試帳號（暫時假資料，後端串接後移除）</p>
           <p className="mt-1">owner / accountant / operator / readonly@greygray.tw</p>
           <p>密碼：greygray123</p>

@@ -49,19 +49,37 @@
   --gg-danger: #be123c;
   --gg-info: #6d28d9;
 
+  /*
+   * 狀態色的淺底，**一定要不透明**。
+   * 用 `bg-warning/10` 這種半透明疊色的話，實際對比度取決於它疊在什麼上面——
+   * Badge 疊到商品圖的粉底時實測只剩 3.42:1，過不了 AA。不透明才算得準。
+   */
+  --gg-success-subtle: #f0fdf4;
+  --gg-warning-subtle: #fffbeb;
+  --gg-danger-subtle: #fff1f2;
+  --gg-info-subtle: #f5f3ff;
+  --gg-primary-subtle: #fce7f3;
+
+  /*
+   * 琥珀色放在淺底上當文字時要再深一階。
+   * --gg-warning (#b45309) 在 #fffbeb 上是 4.90:1，勉強過但沒有餘裕；
+   * 這個 #92400e 是 6.90:1。色塊、圖示仍然用 --gg-warning。
+   */
+  --gg-warning-text: #92400e;
+
   /* ── 柔粉漸層 banner（ADR-009 的切版重點）────────────────────────── */
   --gg-gradient-banner: linear-gradient(135deg, #fbcfe8 0%, #f9a8d4 45%, #ddd6fe 100%);
   --gg-gradient-cta: linear-gradient(135deg, #db2777 0%, #8b5cf6 100%);
 
   /* ── 圓角。全站沒有直角 ───────────────────────────────────────────── */
-  /* BottomSheet 展開後的最大高度。留 20vh 讓客人看得到底下還有頁面，知道可以關掉。 */
-  --gg-sheet-max-h: 80vh;
-
   --gg-radius-sm: 10px;
   --gg-radius-md: 16px;
   --gg-radius-lg: 24px;
   --gg-radius-xl: 32px;
   --gg-radius-pill: 9999px;
+
+  /* BottomSheet 展開後的最大高度。留 20vh 讓客人看得到底下還有頁面，知道可以關掉。 */
+  --gg-sheet-max-h: 80vh;
 
   /* ── 間距（density 5/10：標準）───────────────────────────────────── */
   --gg-space-1: 4px;

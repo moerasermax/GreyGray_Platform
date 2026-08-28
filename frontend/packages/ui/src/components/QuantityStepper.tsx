@@ -57,7 +57,7 @@ export function QuantityStepper({
         value={value}
         disabled={disabled}
         onChange={handleInputChange}
-        className="w-[var(--gg-space-7)] bg-transparent text-center font-display text-[length:var(--gg-text-base)] font-bold text-fg outline-none disabled:opacity-50"
+        className="w-[var(--gg-space-7)] bg-transparent text-center font-display text-[length:var(--gg-text-base)] font-bold text-fg disabled:opacity-50"
       />
       <IconButton
         icon={<IconPlus />}

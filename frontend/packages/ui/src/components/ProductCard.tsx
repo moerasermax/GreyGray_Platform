@@ -12,7 +12,11 @@ export interface ProductCardProps {
   description?: string | undefined;
   price: Money;
   compareAtPrice?: Money | undefined;
-  /** 已經格式化好的單位價格字串（例如「每 100g NT$45」），不在這裡做除法。 */
+  /**
+   * 單位價格顯示字串，**直接用後端給的 `Product.unitPriceLabel`**（契約 §Product）。
+   * 例如「NT$780／32 顆」。不要在前端自己組——「／32 顆」要知道 SKU 的包裝數量，
+   * 那是後端才有的資料。這一欄是既有的例外，不牴觸「不做金額運算」那條鐵則。
+   */
   unitPriceLabel?: string | undefined;
   badges?: Array<{ variant: BadgeVariant; label?: string | undefined }> | undefined;
   favorited?: boolean;

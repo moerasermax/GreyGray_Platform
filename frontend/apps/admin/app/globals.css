@@ -24,9 +24,12 @@
   --color-fg: var(--ga-fg);
   --color-fg-muted: var(--ga-fg-muted);
   --color-fg-subtle: var(--ga-fg-subtle);
+  /* 疊在任何 *-subtle 有色底上的文字用這個，理由見 admin.css */
+  --color-fg-on-tint: var(--ga-fg-on-tint);
 
   --color-primary: var(--ga-primary);
   --color-primary-hover: var(--ga-primary-hover);
+  --color-primary-text: var(--ga-primary-text);
   --color-on-primary: var(--ga-on-primary);
   --color-primary-subtle: var(--ga-primary-subtle);
 

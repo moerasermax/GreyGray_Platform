@@ -154,7 +154,7 @@ export default function KitchenSinkPage() {
             description="高保濕玻尿酸配方，敏感肌適用。"
             price={{ amountMinor: 78000, currency: 'TWD' }}
             compareAtPrice={{ amountMinor: 98000, currency: 'TWD' }}
-            unitPriceLabel="每片 NT$78"
+            unitPriceLabel="NT$780／32 顆"
             badges={[{ variant: 'Popular' }, { variant: 'New' }]}
             favorited={productFavorited}
             onToggleFavorite={() => setProductFavorited((v) => !v)}

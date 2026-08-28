@@ -42,7 +42,7 @@ export function Field({ label, htmlFor, error, hint, required, children }: Field
 }
 
 const baseControlClass =
-  'rounded-sm border border-border-strong bg-surface px-3 py-1.5 text-sm text-fg placeholder:text-fg-subtle focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60';
+  'rounded-sm border border-border-strong bg-surface px-3 py-1.5 text-sm text-fg placeholder:text-fg-muted focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60';
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   readonly invalid?: boolean;

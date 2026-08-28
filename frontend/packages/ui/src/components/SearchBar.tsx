@@ -41,7 +41,7 @@ export function SearchBar({
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         aria-label={rest['aria-label'] ?? placeholder}
-        className="min-w-0 flex-1 bg-transparent text-[length:var(--gg-text-base)] text-fg outline-none placeholder:text-fg-muted"
+        className="min-w-0 flex-1 bg-transparent text-[length:var(--gg-text-base)] text-fg placeholder:text-fg-muted"
       />
       {value.length > 0 && (
         <IconButton

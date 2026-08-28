@@ -14,7 +14,7 @@ export interface StatusPillProps {
 }
 
 const TONE_CLASS: Record<StatusTone, string> = {
-  neutral: 'bg-surface-sunken text-fg-muted border border-border-soft',
+  neutral: 'bg-surface-sunken text-fg-on-tint border border-border-soft',
   info: 'bg-info-subtle text-info',
   success: 'bg-success-subtle text-success',
   warning: 'bg-warning-subtle text-warning',

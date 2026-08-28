@@ -48,7 +48,7 @@ export function Sidebar({ items, LinkComponent, header }: SidebarProps) {
                 href={item.href}
                 className={`flex items-center gap-3 rounded-sm px-3 py-2 text-sm font-medium transition-colors ${
                   item.active
-                    ? 'bg-primary-subtle text-primary'
+                    ? 'bg-primary-subtle text-primary-text'
                     : 'text-fg-muted hover:bg-surface-sunken hover:text-fg'
                 }`}
               >

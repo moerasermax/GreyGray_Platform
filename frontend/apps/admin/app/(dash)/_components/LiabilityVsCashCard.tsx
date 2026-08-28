@@ -28,10 +28,10 @@ export function LiabilityVsCashCard({ data }: LiabilityVsCashCardProps) {
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 id="liability-vs-cash-heading" className="text-sm font-semibold text-fg-muted">
+          <h2 id="liability-vs-cash-heading" className="text-sm font-semibold text-fg-on-tint">
             負債 vs 現金
           </h2>
-          <p className="mt-0.5 text-xs text-fg-subtle">資料時間 {asOfLabel}</p>
+          <p className="mt-0.5 text-xs text-fg-on-tint">資料時間 {asOfLabel}</p>
         </div>
 
         {data.isBreached ? (
@@ -48,13 +48,13 @@ export function LiabilityVsCashCard({ data }: LiabilityVsCashCardProps) {
 
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <p className="text-xs text-fg-muted">客戶負債（預收貨款＋預收運費＋儲值金）</p>
+          <p className="text-xs text-fg-on-tint">客戶負債（預收貨款＋預收運費＋儲值金）</p>
           <p className="mt-1 font-mono text-3xl font-semibold tabular-nums text-danger">
             {formatMoney(data.customerLiabilityTotal)}
           </p>
         </div>
         <div>
-          <p className="text-xs text-fg-muted">現金總額</p>
+          <p className="text-xs text-fg-on-tint">現金總額</p>
           <p className="mt-1 font-mono text-3xl font-semibold tabular-nums text-fg">
             {formatMoney(data.cashTotal)}
           </p>

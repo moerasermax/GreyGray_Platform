@@ -40,8 +40,16 @@
 
   --color-success: var(--gg-success);
   --color-warning: var(--gg-warning);
+  --color-warning-text: var(--gg-warning-text);
   --color-danger: var(--gg-danger);
   --color-info: var(--gg-info);
+
+  /* 狀態色的不透明淺底。半透明疊色的對比度取決於底下是什麼，算不準。 */
+  --color-success-subtle: var(--gg-success-subtle);
+  --color-warning-subtle: var(--gg-warning-subtle);
+  --color-danger-subtle: var(--gg-danger-subtle);
+  --color-info-subtle: var(--gg-info-subtle);
+  --color-primary-subtle: var(--gg-primary-subtle);
 
   --radius-sm: var(--gg-radius-sm);
   --radius-card: var(--gg-radius-md);
