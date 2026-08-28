@@ -183,8 +183,39 @@ M0 程式已完成（`2bb1e7d`）。M1a 是照 `docs/api/openapi.storefront.yaml
 | M1a-2 | Pricing · Campaign | Catalog | 運費試算要 SKU 的重量與尺寸；開團要掛商品 |
 | M1a-3 | Checkout · Ordering | Catalog · Pricing · Campaign | 購物車報價要三者齊備；下單接在購物車後面 |
 | M1a-4 | Payment（綠界）· Ledger | Ordering | 沒有訂單就沒有金流；分錄記的是訂單與收款 |
+| M1a-5 | **Procurement · Fulfillment · Inventory** | Ordering | 出國採購、出貨、批號。**這一列是後補的，見下** |
 
 **Ledger 一定要排在最後**，不要為了「帳務很重要」而提前。
+
+### M1a-5 是我漏掉的，不是 Codex 少做
+
+這張表原本只有四列，**漏了 Procurement、Fulfillment、Inventory 三個模組**。
+Codex 照著做完前四波（`6158077`），驗收時 OpenAPI gate 抓出**缺 12 個端點**：
+
+```
+storefront   /v1/inquiries/{inquiryId}/reply
+             /v1/orders/{orderId}/shipments
+admin        /v1/campaigns/{campaignId}/purchase-items
+             /v1/campaigns/{campaignId}/trip-costs
+             /v1/purchase-items/{purchaseItemId}/purchased
+             /v1/purchase-items/{purchaseItemId}/unavailable
+             /v1/purchase-items/{purchaseItemId}/price-changed
+             /v1/shipments
+             /v1/shipments/{shipmentId}/dispatch
+             /v1/shipments/{shipmentId}/deliver
+             /v1/lots
+             /v1/orders/{orderId}/lines/{lineId}/cancel
+```
+
+**那是代購生意的後半段**——出國把東西買回來、分批出貨、缺貨改單。
+沒有這一塊，系統只能收單收錢，不能出貨。
+
+三個模組的 `*.Contracts` 已經存在（Procurement 219 行、Fulfillment 144 行），
+型別與事件都定好了，缺的是 Core／Infra／端點／schema。
+
+**教訓**：波次表是照「模組相依」排的，但**驗收是照「凍結契約的端點清單」比對的**。
+排波次時要拿契約的 paths 清單逐條劃掉，確認每一條都被某一波涵蓋到——
+只想著模組相依，就會漏掉整個模組。
 分錄是對既有事實的記錄，事實還沒發生就記不了，提前做只會寫出猜測的分錄形狀。
 
 ## M1a 開工前必須先處理的一件事
