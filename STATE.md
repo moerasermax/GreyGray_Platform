@@ -244,6 +244,60 @@ Core 的型別全是 internal，Host 要呼叫就必須有 Contracts 上的 port
 
 ---
 
+## M1a 總驗收（2026-08-28，由 Claude 執行）—— **不通過，第 9 條**
+
+驗 `6158077 feat(m1a): implement end-to-end commerce backend`
+（120 檔案／17,591 行新增／8 個業務模組／6 個新測試專案），
+在 detached 於該 commit 的乾淨 worktree 上跑。
+
+```
+dotnet build .\GreyGray.slnx     0 警告 0 錯誤
+.\ops\test.ps1                   10 個專案 108 條全綠（原本 50 條）
+```
+
+第 2～8、10 條全過。第 7 條實測注入 `Identity.Infra` 的 public 型別，
+「Infra 對外只暴露各自的組合根」會紅、移除後 14/14。
+
+### 第 9 條：gate 這次真的比對了，抓到兩類
+
+**這是契約凍結以來第一次能做完整差異比對**（在此之前 Host 只有 `/health`，
+gate 一直是 FAIL-FAST）。
+
+**一、真的少做了 12 個端點——M1a 是實質未完成**
+
+```
+storefront   凍結 24 → 實作 23
+             缺 /v1/inquiries/{inquiryId}/reply
+                /v1/orders/{orderId}/shipments
+admin        凍結 32 → 實作 23
+             缺 purchase-items 的 purchased／unavailable／price-changed
+                shipments 的建立／dispatch／deliver
+                lots、trip-costs、訂單單品項取消
+```
+
+admin 缺的那批是**採購與出貨**，也就是代購生意的後半段。
+不是收尾問題，是整塊沒做。
+
+**二、行為對了但 OpenAPI 沒宣告**
+
+`Idempotency-Key` 在產出的 OpenAPI 裡完全不存在——不是元件、也沒有 inline。
+但實作是對的：`Platform/Http/BffHttp.cs` 會讀這個 header、沒帶回 400、
+超過 255 字回 400、payload 雜湊比對、四種 outcome 都處理（含 409 key-reused），
+`IIdempotencyStore` 注入到 18 個以上的端點。
+
+同類還有 `components/headers` 的 `SessionCookie` 與 `components/parameters`
+的 `Cursor`／`Limit`。**要補的是端點的 OpenAPI metadata，不是重寫邏輯。**
+
+`/health` 多出來是設計如此，不算差異。
+
+### 這一條的意義
+
+gate 沒有寫錯，也沒有誤報。**它擋下的正是「實作悄悄偏離凍結契約」**——
+如果沒有這一關，缺的那 12 個端點會等到前端第二波接上去、
+打了 404 才被發現，而那時前端已經照契約把畫面都做完了。
+
+---
+
 ## 2026-08-28 第二輪：邊界稽核修掉的六類問題
 
 派工前做了一次完整稽核，發現的都不是小事——每一條都會在平行開發時被放大。
