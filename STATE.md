@@ -82,7 +82,11 @@ dotnet build .\GreyGray.slnx     0 警告 0 錯誤，20.85 秒
 
 ---
 
-## 後端第二波與五服務部署驗收（2026-08-28）
+## 後端第二波交付內容（**Codex 自述**，2026-08-28）
+
+> 這一段是 Codex 自己寫的交付說明，**不是驗收結論**。
+> 總驗收在下一段，由 Claude 獨立執行（`docs/07` §5：「由我做，不是由 Codex 自己說了算」）。
+> 兩邊的數字互相對得上，所以自述沒有灌水——但結論仍然不該由交付方自己下。
 
 - **BE-2**：`platform.processed_message` 以 `(event_id, handler_name)` 去重；marker、handler
   副作用與 `SaveChanges` 共用模組 DbContext transaction。兩個獨立 scope 並行競爭時仍只執行一次，
@@ -100,9 +104,64 @@ dotnet build .\GreyGray.slnx     0 警告 0 錯誤，20.85 秒
   不要求 YC 開 symlink 權限。Storefront／Admin 各解參考 20 個 link，最終 artifact 均為
   0 reparse point，從 workspace 外啟動後 `/` 都回 HTTP 200。
 
-驗收結果：Release build **0 warning／0 error**；Architecture **12/12**、Contracts **16/16**、
+自驗結果：Release build **0 warning／0 error**；Architecture **12/12**、Contracts **16/16**、
 Platform **18/18**，合計 **46/46**；`ops/self-test.ps1` 全綠。Live OpenAPI gate 仍因尚無
 `/v1` endpoints 誠實紅燈，狀態與第一波相同。
+
+---
+
+## 後端第二波總驗收（2026-08-28，由 Claude 執行）
+
+```
+dotnet build .\GreyGray.slnx     0 警告 0 錯誤
+.\ops\test.ps1                   46 條全綠（架構 12 ／契約 16 ／Platform 18）
+```
+
+Platform 從 6 → 18 條，全部跑在真的 PostgreSQL 17 容器上。
+建置與測試是在主工作區跑的（未提交狀態），事後比對確認 **16:49 之後沒有任何 `.cs` 被改動**，
+所以結果與 commit `2930223` 的程式碼完全對應。第 7、9 條在 detached 於 `2930223` 的
+乾淨 worktree 補跑。
+
+| # | 檢查 | 結果 |
+|---|---|---|
+| 1 | 越界檔案 | ✅ 一處但正當，見下 |
+| 2 | 金額位置的 `decimal` / `double` | ✅ 只有 `Money.OfMajor`、`FxSnapshot.Rate` ＋ 註解 |
+| 3 | `DateTimeOffset.UtcNow` | ✅ 只有 `Time/SystemClock.cs:12` |
+| 4 | `new JsonSerializerOptions` | ✅ 只有 `Json/GreyGrayJson.cs:50` |
+| 5 | migration 的 `SET ROLE` ＋ owner 斷言 | N/A —— `platform` 四張表 `0002` 就建好了，本波沒動 |
+| 6 | 租戶設定用 transaction-local | ✅ Outbox／processed-message／Saga 三處**一致**改用 `set_config(..., true)` 並參數化 |
+| 7 | 注入架構違規會不會紅 | ✅ 實測：注入 `Ordering.Core → Ledger.Core`，**只有**「Core 不得參考其他模組的 Core」紅、訊息直指違規者；復原後 12/12 |
+| 8 | `KnownEventTypes` 對事件目錄 | ✅ 測試涵蓋，44 條逐項比對 |
+| 9 | `AddOpenApi()` 對凍結契約 | ✅ 實跑，仍正確 FAIL-FAST（與第一波相同，等 `/v1` 端點） |
+| 10 | 服務清單有沒有前端 5002／5003 | ✅ 補齊，`-Web-` 命名有隔開，缺 node 是明確 `throw` |
+
+**結論：通過。** 第一波不合格的兩條這次都補上了。
+
+**第 1 條的那一處**：`src/Platform/Outbox/OutboxDispatcher.cs` 是 BE-1 的檔案，
+不在 BE-2／BE-3／BE-8 的車道內。但那是**照第一波驗收意見修正**字串內插 SQL，
+屬於回應驗收而非擅自越界。其餘 25 個檔案全部在自己的車道內。
+
+### BE-2 最關鍵的性質是對的
+
+`IdempotentIntegrationEventHandler` 自己開交易，**拒絕被包在呼叫端既有交易內**（會 throw），
+`processed_message` 的 marker 與業務 `SaveChanges` 在**同一個交易**內 commit，
+`ON CONFLICT DO NOTHING` 回傳 0 就直接 commit 並返回。
+rollback 用 `CancellationToken.None`——取消也會確實回滾，marker 不會留在未完成交易裡。
+
+### 三個待處理
+
+1. **Node 版本四邊對不起來**：
+   `frontend/package.json` 宣告 `>=22.0.0`、`ops/build-frontends.ps1` 守 `>= 20`、
+   `ci.yml` 裝 `20.x`、開發機跑 `24.15`。`.npmrc` 沒開 `engine-strict`，
+   所以 pnpm 只警告不擋——**CI 會用一個 workspace 自己宣告不支援的版本建置成功**。
+   四個數字要收斂成一個，建議統一到 22。
+2. **`ci.yml` 的 `timeout-minutes: 30` 要重算**：Platform.Tests 現在單獨就要 **5.6 分鐘**
+   （Testcontainers 起真 Postgres，值得，但成本是真的）。兩個 job 都跑這套，
+   加上新增的前端 standalone 建置，30 分鐘會開始緊。
+3. **`OutboxMessage.cs:50` 的文件漂移**：註解還寫「派送前先 `SET LOCAL app.tenant_id`」，
+   但程式碼已改成 `set_config(..., true)`。等效，但下一個人會照註解找不到對應的碼。
+
+**第一波留下的「CI 長期紅燈」仍未決定**（見上一段第 2 點）。
 
 ---
 
