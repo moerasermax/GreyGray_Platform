@@ -1,6 +1,7 @@
 using GreyGray.Modules.Checkout.Contracts;
 using GreyGray.Modules.Ordering.Contracts;
 using GreyGray.Modules.Payment.Contracts;
+using GreyGray.Modules.Procurement.Contracts;
 using GreyGray.Platform.Abstractions.Messaging;
 
 namespace GreyGray.Modules.Ordering.Infra;
@@ -79,6 +80,25 @@ internal sealed class PaymentRefundedHandler(IOrderingApplication ordering)
         {
             throw new InvalidOperationException(
                 $"PaymentRefunded 無法更新訂單：{result.Error.Code} {result.Error.Message}");
+        }
+    }
+}
+
+internal sealed class ItemPurchasedHandler(IOrderingApplication ordering)
+    : IIntegrationEventHandler<ItemPurchased>
+{
+    public async Task HandleAsync(
+        ItemPurchased @event,
+        CancellationToken cancellationToken)
+    {
+        var result = await ordering.RecordItemPurchasedAsync(
+            @event.OrderLineId,
+            @event.Quantity,
+            cancellationToken);
+        if (result.IsFailure)
+        {
+            throw new InvalidOperationException(
+                $"ItemPurchased 無法更新訂單：{result.Error.Code} {result.Error.Message}");
         }
     }
 }

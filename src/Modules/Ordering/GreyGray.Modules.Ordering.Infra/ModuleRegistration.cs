@@ -3,6 +3,7 @@ using GreyGray.Modules.Campaign.Contracts;
 using GreyGray.Modules.Ordering.Contracts;
 using GreyGray.Modules.Ordering.Core;
 using GreyGray.Modules.Payment.Contracts;
+using GreyGray.Modules.Procurement.Contracts;
 using GreyGray.Platform.Messaging;
 using GreyGray.Platform.Modules;
 using GreyGray.Platform.Outbox;
@@ -88,6 +89,10 @@ internal sealed class OrderingModule : IModuleRegistration
         services.AddIdempotentIntegrationEventHandler<
             PaymentRefunded,
             PaymentRefundedHandler,
+            OrderingDbContext>();
+        services.AddIdempotentIntegrationEventHandler<
+            ItemPurchased,
+            ItemPurchasedHandler,
             OrderingDbContext>();
 
         return services;

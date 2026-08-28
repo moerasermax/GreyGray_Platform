@@ -87,6 +87,17 @@ internal sealed class OrderingRepository(OrderingDbContext dbContext) : IOrderRe
             .OrderByDescending(order => order.PlacedAt)
             .ToArrayAsync(cancellationToken);
 
+    public Task<Order?> GetByLineAsync(
+        TenantId tenantId,
+        OrderLineId orderLineId,
+        CancellationToken cancellationToken) =>
+        dbContext.Orders
+            .Include(order => order.Lines)
+            .SingleOrDefaultAsync(
+                order => order.TenantId == tenantId
+                    && order.Lines.Any(line => line.Id == orderLineId),
+                cancellationToken);
+
     public void Add(Order order) => dbContext.Orders.Add(order);
 
     private async Task<OrderQueryPage> PageAsync(

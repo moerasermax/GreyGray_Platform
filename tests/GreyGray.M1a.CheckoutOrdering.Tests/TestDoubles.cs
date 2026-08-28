@@ -275,5 +275,13 @@ internal sealed class FakeOrderRepository : IOrderRepository
             order.TenantId == tenantId
             && order.Lines.Any(line => line.CampaignId == campaignId)).ToArray());
 
+    public Task<Order?> GetByLineAsync(
+        TenantId tenantId,
+        OrderLineId orderLineId,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(_orders.Values.SingleOrDefault(order =>
+            order.TenantId == tenantId
+            && order.Lines.Any(line => line.Id == orderLineId)));
+
     public void Add(Order order) => _orders.Add(order.Id, order);
 }

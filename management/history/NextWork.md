@@ -21,8 +21,11 @@
       本機程式與永久 E2E 已完成：Identity／outbox 同交易、Worker→Notification 去重、
       trace context、架構負向測試、三個 executable 停止後再啟動都通過（見 `HANDOFF_6.md`）。
       尚差 YC 的 NSSM＋BootTrigger reboot 與可查詢 OTLP trace，故完整 M0 仍不得勾選。
-- [ ] M1a：依 frozen contract 實作 `/v1/auth/register` 與其餘正式 endpoints，讓 strict live
-      OpenAPI comparison 歸零；M0 `/v1/customers` 是 Development-only test hook，不可冒充。
+- [x] M1a：`6158077` 已完成 8 個業務模組與正式 endpoints；108 條測試全綠。
+      strict OpenAPI 已開始真比對，未完成項目屬 M1b paths 與既有 components metadata。
+- [ ] M1b-1：截團採購清單與買到回報已形成交付候選；Codex 自驗 Release build 0/0、
+      11 個專案 118 條全綠。等獨立驗收通過後再勾選；範圍與停損線見 `docs/10-M1b工作包.md`。
+- [ ] M1b-2：缺貨／部分買到退款與現場漲價詢問。開工前先決定退款去向如何進入可靠契約。
 
 每包交付後由我做總驗收（`docs/07-後端派工書.md` §5 的十條），
 任何一條不過就整包退回，不做部分接受。
@@ -37,9 +40,8 @@
       驗收通過（`f67e944`）。msw 的 SSR 與 browser 兩端都實測過，
       `NEXT_PUBLIC_USE_MOCK=1` 可用，**第二波完全不需要後端**。
       驗收紀錄在 `docs/09-前端第一波派工prompt.md` 末尾。
-- [ ] 第二波：FE-3 逛與找 · FE-4 買 · FE-5 我的 · FE-7 商品與開團 · FE-8 訂單與帳務
-      五則子 agent prompt 已備妥（`6c56e52`），派工前已先拆掉路由衝突
-      並建立共用的 `app/_lib/apiClient.ts`。**進行中。**
+- [x] 第二波：FE-3 逛與找 · FE-4 買 · FE-5 我的 · FE-7 商品與開團 · FE-8 訂單與帳務
+      已在前端 worktree 完成並提交 `898787e`；後端 M1b 仍按獨立波次驗收，不與前端 commit 混合。
 
 ## 可完全並行（跟寫程式互不相干，但擋 M1 上線）
 

@@ -305,6 +305,34 @@ internal sealed class OrderingApplicationService(
         return Result.Success();
     }
 
+    public async Task<Result> RecordItemPurchasedAsync(
+        OrderLineId orderLineId,
+        int quantityPurchased,
+        CancellationToken cancellationToken)
+    {
+        var order = await orders.GetByLineAsync(
+            correlationContext.TenantId,
+            orderLineId,
+            cancellationToken);
+        if (order is null)
+        {
+            return Result.Failure("ordering.order-line-not-found", "找不到訂單品項。");
+        }
+
+        var result = order.RecordItemPurchased(orderLineId, quantityPurchased);
+        if (result.IsFailure)
+        {
+            return Result.Failure(result.Error);
+        }
+
+        if (result.Value == PurchaseLineTransition.Recorded)
+        {
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        return Result.Success();
+    }
+
     public async Task<Result<OrderView>> GetAsync(
         OrderId id,
         CancellationToken cancellationToken)

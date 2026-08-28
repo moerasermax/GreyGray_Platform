@@ -263,6 +263,63 @@ internal sealed class Order
         return Result.Success();
     }
 
+    public Result<PurchaseLineTransition> RecordItemPurchased(
+        OrderLineId orderLineId,
+        int quantityPurchased)
+    {
+        var line = _lines.SingleOrDefault(candidate => candidate.Id == orderLineId);
+        if (line is null)
+        {
+            return Result<PurchaseLineTransition>.Failure(
+                "ordering.order-line-not-found",
+                "找不到訂單品項。");
+        }
+
+        if (quantityPurchased < 1 || quantityPurchased > line.Quantity)
+        {
+            return Result<PurchaseLineTransition>.Failure(
+                "ordering.invalid-quantity-purchased",
+                "實際買到數量必須介於 1 與訂購數量之間。");
+        }
+
+        if (quantityPurchased != line.Quantity)
+        {
+            return Result<PurchaseLineTransition>.Failure(
+                "ordering.partial-purchase-not-supported",
+                "短缺數量尚未完成退款前，訂單品項不能標記為全數買到。");
+        }
+
+        if (line.Status == OrderLineStatus.Purchased)
+        {
+            return PurchaseLineTransition.AlreadyRecorded;
+        }
+
+        if (line.Status is OrderLineStatus.Unavailable
+            or OrderLineStatus.Cancelled
+            or OrderLineStatus.Shipped
+            or OrderLineStatus.Completed)
+        {
+            return Result<PurchaseLineTransition>.Failure(
+                "ordering.order-line-cannot-be-purchased",
+                "目前的訂單品項狀態不能標記為買到。");
+        }
+
+        if (Status is OrderStatus.AwaitingPayment or OrderStatus.Cancelled)
+        {
+            return Result<PurchaseLineTransition>.Failure(
+                "ordering.order-not-in-procurement",
+                "訂單尚未付款或已取消，不能記錄採購結果。");
+        }
+
+        line.MarkPurchased();
+        if (Status is OrderStatus.PaidAwaitingClose or OrderStatus.ClosedAwaitingDeparture)
+        {
+            Status = OrderStatus.Purchasing;
+        }
+
+        return PurchaseLineTransition.Recorded;
+    }
+
     public OrderView ToView() =>
         new(
             Id,
@@ -336,6 +393,12 @@ internal enum PaymentCaptureTransition
     ReadyToShip = 2,
 }
 
+internal enum PurchaseLineTransition
+{
+    AlreadyRecorded = 0,
+    Recorded = 1,
+}
+
 internal sealed class OrderLine
 {
     private OrderLine()
@@ -400,6 +463,8 @@ internal sealed class OrderLine
 
     public void Cancel() => Status = OrderLineStatus.Cancelled;
 
+    public void MarkPurchased() => Status = OrderLineStatus.Purchased;
+
     public OrderLineView ToView() =>
         new(Id, SkuId, Mode, Status, Quantity, UnitPrice, CampaignId, ConsumedLotId)
         {
@@ -434,6 +499,11 @@ internal interface IOrderRepository
     Task<IReadOnlyList<Order>> GetByCampaignAsync(
         TenantId tenantId,
         CampaignId campaignId,
+        CancellationToken cancellationToken);
+
+    Task<Order?> GetByLineAsync(
+        TenantId tenantId,
+        OrderLineId orderLineId,
         CancellationToken cancellationToken);
 
     void Add(Order order);

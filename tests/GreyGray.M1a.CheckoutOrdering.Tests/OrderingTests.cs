@@ -111,6 +111,39 @@ public sealed class OrderingTests
         refund.Amount.ShouldBe(created.Value.GrandTotal);
     }
 
+    [Fact(DisplayName = "M1b ItemPurchased 把對應 line 與訂單推進採購中，事件重送冪等")]
+    public async Task Item_purchased_advances_order_and_line_idempotently()
+    {
+        var fixture = new OrderingFixture();
+        var created = await fixture.Service.CreateFromCheckoutAsync(
+            fixture.Checkout,
+            TestContext.Current.CancellationToken);
+        await fixture.Service.RecordPaymentCapturedAsync(
+            created.Value.Id,
+            created.Value.GrandTotal,
+            TestContext.Current.CancellationToken);
+        fixture.UnitOfWork.Reset();
+        var line = created.Value.Lines.Single();
+
+        var first = await fixture.Service.RecordItemPurchasedAsync(
+            line.Id,
+            line.Quantity,
+            TestContext.Current.CancellationToken);
+        var replay = await fixture.Service.RecordItemPurchasedAsync(
+            line.Id,
+            line.Quantity,
+            TestContext.Current.CancellationToken);
+        var detail = await fixture.Service.GetAdminAsync(
+            created.Value.Id,
+            TestContext.Current.CancellationToken);
+
+        first.IsSuccess.ShouldBeTrue();
+        replay.IsSuccess.ShouldBeTrue();
+        detail.Value.Status.ShouldBe(OrderStatus.Purchasing);
+        detail.Value.Lines.Single().Status.ShouldBe(OrderLineStatus.Purchased);
+        fixture.UnitOfWork.Saves.ShouldBe(1);
+    }
+
     private sealed class OrderingFixture
     {
         public OrderingFixture()

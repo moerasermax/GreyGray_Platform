@@ -9,6 +9,7 @@ using GreyGray.Modules.Ledger.Infra;
 using GreyGray.Modules.Ordering.Infra;
 using GreyGray.Modules.Payment.Infra;
 using GreyGray.Modules.Pricing.Infra;
+using GreyGray.Modules.Procurement.Infra;
 using GreyGray.Platform;
 using GreyGray.Platform.Http;
 using GreyGray.Platform.Observability;
@@ -50,6 +51,7 @@ builder.Services
     .AddInventoryModule(builder.Configuration)
     .AddCheckoutModule(builder.Configuration)
     .AddOrderingModule(builder.Configuration)
+    .AddProcurementModule(builder.Configuration)
     .AddPaymentModule(builder.Configuration)
     .AddLedgerModule(builder.Configuration);
 
@@ -65,6 +67,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapM1aAdminEndpoints();
+app.MapM1bProcurementEndpoints();
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();

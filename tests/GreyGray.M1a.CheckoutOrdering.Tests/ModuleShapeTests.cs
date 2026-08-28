@@ -36,8 +36,8 @@ public sealed class ModuleShapeTests
         AssertModel(ordering, "ordering", ["order_line", "orders"]);
     }
 
-    [Fact(DisplayName = "公開 input ports 覆蓋 frozen M1a cart / order operations，沒有 line cancel")]
-    public void Public_ports_cover_m1a_operations_only()
+    [Fact(DisplayName = "公開 input ports 覆蓋 M1a 與 M1b-1 operations，仍沒有 line cancel")]
+    public void Public_ports_cover_current_operations()
     {
         typeof(ICheckoutApplication).GetMethods().Select(method => method.Name).ShouldBe(
             ["AddLineAsync", "CompleteAsync", "GetCartAsync", "QuoteAsync", "RemoveLineAsync", "UpdateLineAsync"],
@@ -54,11 +54,11 @@ public sealed class ModuleShapeTests
                 "RecordPaymentCapturedAsync",
                 "RecordPaymentFailedAsync",
                 "RecordPaymentRefundedAsync",
+                "RecordItemPurchasedAsync",
             ],
             ignoreOrder: true);
-        typeof(IOrderingApplication).GetMethods()
-            .Any(method => method.Name.Contains("Line", StringComparison.OrdinalIgnoreCase))
-            .ShouldBeFalse("單一 line cancel 是 M1b，不得提前混進 M1a input port。");
+        typeof(IOrderingApplication).GetMethods().Select(method => method.Name)
+            .ShouldNotContain("CancelLineAsync", "單一 line cancel 尚未完成退款契約，不得混進 input port。");
     }
 
     private static void AssertModel(

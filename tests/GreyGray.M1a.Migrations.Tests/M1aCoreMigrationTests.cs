@@ -171,6 +171,73 @@ public sealed class M1aCoreMigrationTests : IAsyncLifetime
         orderFailure.MessageText.ShouldContain("ordering.orders");
     }
 
+    [Fact(DisplayName = "0007 Procurement 可重跑，owner／權限／tenant-order-line／TWD 成本約束完整")]
+    public async Task Procurement_migration_is_idempotent_owned_and_constrained()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var migrations = Path.Combine(FindRepositoryRoot(), "db", "migrations");
+        var connectionString = await CreateDatabaseAsync(cancellationToken);
+
+        await ExecuteMigrationChainAsync(connectionString, migrations, 7, cancellationToken);
+        await ExecuteScriptAsync(
+            connectionString,
+            Path.Combine(migrations, "0007_m1b_procurement.sql"),
+            cancellationToken);
+
+        (await ScalarAsync<string>(connectionString, """
+            SELECT tableowner
+            FROM pg_tables
+            WHERE schemaname = 'procurement' AND tablename = 'purchase_item';
+            """, cancellationToken)).ShouldBe("greygray_owner");
+        (await ScalarAsync<bool>(connectionString, """
+            SELECT has_table_privilege(
+                'greygray_procurement',
+                'procurement.purchase_item',
+                'SELECT,INSERT,UPDATE,DELETE');
+            """, cancellationToken)).ShouldBeTrue();
+        (await ScalarAsync<bool>(connectionString, """
+            SELECT has_table_privilege(
+                'greygray_ordering',
+                'procurement.purchase_item',
+                'SELECT');
+            """, cancellationToken)).ShouldBeFalse();
+
+        var orderLineId = Guid.CreateVersion7();
+        await ExecuteSqlAsync(connectionString, $"""
+            INSERT INTO procurement.purchase_item (
+                id, tenant_id, campaign_id, sku_id, order_line_id,
+                quantity_requested, quantity_purchased, status, created_at)
+            VALUES (
+                '{Guid.CreateVersion7()}'::uuid, '{TenantA}'::uuid,
+                '{Guid.CreateVersion7()}'::uuid, '{Guid.CreateVersion7()}'::uuid,
+                '{orderLineId}'::uuid, 2, 0, 0, now());
+            """, cancellationToken);
+
+        await AssertConstraintFailureAsync(connectionString, $"""
+            INSERT INTO procurement.purchase_item (
+                id, tenant_id, campaign_id, sku_id, order_line_id,
+                quantity_requested, quantity_purchased, status, created_at)
+            VALUES (
+                '{Guid.CreateVersion7()}'::uuid, '{TenantA}'::uuid,
+                '{Guid.CreateVersion7()}'::uuid, '{Guid.CreateVersion7()}'::uuid,
+                '{orderLineId}'::uuid, 1, 0, 0, now());
+            """, cancellationToken);
+
+        await AssertConstraintFailureAsync(connectionString, $"""
+            INSERT INTO procurement.purchase_item (
+                id, tenant_id, campaign_id, sku_id, order_line_id,
+                quantity_requested, quantity_purchased,
+                actual_paid_original_amount_minor, actual_paid_original_currency,
+                actual_paid_booking_amount_minor, actual_paid_booking_currency,
+                status, created_at, decided_at)
+            VALUES (
+                '{Guid.CreateVersion7()}'::uuid, '{TenantA}'::uuid,
+                '{Guid.CreateVersion7()}'::uuid, '{Guid.CreateVersion7()}'::uuid,
+                '{Guid.CreateVersion7()}'::uuid, 1, 1,
+                1000, 'JPY', 220, 'JPY', 1, now(), now());
+            """, cancellationToken);
+    }
+
     private static async Task AssertTenantAndValueConstraintsAsync(
         string connectionString,
         CancellationToken cancellationToken)

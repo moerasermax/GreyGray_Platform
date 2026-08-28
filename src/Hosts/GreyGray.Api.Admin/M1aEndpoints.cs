@@ -721,7 +721,7 @@ internal static class M1aEndpoints
         BffHttp.SetSessionCookie(context.Response, SessionCookie, token);
     }
 
-    private static string Scope(HttpContext context, string operation) =>
+    internal static string Scope(HttpContext context, string operation) =>
         $"admin:{GetStaffId(context)}:{operation}";
 
     private static StaffId GetStaffId(HttpContext context) =>
@@ -729,7 +729,7 @@ internal static class M1aEndpoints
             ? id
             : throw new InvalidOperationException("StaffRoleFilter 尚未建立員工身分。");
 
-    private static bool TryId(string raw, out Guid id) => Guid.TryParseExact(raw, "N", out id);
+    internal static bool TryId(string raw, out Guid id) => Guid.TryParseExact(raw, "N", out id);
 
     private static string AccountName(string code) => code switch
     {
@@ -1085,7 +1085,7 @@ internal static class M1aEndpoints
         IReadOnlyList<string> QuoteExplain,
         string? CustomerContactMasked);
 
-    private sealed class StaffRoleFilter(StaffRole requiredRole) : IEndpointFilter
+    internal sealed class StaffRoleFilter(StaffRole requiredRole) : IEndpointFilter
     {
         public async ValueTask<object?> InvokeAsync(
             EndpointFilterInvocationContext invocationContext,

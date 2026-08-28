@@ -9,6 +9,7 @@ using GreyGray.Modules.Notification.Infra;
 using GreyGray.Modules.Ordering.Infra;
 using GreyGray.Modules.Payment.Infra;
 using GreyGray.Modules.Pricing.Infra;
+using GreyGray.Modules.Procurement.Infra;
 using GreyGray.Platform;
 using GreyGray.Platform.Messaging;
 using GreyGray.Platform.Observability;
@@ -63,11 +64,12 @@ builder.Services
     .AddInventoryModule(builder.Configuration)
     .AddCheckoutModule(builder.Configuration)
     .AddOrderingModule(builder.Configuration)
+    .AddProcurementModule(builder.Configuration)
     .AddPaymentModule(builder.Configuration)
     .AddLedgerModule(builder.Configuration)
     .AddNotificationModule(builder.Configuration);
 
-// M1b 之後再把 Procurement/Fulfillment 等後續模組的 handler 納入。
+// Fulfillment 等後續 M1b 模組會在各自波次納入。
 // TODO(M3-6)：Cloudflare Queues consumer —— 拉取 webhook 緩衝層的訊息。
 
 var host = builder.Build();

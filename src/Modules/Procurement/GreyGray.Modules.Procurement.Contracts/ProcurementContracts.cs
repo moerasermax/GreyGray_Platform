@@ -100,6 +100,24 @@ public interface IProcurementQuery
     Task<Result<Inquiry>> GetInquiryAsync(InquiryId id, CancellationToken cancellationToken);
 }
 
+/// <summary>Admin BFF 與整合事件 adapter 共用的 Procurement input port。</summary>
+public interface IProcurementApplication
+{
+    /// <summary>
+    /// 截團後依已付款的預購訂單建立採購清單。以 OrderLineId 去重，事件重送不會重複建立。
+    /// </summary>
+    Task<Result<int>> BuildCampaignListAsync(
+        CampaignClosed campaignClosed,
+        CancellationToken cancellationToken);
+
+    /// <summary>記錄現場實際買到的數量與原幣／記帳幣成本。</summary>
+    Task<Result<PurchaseItem>> MarkPurchasedAsync(
+        PurchaseItemId id,
+        int quantityPurchased,
+        MoneyPair actualPaid,
+        CancellationToken cancellationToken);
+}
+
 /// <summary>
 /// 客人對漲價詢問的回覆入口。
 /// <b>LINE 的 postback 直接打到這裡</b>（經 Storefront BFF），

@@ -1,10 +1,10 @@
 # 現況
 
-**最後更新**：2026-08-28（M1b-1 截團採購清單交付候選，待獨立驗收）
+**最後更新**：2026-08-28（M1b-1 截團採購清單交付候選，自驗完成、待獨立驗收）
 
 ## 一句話
 
-M1a 後端已在 `6158077` 完成；前端第二波已在獨立 worktree 完成。後端現在進入 M1b，第一波「`CampaignClosed` → 採購清單 → Admin 查詢／標記買到 → `ItemPurchased` 更新 Ordering」已形成交付候選，等待獨立驗收。缺貨退款、漲價詢問、入庫與出貨仍未實作；YC 的 NSSM＋BootTrigger reboot 與可查詢 OTLP trace 也仍未驗收。
+M1a 後端已在 `6158077` 完成；前端第二波已在獨立 worktree 完成。後端現在進入 M1b，第一波「`CampaignClosed` → 採購清單 → Admin 查詢／標記買到 → `ItemPurchased` 更新 Ordering」已形成交付候選，Codex 自驗 11 個專案 118 條全綠，等待獨立驗收。缺貨退款、漲價詢問、入庫與出貨仍未實作；YC 的 NSSM＋BootTrigger reboot 與可查詢 OTLP trace 也仍未驗收。
 
 ## 已完成
 
@@ -14,7 +14,7 @@ M1a 後端已在 `6158077` 完成；前端第二波已在獨立 worktree 完成�
 | 模組硬邊界 | ✅ **14 條**架構測試全綠；新組合根 public-type 規則已故障注入驗證會紅 |
 | 線上格式與事件目錄 | ✅ **16 條**契約測試全綠（`tests/GreyGray.Contracts.Tests`，同樣注入驗證過） |
 | Platform 基礎設施 | ✅ Outbox、processed-message decorator、API idempotency、Saga Timer、44 事件 registry、`PlatformDbContext`、OTel、clock／correlation context |
-| Platform 整合測試 | ✅ **19 條**全綠；真 PostgreSQL 17 Testcontainers，含 rollback／retry、並行去重、lease fencing、雙 worker timer 與 `0003` 實跑 |
+| Platform 整合測試 | ✅ **21 條**全綠；真 PostgreSQL 17 Testcontainers，含 rollback／retry、並行去重、lease fencing、雙 worker timer 與 migration 實跑 |
 | M0 永久 E2E | ✅ **1 條**全綠；真 PostgreSQL 17、真 Storefront／Admin／Worker processes、重送去重、停止後再啟動、Production test hook 404、`0004` owner 故障注入 |
 | 14 個模組的 Contracts（ID／DTO／介面／44 個事件） | ✅ 可編譯 |
 | Shared.Kernel（Money、Currency、Result、IClock、Dimensions、**JSON**） | ✅ |
@@ -360,7 +360,7 @@ M1a 真正缺的只有 /v1/orders/{orderId}/lines/{lineId}/cancel 一條
 第一列就是這條沒被抓到的話會發生的事：部署腳本一片綠，
 然後服務啟動時報 `permission denied for table`，而訊息完全不指向真正的原因。
 
-## M1b-1 交付候選（2026-08-28，由 Codex 實作，待獨立驗收）
+## M1b-1 交付候選（2026-08-28，由 Codex 實作，自驗完成、待獨立驗收）
 
 - Procurement aggregate／repository／DbContext／組合根與 `0007_m1b_procurement.sql` 已建立。
 - Worker 冪等消費 `CampaignClosed`，只為已付款預購 line 產生採購清單；tenant/order-line 唯一。
@@ -369,6 +369,7 @@ M1a 真正缺的只有 /v1/orders/{orderId}/lines/{lineId}/cancel 一條
 - 真 PostgreSQL 17 已驗 `0001→0007`、0007 重跑、owner、模組權限、跨 schema 禁止與 TWD 成本約束。
 - 部分買到暫時回 422；現有契約沒有短缺數量與退款去向，不能誤記為完整買到。
 - strict OpenAPI gate 現在 Admin 25/32 paths；本波兩條 path 已出現在 AddOpenApi，剩餘 M1b paths 與既有 components metadata 漂移仍照實 fail-closed。
+- Release build 0 warning／0 error；`ops/test.ps1 -Configuration Release` 11 個測試專案、118 條全綠，其中 Procurement 8 條、migration 9 條、Platform 21 條。
 
 完整波次、排除項與可重跑驗收見 `docs/10-M1b工作包.md`。
 

@@ -96,6 +96,7 @@
     <Project Path="tests/GreyGray.M1a.Inventory.Tests/GreyGray.M1a.Inventory.Tests.csproj" />
     <Project Path="tests/GreyGray.M1a.Migrations.Tests/GreyGray.M1a.Migrations.Tests.csproj" />
     <Project Path="tests/GreyGray.M1a.PaymentLedger.Tests/GreyGray.M1a.PaymentLedger.Tests.csproj" />
+    <Project Path="tests/GreyGray.M1b.Procurement.Tests/GreyGray.M1b.Procurement.Tests.csproj" />
     <Project Path="tests/GreyGray.Platform.Tests/GreyGray.Platform.Tests.csproj" />
   </Folder>
 </Solution>

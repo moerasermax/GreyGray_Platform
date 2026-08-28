@@ -230,6 +230,12 @@ public interface IOrderingApplication
         OrderId orderId,
         Money amount,
         CancellationToken cancellationToken);
+
+    /// <summary>Procurement 回報某個訂單品項已買到。</summary>
+    Task<Result> RecordItemPurchasedAsync(
+        OrderLineId orderLineId,
+        int quantityPurchased,
+        CancellationToken cancellationToken);
 }
 
 // ── 對外事件 ─────────────────────────────────────────────────────────────
