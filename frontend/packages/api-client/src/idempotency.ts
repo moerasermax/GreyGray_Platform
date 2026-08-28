@@ -48,3 +48,116 @@ export function createIdempotencyScope(): IdempotencyScope {
     },
   };
 }
+
+/**
+ * 依 mutation payload 維持冪等鍵。
+ *
+ * 同一份 payload（連點、逾時重試）拿到同一把 key；使用者修改欄位後 payload 改變，
+ * 自動換 key，避免後端回 `platform.idempotency-key-reused`。成功後呼叫 complete，
+ * 下一次即使 payload 一樣也會被視為新的使用者動作。
+ */
+export interface PayloadIdempotencyScope {
+  current(payload: unknown): string;
+  complete(): void;
+}
+
+export function createPayloadIdempotencyScope(): PayloadIdempotencyScope {
+  const scope = createIdempotencyScope();
+  let fingerprint: string | null = null;
+
+  return {
+    current(payload: unknown) {
+      const nextFingerprint = payloadFingerprint(payload);
+      if (fingerprint !== null && fingerprint !== nextFingerprint) {
+        scope.reset();
+      }
+      fingerprint = nextFingerprint;
+      return scope.current();
+    },
+    complete() {
+      fingerprint = null;
+      scope.reset();
+    },
+  };
+}
+
+/**
+ * 把一次使用者動作包成可安全重試、可防連點的非同步函式。
+ *
+ * 同一時間的重複呼叫共用同一個 in-flight promise，因此不會送出多個 HTTP request；
+ * 失敗時保留原 key 供重試，成功後才換 key 給下一次新動作。
+ */
+export interface IdempotentAction<TResult> {
+  currentKey(): string;
+  run(): Promise<TResult>;
+}
+
+export function createIdempotentAction<TResult>(
+  action: (idempotencyKey: string) => Promise<TResult>,
+): IdempotentAction<TResult> {
+  const scope = createIdempotencyScope();
+  let pending: Promise<TResult> | null = null;
+
+  function run(): Promise<TResult> {
+    if (pending) return pending;
+
+    const key = scope.current();
+    pending = action(key)
+      .then((result) => {
+        scope.reset();
+        return result;
+      })
+      .finally(() => {
+        pending = null;
+      });
+    return pending;
+  }
+
+  return { currentKey: () => scope.current(), run };
+}
+
+/**
+ * payload 可能在失敗後被使用者修改的 mutation action。
+ *
+ * - 同 payload 的連點共用同一個 request 與 key。
+ * - 同 payload 失敗後重試仍沿用 key。
+ * - payload 改變會換 key，避免後端回 `platform.idempotency-key-reused`。
+ * - request 還在執行時不接受不同 payload；UI 應維持送出中狀態，不能偷偷再送第二筆。
+ */
+export interface PayloadIdempotentAction<TPayload, TResult> {
+  currentKey(payload: TPayload): string;
+  run(payload: TPayload): Promise<TResult>;
+}
+
+export function createPayloadIdempotentAction<TPayload, TResult>(
+  action: (payload: TPayload, idempotencyKey: string) => Promise<TResult>,
+): PayloadIdempotentAction<TPayload, TResult> {
+  const scope = createPayloadIdempotencyScope();
+  let pending: { readonly fingerprint: string; readonly promise: Promise<TResult> } | null = null;
+
+  function run(payload: TPayload): Promise<TResult> {
+    const fingerprint = payloadFingerprint(payload);
+    if (pending) {
+      if (pending.fingerprint === fingerprint) return pending.promise;
+      return Promise.reject(new Error('上一筆寫入仍在處理中，不能同時送出不同內容。'));
+    }
+
+    const key = scope.current(payload);
+    const promise = action(payload, key)
+      .then((result) => {
+        scope.complete();
+        return result;
+      })
+      .finally(() => {
+        pending = null;
+      });
+    pending = { fingerprint, promise };
+    return promise;
+  }
+
+  return { currentKey: (payload) => scope.current(payload), run };
+}
+
+function payloadFingerprint(payload: unknown): string {
+  return JSON.stringify(payload) ?? String(payload);
+}

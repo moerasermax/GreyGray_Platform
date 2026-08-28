@@ -6,6 +6,8 @@ import { STOREFRONT_BASE_URL, resetStorefrontMockState, storefrontErrorScenarios
 import { storefrontServer } from '../server';
 
 const client = new ApiClient({ baseUrl: STOREFRONT_BASE_URL });
+let mutationSequence = 0;
+const mutationOptions = () => ({ idempotencyKey: `storefront-smoke-${++mutationSequence}` });
 
 beforeAll(() => storefrontServer.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => {
@@ -63,21 +65,21 @@ describe('storefront mock：每個 M1a 端點打一次，回應要通過型別�
     const sku = detail.skus[0];
     expect(sku).toBeDefined();
 
-    const afterAdd = await api.addCartLine(client, { skuId: sku!.id, mode: 'Stock', quantity: 3 });
+    const afterAdd = await api.addCartLine(client, { skuId: sku!.id, mode: 'Stock', quantity: 3 }, mutationOptions());
     expect(afterAdd.lines).toHaveLength(lineCountBefore + 1);
 
     const newLine = afterAdd.lines.at(-1);
     expect(newLine).toBeDefined();
-    const afterUpdate = await api.updateCartLine(client, newLine!.id, { quantity: 5 });
+    const afterUpdate = await api.updateCartLine(client, newLine!.id, { quantity: 5 }, mutationOptions());
     const updatedLine = afterUpdate.lines.find((l) => l.id === newLine!.id);
     expect(updatedLine?.quantity).toBe(5);
 
-    const afterRemove = await api.removeCartLine(client, newLine!.id);
+    const afterRemove = await api.removeCartLine(client, newLine!.id, mutationOptions());
     expect(afterRemove.lines.find((l) => l.id === newLine!.id)).toBeUndefined();
   });
 
   it('詢價：含運總額 = 商品總額 + 運費', async () => {
-    const quote = await api.quoteCart(client, { deliveryMethod: 'ConvenienceStore' });
+    const quote = await api.quoteCart(client, { deliveryMethod: 'ConvenienceStore' }, mutationOptions());
     expect(quote.grandTotal.amountMinor).toBe(quote.goodsTotal.amountMinor + quote.shippingFee.amountMinor);
     expect(quote.explain.length).toBeGreaterThan(0);
   });
@@ -87,7 +89,7 @@ describe('storefront mock：每個 M1a 端點打一次，回應要通過型別�
       deliveryMethod: 'ConvenienceStore',
       shippingPolicy: 'ShipSeparately',
       convenienceStoreCode: '991234',
-    });
+    }, mutationOptions());
     expect(order.status).toBe('AwaitingPayment');
     expect(order.lines.length).toBeGreaterThan(0);
 
@@ -99,7 +101,7 @@ describe('storefront mock：每個 M1a 端點打一次，回應要通過型別�
     const order = await api.checkout(client, {
       deliveryMethod: 'SelfPickup',
       shippingPolicy: 'ShipSeparately',
-    });
+    }, mutationOptions());
 
     const list = await api.listOrders(client);
     expect(list.items.some((o) => o.id === order.id)).toBe(true);
@@ -107,11 +109,11 @@ describe('storefront mock：每個 M1a 端點打一次，回應要通過型別�
     const detail = await api.getOrder(client, order.id);
     expect(detail.id).toBe(order.id);
 
-    const payment = await api.initiatePayment(client, order.id);
+    const payment = await api.initiatePayment(client, order.id, mutationOptions());
     expect(payment.method).toBe('POST');
     expect(payment.fields['MerchantTradeNo']).toBe(order.orderNumber);
 
-    const cancelled = await api.cancelOrder(client, order.id);
+    const cancelled = await api.cancelOrder(client, order.id, {}, mutationOptions());
     expect(cancelled.status).toBe('Cancelled');
   });
 
@@ -124,7 +126,7 @@ describe('storefront mock：每個 M1a 端點打一次，回應要通過型別�
       district: '中正區',
       streetAddress: '測試路 1 號',
       isDefault: false,
-    });
+    }, mutationOptions());
     expect(created.id).toBeTruthy();
 
     const updated = await api.updateAddress(client, created.id, {
@@ -135,10 +137,10 @@ describe('storefront mock：每個 M1a 端點打一次，回應要通過型別�
       district: '中正區',
       streetAddress: '測試路 1 號',
       isDefault: false,
-    });
+    }, mutationOptions());
     expect(updated.recipientName).toBe('測試客人改名');
 
-    await api.deleteAddress(client, created.id);
+    await api.deleteAddress(client, created.id, mutationOptions());
     const list = await api.listAddresses(client);
     expect(list.find((a) => a.id === created.id)).toBeUndefined();
   });
@@ -176,7 +178,7 @@ describe('storefront mock：錯誤情境', () => {
     storefrontServer.use(storefrontErrorScenarios.registerWeakPassword);
     expect.assertions(3);
     try {
-      await api.register(client, { phoneNumber: '0912345678', password: '123', displayName: '測試' });
+      await api.register(client, { phoneNumber: '0912345678', password: '123', displayName: '測試' }, mutationOptions());
     } catch (error) {
       expect(error).toBeInstanceOf(ApiError);
       expect((error as ApiError).status).toBe(422);
@@ -188,7 +190,7 @@ describe('storefront mock：錯誤情境', () => {
     storefrontServer.use(storefrontErrorScenarios.paymentAlreadyPaid);
     expect.assertions(3);
     try {
-      await api.initiatePayment(client, 'irrelevant');
+      await api.initiatePayment(client, 'irrelevant', mutationOptions());
     } catch (error) {
       expect(error).toBeInstanceOf(ApiError);
       expect((error as ApiError).status).toBe(409);

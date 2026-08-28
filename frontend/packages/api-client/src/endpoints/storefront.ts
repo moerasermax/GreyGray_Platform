@@ -13,9 +13,9 @@ type S = components['schemas'];
 /** `RequestOptions.query` 要求索引簽章；具名 query 介面沒有，這裡轉一手。 */
 type QueryRecord = Record<string, string | number | boolean | undefined | null>;
 
-/** 寫入請求共用的選項：冪等鍵與中止訊號。 */
-export interface CallOptions {
-  readonly idempotencyKey?: string;
+/** 寫入請求共用的選項：契約要求冪等鍵，端點層不允許省略。 */
+export interface MutationOptions {
+  readonly idempotencyKey: string;
   readonly signal?: AbortSignal;
 }
 
@@ -81,16 +81,16 @@ export interface ListOrdersQuery {
 export function register(
   client: ApiClient,
   body: S['RegisterRequest'],
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['Me']> {
   return client.post('/v1/auth/register', { body, ...options });
 }
 
-export function login(client: ApiClient, body: LoginRequest, options: CallOptions = {}): Promise<S['Me']> {
+export function login(client: ApiClient, body: LoginRequest, options: MutationOptions): Promise<S['Me']> {
   return client.post('/v1/auth/login', { body, ...options });
 }
 
-export function logout(client: ApiClient, options: CallOptions = {}): Promise<void> {
+export function logout(client: ApiClient, options: MutationOptions): Promise<void> {
   return client.post('/v1/auth/logout', { ...options });
 }
 
@@ -103,7 +103,7 @@ export function getMe(client: ApiClient, options: { signal?: AbortSignal } = {})
 export function updateMe(
   client: ApiClient,
   body: UpdateMeRequest,
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['Me']> {
   return client.patch('/v1/me', { body, ...options });
 }
@@ -115,7 +115,7 @@ export function listAddresses(client: ApiClient, options: { signal?: AbortSignal
 export function createAddress(
   client: ApiClient,
   body: S['ShippingAddressInput'],
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['ShippingAddress']> {
   return client.post('/v1/me/addresses', { body, ...options });
 }
@@ -124,12 +124,12 @@ export function updateAddress(
   client: ApiClient,
   addressId: string,
   body: S['ShippingAddressInput'],
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['ShippingAddress']> {
   return client.put(`/v1/me/addresses/${addressId}`, { body, ...options });
 }
 
-export function deleteAddress(client: ApiClient, addressId: string, options: CallOptions = {}): Promise<void> {
+export function deleteAddress(client: ApiClient, addressId: string, options: MutationOptions): Promise<void> {
   return client.delete(`/v1/me/addresses/${addressId}`, { ...options });
 }
 
@@ -189,7 +189,7 @@ export function getCart(client: ApiClient, options: { signal?: AbortSignal } = {
 export function addCartLine(
   client: ApiClient,
   body: AddCartLineRequest,
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['Cart']> {
   return client.post('/v1/cart/lines', { body, ...options });
 }
@@ -198,19 +198,19 @@ export function updateCartLine(
   client: ApiClient,
   lineId: string,
   body: UpdateCartLineRequest,
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['Cart']> {
   return client.patch(`/v1/cart/lines/${lineId}`, { body, ...options });
 }
 
-export function removeCartLine(client: ApiClient, lineId: string, options: CallOptions = {}): Promise<S['Cart']> {
+export function removeCartLine(client: ApiClient, lineId: string, options: MutationOptions): Promise<S['Cart']> {
   return client.delete(`/v1/cart/lines/${lineId}`, { ...options });
 }
 
 export function quoteCart(
   client: ApiClient,
   body: QuoteCartRequest,
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['QuoteResult']> {
   return client.post('/v1/cart/quote', { body, ...options });
 }
@@ -218,7 +218,7 @@ export function quoteCart(
 export function checkout(
   client: ApiClient,
   body: CheckoutRequest,
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['Order']> {
   return client.post('/v1/cart/checkout', { body, ...options });
 }
@@ -244,8 +244,8 @@ export function getOrder(
 export function cancelOrder(
   client: ApiClient,
   orderId: string,
-  body: CancelOrderRequest = {},
-  options: CallOptions = {},
+  body: CancelOrderRequest,
+  options: MutationOptions,
 ): Promise<S['Order']> {
   return client.post(`/v1/orders/${orderId}/cancel`, { body, ...options });
 }
@@ -255,7 +255,7 @@ export function cancelOrder(
 export function initiatePayment(
   client: ApiClient,
   orderId: string,
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['PaymentInitiation']> {
   return client.post(`/v1/orders/${orderId}/payment`, { ...options });
 }

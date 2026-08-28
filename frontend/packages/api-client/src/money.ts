@@ -104,6 +104,46 @@ export function formatMoney(money: Money, options: FormatMoneyOptions = {}): str
   return getFormatter(money.currency, options.showDecimals ?? false).format(major);
 }
 
+/**
+ * 把金額輸入框的「主單位字串」精確轉成契約使用的整數最小單位。
+ *
+ * 這是寫入表單唯一可以做主單位／最小單位換算的地方；不用浮點乘法，避免
+ * `10.29 * 100` 之類的 IEEE-754 誤差。格式不合法、超過幣別小數位數或超過
+ * JavaScript 安全整數範圍時回 `null`，由表單顯示驗證訊息。
+ */
+export function moneyFromMajorInput(value: string, currency: Currency): Money | null {
+  const normalized = value.trim().replaceAll(',', '');
+  const match = /^(-?)(\d+)(?:\.(\d*))?$/.exec(normalized);
+  if (!match) return null;
+
+  const [, sign, whole = '', fraction = ''] = match;
+  const digits = minorUnitDigits(currency);
+  if (fraction.length > digits) return null;
+
+  const factor = 10 ** digits;
+  const fractionMinor = fraction ? Number(fraction.padEnd(digits, '0')) : 0;
+  const unsignedMinor = Number(whole) * factor + fractionMinor;
+  if (!Number.isSafeInteger(unsignedMinor)) return null;
+
+  return {
+    amountMinor: sign === '-' ? -unsignedMinor : unsignedMinor,
+    currency,
+  };
+}
+
+/** 把契約金額轉成適合 `<input type="number">` 的無幣別字串。 */
+export function moneyToMajorInput(money: Money): string {
+  const digits = minorUnitDigits(money.currency);
+  if (digits === 0) return String(money.amountMinor);
+
+  const factor = 10 ** digits;
+  const sign = money.amountMinor < 0 ? '-' : '';
+  const unsignedMinor = Math.abs(money.amountMinor);
+  const whole = Math.floor(unsignedMinor / factor);
+  const fraction = String(unsignedMinor % factor).padStart(digits, '0').replace(/0+$/, '');
+  return `${sign}${whole}${fraction ? `.${fraction}` : ''}`;
+}
+
 /** 只要數字不要幣別符號，例如放在已經標了幣別的表格欄位裡。 */
 export function formatAmount(money: Money, options: FormatMoneyOptions = {}): string {
   // 換算一定用該幣別真正的小數位數；顯示幾位才看 showDecimals。

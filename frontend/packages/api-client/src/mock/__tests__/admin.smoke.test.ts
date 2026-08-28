@@ -6,6 +6,8 @@ import { ADMIN_BASE_URL, adminErrorScenarios, resetAdminMockState } from '../han
 import { adminServer } from '../server';
 
 const client = new ApiClient({ baseUrl: ADMIN_BASE_URL });
+let mutationSequence = 0;
+const mutationOptions = () => ({ idempotencyKey: `admin-smoke-${++mutationSequence}` });
 
 beforeAll(() => adminServer.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => {
@@ -16,16 +18,16 @@ afterAll(() => adminServer.close());
 
 describe('admin mock：每個 M1a 端點打一次，回應要通過型別檢查', () => {
   it('登入與 me', async () => {
-    const staff = await api.login(client, { email: 'owner@greygray.tw', password: 'password123' });
+    const staff = await api.login(client, { email: 'owner@greygray.tw', password: 'password123' }, mutationOptions());
     expect(staff.role).toBeTruthy();
     const me = await api.getMe(client);
     expect(me.id).toBe(staff.id);
   });
 
   it('分類 CRUD', async () => {
-    const created = await api.createCategory(client, { name: '新分類', imageUrl: null, sortOrder: 9 });
+    const created = await api.createCategory(client, { name: '新分類', imageUrl: null, sortOrder: 9 }, mutationOptions());
     expect(created.id).toBeTruthy();
-    const updated = await api.updateCategory(client, created.id, { name: '改名分類', imageUrl: null, sortOrder: 9 });
+    const updated = await api.updateCategory(client, created.id, { name: '改名分類', imageUrl: null, sortOrder: 9 }, mutationOptions());
     expect(updated.name).toBe('改名分類');
     const list = await api.listCategories(client);
     expect(list.some((c) => c.id === created.id)).toBe(true);
@@ -46,7 +48,7 @@ describe('admin mock：每個 M1a 端點打一次，回應要通過型別檢查'
       weightGram: 999,
       size: sku!.size,
       isActive: true,
-    });
+    }, mutationOptions());
     expect(updatedSku.weightGram).toBe(999);
   });
 
@@ -57,7 +59,7 @@ describe('admin mock：每個 M1a 端點打一次，回應要通過型別檢查'
       departAt: '2026-12-01',
       returnAt: '2026-12-05',
       closesAt: '2026-11-25T00:00:00+08:00',
-    });
+    }, mutationOptions());
     expect(campaign.status).toBe('Draft');
 
     const products = await api.listProducts(client);
@@ -67,13 +69,13 @@ describe('admin mock：每個 M1a 端點打一次，回應要通過型別檢查'
     const offer = await api.addCampaignOffer(client, campaign.id, {
       skuId: sku!.id,
       sellingPrice: { amountMinor: 50000, currency: 'TWD' },
-    });
+    }, mutationOptions());
     expect(offer.id).toBeTruthy();
 
-    const published = await api.publishCampaign(client, campaign.id);
+    const published = await api.publishCampaign(client, campaign.id, mutationOptions());
     expect(published.status).toBe('Open');
 
-    const closed = await api.closeCampaign(client, campaign.id);
+    const closed = await api.closeCampaign(client, campaign.id, mutationOptions());
     expect(closed.status).toBe('Closed');
   });
 
@@ -90,10 +92,26 @@ describe('admin mock：每個 M1a 端點打一次，回應要通過型別檢查'
         departAt: openCampaign!.departAt,
         returnAt: openCampaign!.returnAt,
         closesAt: openCampaign!.closesAt,
-      });
+      }, mutationOptions());
     } catch (error) {
       expect(error).toBeInstanceOf(ApiError);
       expect((error as ApiError).code).toBe('campaign.cannot-edit-after-publish');
+    }
+  });
+
+  it('尚有訂單未出貨時結團回 422（orders-not-all-shipped）', async () => {
+    const page = await api.listCampaigns(client);
+    const campaign = page.items[0];
+    expect(campaign).toBeDefined();
+    adminServer.use(adminErrorScenarios.campaignSettleNotAllShipped);
+
+    expect.assertions(4);
+    try {
+      await api.settleCampaign(client, campaign!.id, mutationOptions());
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApiError);
+      expect((error as ApiError).status).toBe(422);
+      expect((error as ApiError).code).toBe('campaign.orders-not-all-shipped');
     }
   });
 
@@ -119,7 +137,7 @@ describe('admin mock：每個 M1a 端點打一次，回應要通過型別檢查'
     const updated = await api.cancelOrderLine(client, order!.id, line!.id, {
       reason: '客人反悔',
       refundTo: 'StoredValue',
-    });
+    }, mutationOptions());
     expect(updated.lines.find((l) => l.id === line!.id)?.status).toBe('Unavailable');
   });
 
@@ -157,7 +175,7 @@ describe('admin mock：錯誤情境', () => {
     adminServer.use(adminErrorScenarios.productValidation);
     expect.assertions(3);
     try {
-      await api.createProduct(client, { name: '缺尺寸的商品', mode: 'Stock', isActive: true });
+      await api.createProduct(client, { name: '缺尺寸的商品', mode: 'Stock', isActive: true }, mutationOptions());
     } catch (error) {
       expect(error).toBeInstanceOf(ApiError);
       expect((error as ApiError).status).toBe(422);
@@ -169,7 +187,7 @@ describe('admin mock：錯誤情境', () => {
     adminServer.use(adminErrorScenarios.forbidden);
     expect.assertions(2);
     try {
-      await api.cancelCampaign(client, 'irrelevant', { reason: '測試' });
+      await api.cancelCampaign(client, 'irrelevant', { reason: '測試' }, mutationOptions());
     } catch (error) {
       expect(error).toBeInstanceOf(ApiError);
       expect((error as ApiError).status).toBe(403);

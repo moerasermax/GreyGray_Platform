@@ -16,8 +16,8 @@ type S = components['schemas'];
 /** `RequestOptions.query` 要求索引簽章；具名 query 介面沒有，這裡轉一手。 */
 type QueryRecord = Record<string, string | number | boolean | undefined | null>;
 
-export interface CallOptions {
-  readonly idempotencyKey?: string;
+export interface MutationOptions {
+  readonly idempotencyKey: string;
   readonly signal?: AbortSignal;
 }
 
@@ -74,11 +74,11 @@ export interface ListLedgerEntriesQuery {
 
 // ── auth ──────────────────────────────────────────────────────────────────
 
-export function login(client: ApiClient, body: AdminLoginRequest, options: CallOptions = {}): Promise<S['Staff']> {
+export function login(client: ApiClient, body: AdminLoginRequest, options: MutationOptions): Promise<S['Staff']> {
   return client.post('/v1/auth/login', { body, ...options });
 }
 
-export function logout(client: ApiClient, options: CallOptions = {}): Promise<void> {
+export function logout(client: ApiClient, options: MutationOptions): Promise<void> {
   return client.post('/v1/auth/logout', { ...options });
 }
 
@@ -95,7 +95,7 @@ export function listCategories(client: ApiClient, options: { signal?: AbortSigna
 export function createCategory(
   client: ApiClient,
   body: S['CategoryInput'],
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['Category']> {
   return client.post('/v1/categories', { body, ...options });
 }
@@ -104,7 +104,7 @@ export function updateCategory(
   client: ApiClient,
   categoryId: string,
   body: S['CategoryInput'],
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['Category']> {
   return client.patch(`/v1/categories/${categoryId}`, { body, ...options });
 }
@@ -120,7 +120,7 @@ export function listProducts(
 export function createProduct(
   client: ApiClient,
   body: S['AdminProductInput'],
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['AdminProduct']> {
   return client.post('/v1/products', { body, ...options });
 }
@@ -137,7 +137,7 @@ export function updateProduct(
   client: ApiClient,
   productId: string,
   body: S['AdminProductInput'],
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['AdminProduct']> {
   return client.patch(`/v1/products/${productId}`, { body, ...options });
 }
@@ -146,7 +146,7 @@ export function updateSku(
   client: ApiClient,
   skuId: string,
   body: S['AdminSkuInput'],
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['AdminSku']> {
   return client.patch(`/v1/skus/${skuId}`, { body, ...options });
 }
@@ -164,7 +164,7 @@ export function listCampaigns(
 export function createCampaign(
   client: ApiClient,
   body: S['AdminCampaignInput'],
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['AdminCampaign']> {
   return client.post('/v1/campaigns', { body, ...options });
 }
@@ -181,7 +181,7 @@ export function updateCampaign(
   client: ApiClient,
   campaignId: string,
   body: S['AdminCampaignInput'],
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['AdminCampaign']> {
   return client.patch(`/v1/campaigns/${campaignId}`, { body, ...options });
 }
@@ -189,7 +189,7 @@ export function updateCampaign(
 export function publishCampaign(
   client: ApiClient,
   campaignId: string,
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['AdminCampaign']> {
   return client.post(`/v1/campaigns/${campaignId}/publish`, { ...options });
 }
@@ -197,7 +197,7 @@ export function publishCampaign(
 export function closeCampaign(
   client: ApiClient,
   campaignId: string,
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['AdminCampaign']> {
   return client.post(`/v1/campaigns/${campaignId}/close`, { ...options });
 }
@@ -206,7 +206,7 @@ export function cancelCampaign(
   client: ApiClient,
   campaignId: string,
   body: CancelCampaignRequest,
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['AdminCampaign']> {
   return client.post(`/v1/campaigns/${campaignId}/cancel`, { body, ...options });
 }
@@ -214,7 +214,7 @@ export function cancelCampaign(
 export function settleCampaign(
   client: ApiClient,
   campaignId: string,
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['AdminCampaign']> {
   return client.post(`/v1/campaigns/${campaignId}/settle`, { ...options });
 }
@@ -231,7 +231,7 @@ export function addCampaignOffer(
   client: ApiClient,
   campaignId: string,
   body: AddCampaignOfferRequest,
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['AdminCampaignOffer']> {
   return client.post(`/v1/campaigns/${campaignId}/offers`, { body, ...options });
 }
@@ -240,7 +240,7 @@ export function removeCampaignOffer(
   client: ApiClient,
   campaignId: string,
   offerId: string,
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<void> {
   return client.delete(`/v1/campaigns/${campaignId}/offers/${offerId}`, { ...options });
 }
@@ -267,7 +267,7 @@ export function cancelOrder(
   client: ApiClient,
   orderId: string,
   body: CancelAdminOrderRequest,
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['AdminOrder']> {
   return client.post(`/v1/orders/${orderId}/cancel`, { body, ...options });
 }
@@ -277,7 +277,7 @@ export function cancelOrderLine(
   orderId: string,
   lineId: string,
   body: CancelAdminOrderRequest,
-  options: CallOptions = {},
+  options: MutationOptions,
 ): Promise<S['AdminOrder']> {
   return client.post(`/v1/orders/${orderId}/lines/${lineId}/cancel`, { body, ...options });
 }
