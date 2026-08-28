@@ -790,3 +790,48 @@ git status                       ✅ 乾淨
 但共用的 `formatMoney` 對台幣輸出 `$780`（zh-TW 是台幣本地語系，ICU 就給 `$`）。
 同一張商品卡上會同時出現兩種寫法。**這是產品決定，不是前端能自己定的**——
 要嘛契約改成 `$`，要嘛 `formatMoney` 對 TWD 特別加 `NT$` 前綴。
+
+---
+
+## 第二波（FE-3 / FE-4 / FE-5 / FE-7 / FE-8）—— 2026-08-28 通過
+
+驗 `898787e`（交付 `d849b13` ＋ 主 agent 自己的整合驗收 `898787e`），
+由 Claude 在 detached worktree 獨立跑，不在前端 agent 的工作樹上
+（驗收當下它還有 19 個未提交檔案，正在做第三批修補）。
+
+```
+pnpm install --frozen-lockfile   ✅ 54.4s
+pnpm typecheck                   ✅ 4 個專案
+pnpm test                        ✅ 71 條（api-client 31／storefront 40）
+pnpm build                       ✅ 兩個 app
+```
+
+測試從第一波的 27 條長到 71 條。**FE-3～FE-5 補了 40 條 storefront 測試**，
+這是第一波沒有的——第一波兩個 app 都是零測試檔。
+
+### 實際產出的路由
+
+**storefront 18 條**：`/` · `/products` · `/products/[productId]` ·
+`/categories/[categoryId]` · `/campaigns` · `/campaigns/[campaignId]`（FE-3）／
+`/cart` · `/checkout` · `/payment/[orderId]` · `/payment/result` ·
+`/mock-cashier`（FE-4）／ `/login` · `/register` · `/orders` ·
+`/orders/[orderId]` · `/addresses` · `/wallet`（FE-5）
+
+**admin 13 條**：`/` · `/login`（FE-6 第一波）／ `/catalog` ·
+`/catalog/categories` · `/catalog/products/[productId]` ·
+`/catalog/products/new` · `/campaigns` · `/campaigns/[campaignId]` ·
+`/campaigns/new`（FE-7）／ `/orders` · `/orders/[orderId]` · `/ledger`（FE-8）
+
+`/kitchen-sink` 已如計畫由 FE-3 刪除。
+
+### 一個要補的
+
+**admin 到現在還是零測試檔**（`No test files found`）。
+FE-7 與 FE-8 交付了 7 條路由但沒有任何測試，而 FE-3～FE-5 補了 40 條。
+後台的商品建檔、開團狀態操作、訂單取消都是會改資料的操作，
+下一波要求 FE-7／FE-8 補上——不然 `--passWithNoTests` 會一直掩蓋這件事。
+
+### 我沒有獨立重跑的
+
+瀏覽器視覺驗收。主 agent 在 `898787e` 說它「修掉四個只有把包接起來才看得到的
+缺陷」，那類問題只有真的跑起來才驗得到，我採信它的紀錄但沒有重做。
