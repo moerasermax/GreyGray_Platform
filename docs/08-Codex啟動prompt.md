@@ -183,57 +183,42 @@ M0 程式已完成（`2bb1e7d`）。M1a 是照 `docs/api/openapi.storefront.yaml
 | M1a-2 | Pricing · Campaign | Catalog | 運費試算要 SKU 的重量與尺寸；開團要掛商品 |
 | M1a-3 | Checkout · Ordering | Catalog · Pricing · Campaign | 購物車報價要三者齊備；下單接在購物車後面 |
 | M1a-4 | Payment（綠界）· Ledger | Ordering | 沒有訂單就沒有金流；分錄記的是訂單與收款 |
-| M1a-5 | **Procurement · Fulfillment · Inventory** | Ordering | 出國採購、出貨、批號。**這一列是後補的，見下** |
 
 **Ledger 一定要排在最後**，不要為了「帳務很重要」而提前。
 
-### M1a-5 是我漏掉的，不是 Codex 少做
+## M1a 的實際結果（2026-08-28）
 
-這張表原本只有四列，**漏了 Procurement、Fulfillment、Inventory 三個模組**。
-Codex 照著做完前四波（`6158077`），驗收時 OpenAPI gate 抓出**缺 12 個端點**：
+Codex 沒照這張表走，**一次做完全部四波**並提交成 `6158077`
+（120 檔案／17,591 行／8 個業務模組／6 個新測試專案）。
 
-```
-storefront   /v1/inquiries/{inquiryId}/reply
-             /v1/orders/{orderId}/shipments
-admin        /v1/campaigns/{campaignId}/purchase-items
-             /v1/campaigns/{campaignId}/trip-costs
-             /v1/purchase-items/{purchaseItemId}/purchased
-             /v1/purchase-items/{purchaseItemId}/unavailable
-             /v1/purchase-items/{purchaseItemId}/price-changed
-             /v1/shipments
-             /v1/shipments/{shipmentId}/dispatch
-             /v1/shipments/{shipmentId}/deliver
-             /v1/lots
-             /v1/orders/{orderId}/lines/{lineId}/cancel
-```
+驗收結果：`build 0/0`、**108 條測試全綠**、十條裡九條過。
+M1a 實質通過，真正缺的只有 `/v1/orders/{orderId}/lines/{lineId}/cancel` 一條端點，
+以及一批「行為正確但 OpenAPI 沒宣告」的 metadata。
 
-**那是代購生意的後半段**——出國把東西買回來、分批出貨、缺貨改單。
-沒有這一塊，系統只能收單收錢，不能出貨。
+## 驗收第 9 條的正確做法（我上次做錯了）
 
-三個模組的 `*.Contracts` 已經存在（Procurement 219 行、Fulfillment 144 行），
-型別與事件都定好了，缺的是 Core／Infra／端點／schema。
+`ops/check-openapi.ps1` 比對的是**整份凍結契約**，而那份契約
+**涵蓋 M1a、M1b、M2 全部的端點**。直接拿 gate 的「缺少 paths」當成
+這一波的缺漏，會把「還沒排到的工作」報成「少做的東西」。
 
-**教訓**：波次表是照「模組相依」排的，但**驗收是照「凍結契約的端點清單」比對的**。
-排波次時要拿契約的 paths 清單逐條劃掉，確認每一條都被某一波涵蓋到——
-只想著模組相依，就會漏掉整個模組。
-分錄是對既有事實的記錄，事實還沒發生就記不了，提前做只會寫出猜測的分錄形狀。
-
-## M1a 開工前必須先處理的一件事
-
-**Codex 在沒有這份波次表的情況下已經開始做 M1a 了**（2026-08-28，累積 105 個
-未提交檔案，橫跨 Campaign／Catalog／Checkout／Identity／Ledger／Ordering／
-Payment／Pricing 八個模組的 Contracts，704 新增／18 刪除）。
-
-已查證的部分：`dotnet build` 0 error 0 warning，**44 個事件定義一個都沒被動到**，
-改的全是 M1a 需要的新 DTO 與介面。所以東西不是壞的，但它**橫跨全部四個波次**。
-
-開工前先做這件事，不要直接往下派：
+我第一次驗 M1a 就這樣錯了：報「缺 12 個端點、M1a 實質未完成」，
+還據此在這份文件加了一個不存在的 M1a-5 波次。實際上 12 條裡：
 
 ```
-先把你目前未提交的 M1a 變更整包提交，然後停。
-不要再往下做。我要先驗收這一包，再照 docs/08 的 M1a 波次表重新開始。
-提交訊息要說清楚：哪些模組、動了什麼、哪些是 Contracts 的新增。
+11 條是 M1b／M2   （purchase-items、shipments、trip-costs、inquiries reply、lots…）
+ 1 條是 M1a       （/v1/orders/{orderId}/lines/{lineId}/cancel）
 ```
 
-**理由**：105 個檔案跨四個波次，「整包退回」已經退不掉了。
-先把它固定成一個可驗收的 commit，之後才有辦法回到一次一波的節奏。
+**`docs/05-API契約.md` 的端點索引自己標了里程碑**，M1b 的在描述欄寫「（M1b）」、
+storefront 那張表有里程碑欄位。驗收前先用它過濾出這一波該有的 paths，
+再拿那個子集去比對 gate 的輸出。
+
+## 連帶：gate 在 M2 之前永遠不會綠
+
+既然它比對整份契約，那麼**在 M2 做完之前這一關必定 FAIL**。
+這跟第一波留下的「CI 長期紅燈」是同一類問題，而且更久——
+第一波那個在 M1a 端點接上後就會轉綠，這個要等到 M2。
+
+**要嘛讓 gate 支援按里程碑過濾（比對時只取當前里程碑的 paths），
+要嘛明確接受它到 M2 之前都是紅的。** 不處理的話「gate 紅」會變成
+永久背景雜訊，真的契約漂移發生時沒有人會注意到。

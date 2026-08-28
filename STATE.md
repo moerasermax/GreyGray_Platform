@@ -1,16 +1,16 @@
 # 現況
 
-**最後更新**：2026-08-28（後端第四波：BE-6 M0 hello-world 本機驗收候選）
+**最後更新**：2026-08-28（M1b-1 截團採購清單交付候選，待獨立驗收）
 
 ## 一句話
 
-後端四波的本機程式已落地：`Identity → outbox → Worker → Notification` 真實垂直切片與永久 PostgreSQL 17 E2E 已通過；M0 `/v1/customers` 是 Development-only、OpenAPI-excluded test hook。**YC 的 NSSM＋BootTrigger reboot 與可查詢 OTLP trace 尚未驗收，frozen M1a `/v1` API 尚未實作**，所以仍不可宣稱完整 M0、整條 CI 或正式部署完成。
+M1a 後端已在 `6158077` 完成；前端第二波已在獨立 worktree 完成。後端現在進入 M1b，第一波「`CampaignClosed` → 採購清單 → Admin 查詢／標記買到 → `ItemPurchased` 更新 Ordering」已形成交付候選，等待獨立驗收。缺貨退款、漲價詢問、入庫與出貨仍未實作；YC 的 NSSM＋BootTrigger reboot 與可查詢 OTLP trace 也仍未驗收。
 
 ## 已完成
 
 | 項目 | 狀態 |
 |---|---|
-| Solution（52 專案） | ✅ `dotnet build -c Release` 0 error 0 warning |
+| Solution（59 專案） | ✅ `dotnet build -c Release` 0 error 0 warning |
 | 模組硬邊界 | ✅ **14 條**架構測試全綠；新組合根 public-type 規則已故障注入驗證會紅 |
 | 線上格式與事件目錄 | ✅ **16 條**契約測試全綠（`tests/GreyGray.Contracts.Tests`，同樣注入驗證過） |
 | Platform 基礎設施 | ✅ Outbox、processed-message decorator、API idempotency、Saga Timer、44 事件 registry、`PlatformDbContext`、OTel、clock／correlation context |
@@ -263,20 +263,39 @@ dotnet build .\GreyGray.slnx     0 警告 0 錯誤
 **這是契約凍結以來第一次能做完整差異比對**（在此之前 Host 只有 `/health`，
 gate 一直是 FAIL-FAST）。
 
-**一、真的少做了 12 個端點——M1a 是實質未完成**
+**一、gate 比對的是「整份契約」，不是「這個里程碑該有的子集」——我一開始判斷錯了**
+
+> **更正（同日稍後）**：我原本寫「真的少做了 12 個端點，M1a 是實質未完成」，
+> **那是錯的**。`docs/05-API契約.md` 的端點索引自己標了里程碑，去查之後：
 
 ```
-storefront   凍結 24 → 實作 23
-             缺 /v1/inquiries/{inquiryId}/reply
-                /v1/orders/{orderId}/shipments
-admin        凍結 32 → 實作 23
-             缺 purchase-items 的 purchased／unavailable／price-changed
-                shipments 的建立／dispatch／deliver
-                lots、trip-costs、訂單單品項取消
+/v1/inquiries/{inquiryId}/reply           M1b
+/v1/orders/{orderId}/shipments            M1b
+/v1/campaigns/{campaignId}/trip-costs     M1b
+/v1/campaigns/{campaignId}/purchase-items M1b
+/v1/purchase-items/{id}/purchased         M1b
+/v1/purchase-items/{id}/unavailable       M1b
+/v1/purchase-items/{id}/price-changed     M1b
+/v1/shipments（GET／POST）                M1b
+/v1/shipments/{id}/dispatch               M1b
+/v1/shipments/{id}/deliver                M1b
+/v1/lots（GET／POST）                     M2
+/v1/orders/{orderId}/lines/{lineId}/cancel  ← 沒標里程碑，這條才是 M1a
 ```
 
-admin 缺的那批是**採購與出貨**，也就是代購生意的後半段。
-不是收尾問題，是整塊沒做。
+**12 條裡 11 條是 M1b／M2。M1a 只缺 `lines/{lineId}/cancel` 這一條。**
+
+而且 Codex 早就在做 M1b 了（`docs/10-M1b工作包.md`，STATE 的 M1b-1 交付候選），
+它在 NextWork 把那些歸類成「M1b paths」——**它的分類是對的，我的不是**。
+
+**這一條真正的發現是 gate 的設計問題**：
+`ops/check-openapi.ps1` 比對的是**整份凍結契約**（涵蓋 M1a／M1b／M2 全部端點），
+不是「當前里程碑應該有的子集」。所以在 M2 做完之前，這個 gate **永遠不可能綠**。
+
+那跟第一波留下的「CI 長期紅燈」是同一類問題，而且更嚴重——
+第一波那個至少會在 M1a 端點接上後轉綠，這個要等到 M2。
+**要嘛 gate 支援按里程碑過濾，要嘛接受它到 M2 之前都是紅的。**
+不處理的話，「gate 紅」會變成永久背景雜訊，真的漂移發生時沒人會注意到。
 
 **二、行為對了但 OpenAPI 沒宣告**
 
@@ -290,11 +309,24 @@ admin 缺的那批是**採購與出貨**，也就是代購生意的後半段。
 
 `/health` 多出來是設計如此，不算差異。
 
-### 這一條的意義
+### 修正後的結論：M1a 實質通過
 
-gate 沒有寫錯，也沒有誤報。**它擋下的正是「實作悄悄偏離凍結契約」**——
-如果沒有這一關，缺的那 12 個端點會等到前端第二波接上去、
-打了 404 才被發現，而那時前端已經照契約把畫面都做完了。
+```
+build 0/0 · 108 條測試全綠 · 十條裡九條過
+第 9 條的「缺端點」11/12 是 M1b／M2，不是 M1a 的缺漏
+M1a 真正缺的只有 /v1/orders/{orderId}/lines/{lineId}/cancel 一條
+剩下的是 OpenAPI metadata 沒宣告（行為正確）
+```
+
+### 我從這次學到的
+
+**驗收「缺什麼」之前，要先確定「這一波該有什麼」。**
+我拿整份凍結契約的端點清單去對一個里程碑的交付，
+於是把還沒排到的工作報成缺漏，還據此在 `docs/08` 加了一個不存在的 M1a-5 波次。
+
+契約索引早就標好里程碑了（`docs/05` 的表格與描述欄），**我沒去看就下判斷**。
+下次驗收第 9 條的正確做法：先用里程碑欄位過濾出這一波該有的 paths，
+再拿那個子集去比對 gate 的輸出。
 
 ---
 
@@ -327,6 +359,18 @@ gate 沒有寫錯，也沒有誤報。**它擋下的正是「實作悄悄偏離�
 
 第一列就是這條沒被抓到的話會發生的事：部署腳本一片綠，
 然後服務啟動時報 `permission denied for table`，而訊息完全不指向真正的原因。
+
+## M1b-1 交付候選（2026-08-28，由 Codex 實作，待獨立驗收）
+
+- Procurement aggregate／repository／DbContext／組合根與 `0007_m1b_procurement.sql` 已建立。
+- Worker 冪等消費 `CampaignClosed`，只為已付款預購 line 產生採購清單；tenant/order-line 唯一。
+- Admin 已新增採購清單查詢與標記買到兩個 frozen paths；HTTP response 由 BFF 投影，不直接洩漏內部 DTO。
+- `ItemPurchased` 由 Ordering 冪等消費，line 轉 `Purchased`、order 轉 `Purchasing`。
+- 真 PostgreSQL 17 已驗 `0001→0007`、0007 重跑、owner、模組權限、跨 schema 禁止與 TWD 成本約束。
+- 部分買到暫時回 422；現有契約沒有短缺數量與退款去向，不能誤記為完整買到。
+- strict OpenAPI gate 現在 Admin 25/32 paths；本波兩條 path 已出現在 AddOpenApi，剩餘 M1b paths 與既有 components metadata 漂移仍照實 fail-closed。
+
+完整波次、排除項與可重跑驗收見 `docs/10-M1b工作包.md`。
 
 ## 未完成
 
@@ -405,10 +449,10 @@ workspace 外 `node server.js` 回 HTTP 200」作 portability 證據。
 
 ## 下一步
 
-1. **後端 M1a**：實作 frozen `/v1/auth/register` 的手機／密碼／session／idempotency 正式流程
-2. M1a endpoints 接線後讓 strict live OpenAPI schema drift 歸零，不可用 M0 hook 冒充
+1. **獨立驗收 M1b-1**：在乾淨 worktree 重跑 `ops/test.ps1 -Configuration Release`、OpenAPI path 差異與 migration 故障注入
+2. **M1b-2 決策**：先凍結缺貨／部分買到的退款去向，再做 unavailable 與漲價詢問
 3. **正式機驗收**：M-1、五服務部署、NSSM＋BootTrigger reboot 與可查詢 OTLP trace
-4. **前端**：FE-1（型別 ＋ mock）、FE-2（Soft Seoul 元件庫）、FE-6（後台殼）可平行
+4. 完成剩餘 M1b paths 與 OpenAPI components metadata，讓 strict gate 最終歸零
 
 ## 待決策
 
