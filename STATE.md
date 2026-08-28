@@ -280,8 +280,26 @@ Core 的型別全是 internal，Host 要呼叫就必須有 Contracts 上的 port
 fail-closed 門檻已完成。正式 M0 尚差 YC NSSM＋BootTrigger reboot 與可查詢 OTLP trace；
 strict live OpenAPI 要等 M1a frozen endpoints 實作後才能歸零。詳見 `management/history/HANDOFF_6.md`。
 
-**前端**：FE-1 ～ FE-8，見 `docs/06-前端工作包.md`。
-目前只有骨架與 token，兩個 app 各只有一頁佔位。
+**前端**：見 `docs/06-前端工作包.md`。**工作在 `GreyGray_Platform-fe` 分支
+`feat/frontend-wave-1`，不在這棵樹上**——下面講的東西在這個分支上看不到，要切過去。
+
+| 包 | 狀態 |
+|---|---|
+| FE-1 型別 ＋ mock ＋ 端點層 | ✅ 通過。msw 掛好（SSR ＋ browser 兩端實測），27 條 smoke 測試 |
+| FE-2 Soft Seoul 元件庫 | ✅ 通過。kitchen-sink 頁展示全部狀態 |
+| FE-6 後台殼 ＋ 登入 ＋ 儀表板 | ✅ 通過。淺色與深色兩套都量過對比度 |
+| FE-3 逛與找 · FE-4 買 · FE-5 我的 · FE-7 後台商品／開團 · FE-8 後台訂單／帳務 | ⬜ 第二波，`docs/09` 還缺這五則子 agent prompt |
+
+第一波驗收紀錄在 `docs/09-前端第一波派工prompt.md` 末尾。
+`NEXT_PUBLIC_USE_MOCK=1` 可用，**第二波完全不需要後端**。
+
+### 前端留下的一題（產品決定）
+
+契約的 `unitPriceLabel` 範例寫 `NT$780／32 顆`，但共用的 `formatMoney`
+對台幣輸出 `$780`——`$` 才是正確的 ICU 行為（`zh-TW` 是台幣本地語系，
+外幣才帶 `US$`／`HK$` 前綴）。**同一張商品卡上會同時出現兩種寫法。**
+要嘛契約改成 `$`，要嘛 `formatMoney` 對 TWD 特別加 `NT$`。改一處就好，
+不要讓呼叫端各自加前綴。
 
 ## 環境現況
 
