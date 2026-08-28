@@ -23,7 +23,7 @@
 ## 未完成（M0 剩下的）
 
 見 `docs/03-M0工作包.md` 的 M0-1 到 M0-8。**Platform 的實作一行都還沒有**——
-`Daigou.Platform` 目前只有 `OutboxMessage` 的 POCO 與 `IModuleRegistration` 介面。
+`GreyGray.Platform` 目前只有 `OutboxMessage` 的 POCO 與 `IModuleRegistration` 介面。
 
 ## 環境現況
 

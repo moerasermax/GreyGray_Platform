@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>GreyGray.Modules.Fulfillment.Contracts</RootNamespace>
+    <ModuleName>Fulfillment</ModuleName>
+    <ModuleLayer>Contracts</ModuleLayer>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Shared.Kernel\GreyGray.Shared.Kernel.csproj" />
+    <ProjectReference Include="..\..\..\Platform.Abstractions\GreyGray.Platform.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Label="上游模組的契約（Contracts 之間必須是 DAG，見 docs/01-系統結構.md）">
+    <ProjectReference Include="..\..\Identity\GreyGray.Modules.Identity.Contracts\GreyGray.Modules.Identity.Contracts.csproj" />
+    <ProjectReference Include="..\..\Pricing\GreyGray.Modules.Pricing.Contracts\GreyGray.Modules.Pricing.Contracts.csproj" />
+    <ProjectReference Include="..\..\Ordering\GreyGray.Modules.Ordering.Contracts\GreyGray.Modules.Ordering.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

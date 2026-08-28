@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>GreyGray.Modules.Procurement.Core</RootNamespace>
+    <ModuleName>Procurement</ModuleName>
+    <ModuleLayer>Core</ModuleLayer>
+  </PropertyGroup>
+
+  <ItemGroup Label="自己的契約">
+    <ProjectReference Include="..\GreyGray.Modules.Procurement.Contracts\GreyGray.Modules.Procurement.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Label="平台能力（Outbox / EventBus / Clock 抽象）">
+    <ProjectReference Include="..\..\..\Platform.Abstractions\GreyGray.Platform.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Label="其他模組的契約——只能是 Contracts，永遠不可以是 Core">
+    <ProjectReference Include="..\..\Campaign\GreyGray.Modules.Campaign.Contracts\GreyGray.Modules.Campaign.Contracts.csproj" />
+    <ProjectReference Include="..\..\Ordering\GreyGray.Modules.Ordering.Contracts\GreyGray.Modules.Ordering.Contracts.csproj" />
+    <ProjectReference Include="..\..\Catalog\GreyGray.Modules.Catalog.Contracts\GreyGray.Modules.Catalog.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

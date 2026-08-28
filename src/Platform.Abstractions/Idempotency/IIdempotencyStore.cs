@@ -1,4 +1,4 @@
-namespace Daigou.Platform.Abstractions.Idempotency;
+namespace GreyGray.Platform.Abstractions.Idempotency;
 
 /// <summary>
 /// 對外 API 與第三方 webhook 的重放防護，對應 <c>platform.idempotency_key</c>。

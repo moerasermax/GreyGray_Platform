@@ -8,8 +8,8 @@
 ## 通用前綴（每次都帶）
 
 ```
-專案：D:\WorkSpace\01_開發中_wip\daigou-platform
-代購平台的後端。模組化單體，.NET 10，14 個限界上下文，硬邊界。
+專案：D:\WorkSpace\01_開發中_wip\GreyGray_Platform
+GreyGray Platform —— 代購業務的後端。模組化單體，.NET 10，14 個限界上下文，硬邊界。
 
 開工前務必先讀，不要跳過：
   README.md                 四條硬規則
@@ -20,7 +20,7 @@
   docs/03-M0工作包.md        你要做的那一包在這裡
 
 鐵則：
-1. 金額一律用 Daigou.Shared.Kernel.Money（long 最小單位）。
+1. 金額一律用 GreyGray.Shared.Kernel.Money（long 最小單位）。
    任何地方出現 decimal price 或 double amount 都是 bug，不管看起來多方便。
 2. 時間一律經 IClock，不要直接 DateTimeOffset.UtcNow。
 3. 模組只能參考別人的 *.Contracts，永遠不可以參考 *.Core。
@@ -29,7 +29,7 @@
 6. 註解與 XML doc 用繁體中文，命名用英文。
 
 每次改完都要跑（不要用 dotnet test，理由在 ops/test.ps1 的註解裡）：
-  dotnet build .\Daigou.slnx
+  dotnet build .\GreyGray.slnx
   .\ops\test.ps1
 架構測試必須全綠。**如果它擋下你，那是它在做它該做的事，不要改測試去繞過。**
 真的認為規則錯了，就停下來說明理由，不要自己改。

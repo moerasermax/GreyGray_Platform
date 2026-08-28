@@ -33,7 +33,7 @@ constraint 與 trigger，不靠應用層守。
 2. 接有線網路，Wi-Fi 降為備援
 3. 買一顆 UPS（NT$2,000 級，目的是安全關機不是續航）
 4. Windows Update 改手動 ＋ 維護窗，prod-monitor 加「開機時間異常變動」告警
-5. 代購平台用獨立的 Windows 使用者帳號執行，不要用 `moera`
+5. GreyGray Platform 用獨立的 Windows 使用者帳號執行，不要用 `moera`
 6. Ollama 限制在營業時間外，或限制模型大小到能完整放進 4 GB VRAM
 7. M1 上線前必須完成 ngrok → cloudflared 遷移
 
@@ -190,7 +190,7 @@ Notification 的職責因此收斂成純粹的「送出去」。詢價軌跡（�
 放進 Shared.Kernel 也不行——那裡的規則是「只放無業務語意的型別」。
 
 因此放在 Pricing.Contracts，它是需要這個概念的最底層模組。
-`Daigou.Architecture.Tests` 有一條測試專門斷言 Contracts 之間的相依無環。
+`GreyGray.Architecture.Tests` 有一條測試專門斷言 Contracts 之間的相依無環。
 
 ---
 
@@ -213,6 +213,31 @@ Identity, Catalog
 `*.Core` 之間**永遠不可以**互相參考，這條沒有例外。
 
 ---
+
+---
+
+## ADR-015　專案定名 GreyGray Platform
+**狀態**：已採納（2026-08-28）
+
+原本的工作名稱是「代購平台 / daigou-platform」。定名為 **GreyGray Platform**。
+
+改名範圍是全面的，不是只有資料夾：
+
+| 層面 | 舊 | 新 |
+|---|---|---|
+| 目錄 | `01_開發中_wip\daigou-platform` | `01_開發中_wip\GreyGray_Platform` |
+| 方案檔 | `Daigou.slnx` | `GreyGray.slnx` |
+| 組件與命名空間 | `Daigou.*` | `GreyGray.*` |
+| Postgres 角色 | `daigou_app` · `daigou_owner` · `daigou_<schema>` | `greygray_*` |
+| 連線字串鍵 | `ConnectionStrings:Daigou_<schema>` | `ConnectionStrings:GreyGray_<schema>` |
+| 知識庫命名空間 | `代購平台` | `GreyGray_Platform` |
+
+**為什麼一次改乾淨**：改名當下沒有任何東西部署出去、沒有資料庫跑過 migration、
+沒有外部系統引用，所以成本接近零。半套改名（資料夾叫 GreyGray、程式碼叫 Daigou）
+會讓每一個接手的人都要問一次「這兩個是同一個東西嗎」，那個成本是永久的。
+
+「代購」這個詞仍會出現在文件裡，但它從此是**業務領域的描述**，不是專案名稱。
+唯二保留舊名的地方是外部資源的實際標題：藍圖 artifact 與 planner 提醒。
 
 ## 待決策
 

@@ -1,4 +1,4 @@
-namespace Daigou.Platform.Abstractions.Messaging;
+namespace GreyGray.Platform.Abstractions.Messaging;
 
 /// <summary>
 /// 事件發布。<b>實作必須把訊息寫進 platform.outbox_message，

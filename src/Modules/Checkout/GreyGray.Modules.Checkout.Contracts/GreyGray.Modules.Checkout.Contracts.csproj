@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>GreyGray.Modules.Checkout.Contracts</RootNamespace>
+    <ModuleName>Checkout</ModuleName>
+    <ModuleLayer>Contracts</ModuleLayer>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Shared.Kernel\GreyGray.Shared.Kernel.csproj" />
+    <ProjectReference Include="..\..\..\Platform.Abstractions\GreyGray.Platform.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Label="上游模組的契約（Contracts 之間必須是 DAG，見 docs/01-系統結構.md）">
+    <ProjectReference Include="..\..\Identity\GreyGray.Modules.Identity.Contracts\GreyGray.Modules.Identity.Contracts.csproj" />
+    <ProjectReference Include="..\..\Catalog\GreyGray.Modules.Catalog.Contracts\GreyGray.Modules.Catalog.Contracts.csproj" />
+    <ProjectReference Include="..\..\Campaign\GreyGray.Modules.Campaign.Contracts\GreyGray.Modules.Campaign.Contracts.csproj" />
+    <ProjectReference Include="..\..\Pricing\GreyGray.Modules.Pricing.Contracts\GreyGray.Modules.Pricing.Contracts.csproj" />
+    <ProjectReference Include="..\..\Inventory\GreyGray.Modules.Inventory.Contracts\GreyGray.Modules.Inventory.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

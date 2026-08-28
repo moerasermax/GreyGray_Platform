@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>GreyGray.Modules.Catalog.Contracts</RootNamespace>
+    <ModuleName>Catalog</ModuleName>
+    <ModuleLayer>Contracts</ModuleLayer>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Shared.Kernel\GreyGray.Shared.Kernel.csproj" />
+    <ProjectReference Include="..\..\..\Platform.Abstractions\GreyGray.Platform.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

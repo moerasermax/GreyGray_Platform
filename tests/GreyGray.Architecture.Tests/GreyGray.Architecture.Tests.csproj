@@ -1,0 +1,68 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>GreyGray.Architecture.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <ModuleLayer>Test</ModuleLayer>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="NetArchTest.Rules" />
+    <PackageReference Include="Shouldly" />
+  </ItemGroup>
+
+  <ItemGroup Label="要斷言的全部組件">
+    <ProjectReference Include="..\..\src\Shared.Kernel\GreyGray.Shared.Kernel.csproj" />
+    <ProjectReference Include="..\..\src\Platform.Abstractions\GreyGray.Platform.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Platform\GreyGray.Platform.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\GreyGray.Modules.Identity.Contracts\GreyGray.Modules.Identity.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\GreyGray.Modules.Identity.Core\GreyGray.Modules.Identity.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\GreyGray.Modules.Identity.Infra\GreyGray.Modules.Identity.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Catalog\GreyGray.Modules.Catalog.Contracts\GreyGray.Modules.Catalog.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Catalog\GreyGray.Modules.Catalog.Core\GreyGray.Modules.Catalog.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Catalog\GreyGray.Modules.Catalog.Infra\GreyGray.Modules.Catalog.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Campaign\GreyGray.Modules.Campaign.Contracts\GreyGray.Modules.Campaign.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Campaign\GreyGray.Modules.Campaign.Core\GreyGray.Modules.Campaign.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Campaign\GreyGray.Modules.Campaign.Infra\GreyGray.Modules.Campaign.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Pricing\GreyGray.Modules.Pricing.Contracts\GreyGray.Modules.Pricing.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Pricing\GreyGray.Modules.Pricing.Core\GreyGray.Modules.Pricing.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Pricing\GreyGray.Modules.Pricing.Infra\GreyGray.Modules.Pricing.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Inventory\GreyGray.Modules.Inventory.Contracts\GreyGray.Modules.Inventory.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Inventory\GreyGray.Modules.Inventory.Core\GreyGray.Modules.Inventory.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Inventory\GreyGray.Modules.Inventory.Infra\GreyGray.Modules.Inventory.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Checkout\GreyGray.Modules.Checkout.Contracts\GreyGray.Modules.Checkout.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Checkout\GreyGray.Modules.Checkout.Core\GreyGray.Modules.Checkout.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Checkout\GreyGray.Modules.Checkout.Infra\GreyGray.Modules.Checkout.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ordering\GreyGray.Modules.Ordering.Contracts\GreyGray.Modules.Ordering.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ordering\GreyGray.Modules.Ordering.Core\GreyGray.Modules.Ordering.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ordering\GreyGray.Modules.Ordering.Infra\GreyGray.Modules.Ordering.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Procurement\GreyGray.Modules.Procurement.Contracts\GreyGray.Modules.Procurement.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Procurement\GreyGray.Modules.Procurement.Core\GreyGray.Modules.Procurement.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Procurement\GreyGray.Modules.Procurement.Infra\GreyGray.Modules.Procurement.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Fulfillment\GreyGray.Modules.Fulfillment.Contracts\GreyGray.Modules.Fulfillment.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Fulfillment\GreyGray.Modules.Fulfillment.Core\GreyGray.Modules.Fulfillment.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Fulfillment\GreyGray.Modules.Fulfillment.Infra\GreyGray.Modules.Fulfillment.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Payment\GreyGray.Modules.Payment.Contracts\GreyGray.Modules.Payment.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Payment\GreyGray.Modules.Payment.Core\GreyGray.Modules.Payment.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Payment\GreyGray.Modules.Payment.Infra\GreyGray.Modules.Payment.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ledger\GreyGray.Modules.Ledger.Contracts\GreyGray.Modules.Ledger.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ledger\GreyGray.Modules.Ledger.Core\GreyGray.Modules.Ledger.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ledger\GreyGray.Modules.Ledger.Infra\GreyGray.Modules.Ledger.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Notification\GreyGray.Modules.Notification.Contracts\GreyGray.Modules.Notification.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Notification\GreyGray.Modules.Notification.Core\GreyGray.Modules.Notification.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Notification\GreyGray.Modules.Notification.Infra\GreyGray.Modules.Notification.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Audit\GreyGray.Modules.Audit.Contracts\GreyGray.Modules.Audit.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Audit\GreyGray.Modules.Audit.Core\GreyGray.Modules.Audit.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Audit\GreyGray.Modules.Audit.Infra\GreyGray.Modules.Audit.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Reporting\GreyGray.Modules.Reporting.Contracts\GreyGray.Modules.Reporting.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Reporting\GreyGray.Modules.Reporting.Core\GreyGray.Modules.Reporting.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Reporting\GreyGray.Modules.Reporting.Infra\GreyGray.Modules.Reporting.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Hosts\GreyGray.Api.Storefront\GreyGray.Api.Storefront.csproj" />
+    <ProjectReference Include="..\..\src\Hosts\GreyGray.Api.Admin\GreyGray.Api.Admin.csproj" />
+    <ProjectReference Include="..\..\src\Hosts\GreyGray.Worker\GreyGray.Worker.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,14 +1,14 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Daigou.Platform.Modules;
+namespace GreyGray.Platform.Modules;
 
 /// <summary>
 /// 每個模組的 <c>*.Infra</c> 組件<b>只</b>對外公開一個這個介面的實作，作為組合根的接縫。
 /// </summary>
 /// <remarks>
 /// 這是 Host 唯一被允許參考 <c>*.Infra</c> 的理由。Host 不得參考任何 <c>*.Core</c>，
-/// 由 <c>tests/Daigou.Architecture.Tests</c> 斷言（違規 build fail）。
+/// 由 <c>tests/GreyGray.Architecture.Tests</c> 斷言（違規 build fail）。
 /// <para>
 /// 實作範例：<c>internal sealed class OrderingModule : IModuleRegistration</c>，
 /// 加上一個 <c>public static class OrderingModuleExtensions { public static IServiceCollection AddOrderingModule(...) }</c>。

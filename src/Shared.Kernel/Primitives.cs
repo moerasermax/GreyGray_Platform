@@ -1,4 +1,4 @@
-namespace Daigou.Shared.Kernel;
+namespace GreyGray.Shared.Kernel;
 
 /// <summary>
 /// 租戶識別。<b>M0 只留欄位，不做隔離</b>（見 docs/00-decisions.md ADR-006）。

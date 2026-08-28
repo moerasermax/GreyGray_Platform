@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <RootNamespace>GreyGray.Api.Admin</RootNamespace>
+    <ModuleLayer>Host</ModuleLayer>
+    <UserSecretsId>greygray-greygray-api-admin</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup Label="平台">
+    <ProjectReference Include="..\..\Platform\GreyGray.Platform.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Label="模組組合根：只允許 Infra 的 Add*Module() 擴充方法；不得參考任何 *.Core">
+    <ProjectReference Include="..\..\Modules\Identity\GreyGray.Modules.Identity.Infra\GreyGray.Modules.Identity.Infra.csproj" />
+    <ProjectReference Include="..\..\Modules\Catalog\GreyGray.Modules.Catalog.Infra\GreyGray.Modules.Catalog.Infra.csproj" />
+    <ProjectReference Include="..\..\Modules\Campaign\GreyGray.Modules.Campaign.Infra\GreyGray.Modules.Campaign.Infra.csproj" />
+    <ProjectReference Include="..\..\Modules\Pricing\GreyGray.Modules.Pricing.Infra\GreyGray.Modules.Pricing.Infra.csproj" />
+    <ProjectReference Include="..\..\Modules\Inventory\GreyGray.Modules.Inventory.Infra\GreyGray.Modules.Inventory.Infra.csproj" />
+    <ProjectReference Include="..\..\Modules\Checkout\GreyGray.Modules.Checkout.Infra\GreyGray.Modules.Checkout.Infra.csproj" />
+    <ProjectReference Include="..\..\Modules\Ordering\GreyGray.Modules.Ordering.Infra\GreyGray.Modules.Ordering.Infra.csproj" />
+    <ProjectReference Include="..\..\Modules\Procurement\GreyGray.Modules.Procurement.Infra\GreyGray.Modules.Procurement.Infra.csproj" />
+    <ProjectReference Include="..\..\Modules\Fulfillment\GreyGray.Modules.Fulfillment.Infra\GreyGray.Modules.Fulfillment.Infra.csproj" />
+    <ProjectReference Include="..\..\Modules\Payment\GreyGray.Modules.Payment.Infra\GreyGray.Modules.Payment.Infra.csproj" />
+    <ProjectReference Include="..\..\Modules\Ledger\GreyGray.Modules.Ledger.Infra\GreyGray.Modules.Ledger.Infra.csproj" />
+    <ProjectReference Include="..\..\Modules\Notification\GreyGray.Modules.Notification.Infra\GreyGray.Modules.Notification.Infra.csproj" />
+    <ProjectReference Include="..\..\Modules\Audit\GreyGray.Modules.Audit.Infra\GreyGray.Modules.Audit.Infra.csproj" />
+    <ProjectReference Include="..\..\Modules\Reporting\GreyGray.Modules.Reporting.Infra\GreyGray.Modules.Reporting.Infra.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" />
+  </ItemGroup>
+
+</Project>

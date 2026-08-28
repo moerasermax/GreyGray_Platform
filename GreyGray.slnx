@@ -1,0 +1,92 @@
+<Solution>
+  <Folder Name="/_root/">
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="global.json" />
+    <File Path="README.md" />
+    <File Path="STATE.md" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Shared.Kernel/GreyGray.Shared.Kernel.csproj" />
+    <Project Path="src/Platform.Abstractions/GreyGray.Platform.Abstractions.csproj" />
+    <Project Path="src/Platform/GreyGray.Platform.csproj" />
+  </Folder>
+  <Folder Name="/src/Hosts/">
+    <Project Path="src/Hosts/GreyGray.Api.Storefront/GreyGray.Api.Storefront.csproj" />
+    <Project Path="src/Hosts/GreyGray.Api.Admin/GreyGray.Api.Admin.csproj" />
+    <Project Path="src/Hosts/GreyGray.Worker/GreyGray.Worker.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Identity/">
+    <Project Path="src/Modules/Identity/GreyGray.Modules.Identity.Contracts/GreyGray.Modules.Identity.Contracts.csproj" />
+    <Project Path="src/Modules/Identity/GreyGray.Modules.Identity.Core/GreyGray.Modules.Identity.Core.csproj" />
+    <Project Path="src/Modules/Identity/GreyGray.Modules.Identity.Infra/GreyGray.Modules.Identity.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Catalog/">
+    <Project Path="src/Modules/Catalog/GreyGray.Modules.Catalog.Contracts/GreyGray.Modules.Catalog.Contracts.csproj" />
+    <Project Path="src/Modules/Catalog/GreyGray.Modules.Catalog.Core/GreyGray.Modules.Catalog.Core.csproj" />
+    <Project Path="src/Modules/Catalog/GreyGray.Modules.Catalog.Infra/GreyGray.Modules.Catalog.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Campaign/">
+    <Project Path="src/Modules/Campaign/GreyGray.Modules.Campaign.Contracts/GreyGray.Modules.Campaign.Contracts.csproj" />
+    <Project Path="src/Modules/Campaign/GreyGray.Modules.Campaign.Core/GreyGray.Modules.Campaign.Core.csproj" />
+    <Project Path="src/Modules/Campaign/GreyGray.Modules.Campaign.Infra/GreyGray.Modules.Campaign.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Pricing/">
+    <Project Path="src/Modules/Pricing/GreyGray.Modules.Pricing.Contracts/GreyGray.Modules.Pricing.Contracts.csproj" />
+    <Project Path="src/Modules/Pricing/GreyGray.Modules.Pricing.Core/GreyGray.Modules.Pricing.Core.csproj" />
+    <Project Path="src/Modules/Pricing/GreyGray.Modules.Pricing.Infra/GreyGray.Modules.Pricing.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Inventory/">
+    <Project Path="src/Modules/Inventory/GreyGray.Modules.Inventory.Contracts/GreyGray.Modules.Inventory.Contracts.csproj" />
+    <Project Path="src/Modules/Inventory/GreyGray.Modules.Inventory.Core/GreyGray.Modules.Inventory.Core.csproj" />
+    <Project Path="src/Modules/Inventory/GreyGray.Modules.Inventory.Infra/GreyGray.Modules.Inventory.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Checkout/">
+    <Project Path="src/Modules/Checkout/GreyGray.Modules.Checkout.Contracts/GreyGray.Modules.Checkout.Contracts.csproj" />
+    <Project Path="src/Modules/Checkout/GreyGray.Modules.Checkout.Core/GreyGray.Modules.Checkout.Core.csproj" />
+    <Project Path="src/Modules/Checkout/GreyGray.Modules.Checkout.Infra/GreyGray.Modules.Checkout.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Ordering/">
+    <Project Path="src/Modules/Ordering/GreyGray.Modules.Ordering.Contracts/GreyGray.Modules.Ordering.Contracts.csproj" />
+    <Project Path="src/Modules/Ordering/GreyGray.Modules.Ordering.Core/GreyGray.Modules.Ordering.Core.csproj" />
+    <Project Path="src/Modules/Ordering/GreyGray.Modules.Ordering.Infra/GreyGray.Modules.Ordering.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Procurement/">
+    <Project Path="src/Modules/Procurement/GreyGray.Modules.Procurement.Contracts/GreyGray.Modules.Procurement.Contracts.csproj" />
+    <Project Path="src/Modules/Procurement/GreyGray.Modules.Procurement.Core/GreyGray.Modules.Procurement.Core.csproj" />
+    <Project Path="src/Modules/Procurement/GreyGray.Modules.Procurement.Infra/GreyGray.Modules.Procurement.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Fulfillment/">
+    <Project Path="src/Modules/Fulfillment/GreyGray.Modules.Fulfillment.Contracts/GreyGray.Modules.Fulfillment.Contracts.csproj" />
+    <Project Path="src/Modules/Fulfillment/GreyGray.Modules.Fulfillment.Core/GreyGray.Modules.Fulfillment.Core.csproj" />
+    <Project Path="src/Modules/Fulfillment/GreyGray.Modules.Fulfillment.Infra/GreyGray.Modules.Fulfillment.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Payment/">
+    <Project Path="src/Modules/Payment/GreyGray.Modules.Payment.Contracts/GreyGray.Modules.Payment.Contracts.csproj" />
+    <Project Path="src/Modules/Payment/GreyGray.Modules.Payment.Core/GreyGray.Modules.Payment.Core.csproj" />
+    <Project Path="src/Modules/Payment/GreyGray.Modules.Payment.Infra/GreyGray.Modules.Payment.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Ledger/">
+    <Project Path="src/Modules/Ledger/GreyGray.Modules.Ledger.Contracts/GreyGray.Modules.Ledger.Contracts.csproj" />
+    <Project Path="src/Modules/Ledger/GreyGray.Modules.Ledger.Core/GreyGray.Modules.Ledger.Core.csproj" />
+    <Project Path="src/Modules/Ledger/GreyGray.Modules.Ledger.Infra/GreyGray.Modules.Ledger.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Notification/">
+    <Project Path="src/Modules/Notification/GreyGray.Modules.Notification.Contracts/GreyGray.Modules.Notification.Contracts.csproj" />
+    <Project Path="src/Modules/Notification/GreyGray.Modules.Notification.Core/GreyGray.Modules.Notification.Core.csproj" />
+    <Project Path="src/Modules/Notification/GreyGray.Modules.Notification.Infra/GreyGray.Modules.Notification.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Audit/">
+    <Project Path="src/Modules/Audit/GreyGray.Modules.Audit.Contracts/GreyGray.Modules.Audit.Contracts.csproj" />
+    <Project Path="src/Modules/Audit/GreyGray.Modules.Audit.Core/GreyGray.Modules.Audit.Core.csproj" />
+    <Project Path="src/Modules/Audit/GreyGray.Modules.Audit.Infra/GreyGray.Modules.Audit.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Reporting/">
+    <Project Path="src/Modules/Reporting/GreyGray.Modules.Reporting.Contracts/GreyGray.Modules.Reporting.Contracts.csproj" />
+    <Project Path="src/Modules/Reporting/GreyGray.Modules.Reporting.Core/GreyGray.Modules.Reporting.Core.csproj" />
+    <Project Path="src/Modules/Reporting/GreyGray.Modules.Reporting.Infra/GreyGray.Modules.Reporting.Infra.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GreyGray.Architecture.Tests/GreyGray.Architecture.Tests.csproj" />
+  </Folder>
+</Solution>

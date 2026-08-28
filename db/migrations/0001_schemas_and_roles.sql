@@ -8,7 +8,7 @@
 -- 線上服務帳號永遠沒有 DDL 權限（藍圖 §08）。
 --
 -- 密碼不要寫在這裡。用 psql 變數帶進來：
---   psql -v mod_pw="$(pass show daigou/db/module)" -f 0001_schemas_and_roles.sql
+--   psql -v mod_pw="$(pass show greygray/db/module)" -f 0001_schemas_and_roles.sql
 -- ============================================================================
 
 \set ON_ERROR_STOP on
@@ -21,13 +21,13 @@ BEGIN;
 -- 你以為 RLS 開了，其實整條防線根本沒生效。M0 還沒開 RLS，但角色現在就要建對。
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'daigou_app') THEN
-        CREATE ROLE daigou_app NOLOGIN NOBYPASSRLS;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'greygray_app') THEN
+        CREATE ROLE greygray_app NOLOGIN NOBYPASSRLS;
     END IF;
 
     -- schema 的 owner，只給 migration 用
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'daigou_owner') THEN
-        CREATE ROLE daigou_owner NOLOGIN NOBYPASSRLS;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'greygray_owner') THEN
+        CREATE ROLE greygray_owner NOLOGIN NOBYPASSRLS;
     END IF;
 END
 $$;
@@ -44,21 +44,21 @@ DECLARE
     ];
 BEGIN
     FOREACH module_schema IN ARRAY schemas LOOP
-        EXECUTE format('CREATE SCHEMA IF NOT EXISTS %I AUTHORIZATION daigou_owner', module_schema);
+        EXECUTE format('CREATE SCHEMA IF NOT EXISTS %I AUTHORIZATION greygray_owner', module_schema);
 
-        role_name := 'daigou_' || module_schema;
+        role_name := 'greygray_' || module_schema;
         IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = role_name) THEN
-            EXECUTE format('CREATE ROLE %I LOGIN NOBYPASSRLS IN ROLE daigou_app', role_name);
+            EXECUTE format('CREATE ROLE %I LOGIN NOBYPASSRLS IN ROLE greygray_app', role_name);
         END IF;
 
         -- 只給自己的 schema
         EXECUTE format('GRANT USAGE ON SCHEMA %I TO %I', module_schema, role_name);
         EXECUTE format(
-            'ALTER DEFAULT PRIVILEGES FOR ROLE daigou_owner IN SCHEMA %I '
+            'ALTER DEFAULT PRIVILEGES FOR ROLE greygray_owner IN SCHEMA %I '
             'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %I',
             module_schema, role_name);
         EXECUTE format(
-            'ALTER DEFAULT PRIVILEGES FOR ROLE daigou_owner IN SCHEMA %I '
+            'ALTER DEFAULT PRIVILEGES FOR ROLE greygray_owner IN SCHEMA %I '
             'GRANT USAGE, SELECT ON SEQUENCES TO %I',
             module_schema, role_name);
 
@@ -70,8 +70,8 @@ $$;
 
 -- ── audit 是唯一的例外：不可竄改追溯 ───────────────────────────────────
 -- 它的 role 只能 INSERT 與 SELECT，沒有 UPDATE／DELETE。
-ALTER DEFAULT PRIVILEGES FOR ROLE daigou_owner IN SCHEMA audit
-    REVOKE UPDATE, DELETE ON TABLES FROM daigou_audit;
+ALTER DEFAULT PRIVILEGES FOR ROLE greygray_owner IN SCHEMA audit
+    REVOKE UPDATE, DELETE ON TABLES FROM greygray_audit;
 
 -- ── platform schema 是共用的 ───────────────────────────────────────────
 -- Outbox 與 Idempotency 由每個模組在自己的交易裡寫入，
@@ -87,10 +87,10 @@ DECLARE
     module_schema text;
 BEGIN
     FOREACH module_schema IN ARRAY schemas LOOP
-        role_name := 'daigou_' || module_schema;
+        role_name := 'greygray_' || module_schema;
         EXECUTE format('GRANT USAGE ON SCHEMA platform TO %I', role_name);
         EXECUTE format(
-            'ALTER DEFAULT PRIVILEGES FOR ROLE daigou_owner IN SCHEMA platform '
+            'ALTER DEFAULT PRIVILEGES FOR ROLE greygray_owner IN SCHEMA platform '
             'GRANT SELECT, INSERT, UPDATE ON TABLES TO %I',
             role_name);
     END LOOP;

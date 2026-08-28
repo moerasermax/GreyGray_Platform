@@ -1,4 +1,4 @@
-namespace Daigou.Shared.Kernel;
+namespace GreyGray.Shared.Kernel;
 
 /// <summary>
 /// 金額。一律以 <b>整數最小單位</b> 儲存與運算，禁用 float / double / decimal 當金額欄位。

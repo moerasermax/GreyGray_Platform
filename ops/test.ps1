@@ -18,10 +18,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 
-dotnet build "$repo\Daigou.slnx" -c $Configuration --nologo
+dotnet build "$repo\GreyGray.slnx" -c $Configuration --nologo
 if ($LASTEXITCODE -ne 0) { throw "建置失敗，測試不跑。" }
 
-$exe = Join-Path $repo "tests\Daigou.Architecture.Tests\bin\$Configuration\net10.0\Daigou.Architecture.Tests.exe"
+$exe = Join-Path $repo "tests\GreyGray.Architecture.Tests\bin\$Configuration\net10.0\GreyGray.Architecture.Tests.exe"
 if (-not (Test-Path $exe)) { throw "找不到測試執行檔：$exe" }
 
 & $exe

@@ -1,4 +1,4 @@
-namespace Daigou.Shared.Kernel;
+namespace GreyGray.Shared.Kernel;
 
 /// <summary>
 /// 幣別。最小單位的小數位數各幣別不同——JPY 與 KRW 沒有小數位，

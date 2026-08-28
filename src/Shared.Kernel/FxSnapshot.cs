@@ -1,4 +1,4 @@
-namespace Daigou.Shared.Kernel;
+namespace GreyGray.Shared.Kernel;
 
 public readonly record struct FxSnapshotId(Guid Value)
 {

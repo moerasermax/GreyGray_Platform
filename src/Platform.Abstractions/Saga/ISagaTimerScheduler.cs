@@ -1,6 +1,6 @@
-using Daigou.Shared.Kernel;
+using GreyGray.Shared.Kernel;
 
-namespace Daigou.Platform.Abstractions.Saga;
+namespace GreyGray.Platform.Abstractions.Saga;
 
 /// <summary>
 /// 長流程的時間驅動轉移，對應 <c>platform.saga_timer</c>。

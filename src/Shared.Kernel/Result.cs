@@ -1,4 +1,4 @@
-namespace Daigou.Shared.Kernel;
+namespace GreyGray.Shared.Kernel;
 
 /// <summary>
 /// 領域錯誤。<b>可預期</b>的業務失敗走這裡，不用例外——

@@ -1,6 +1,9 @@
-# 代購平台
+# GreyGray Platform
 
 出國採購開團 ＋ 本地批發現貨並存的代購業務系統。前後端徹底分離，後端不輸出任何畫面。
+
+組件與命名空間前綴一律 `GreyGray.`，Postgres 角色前綴 `greygray_`。
+舊名「代購平台 / daigou」已於 2026-08-28 全面汰換，不應再出現在任何地方。
 
 模組化單體，十四個限界上下文，邊界由**編譯期與資料庫權限雙重強制**。
 帳務以複式記帳為底，兩種模式共用同一組科目，差別只在存貨從哪來、成本何時確定。
@@ -19,7 +22,7 @@
 ## 目錄
 
 ```
-Daigou.slnx                     49 個專案
+GreyGray.slnx                     49 個專案
 Directory.Build.props           TargetFramework、Nullable、TreatWarningsAsErrors
 Directory.Packages.props        中央套件版本管理（版本一律釘死）
 dotnet.config                   dotnet test 的 MTP opt-in（此 SDK 版本尚未生效，見 ops/test.ps1）
@@ -33,11 +36,11 @@ src/
     *.Core/                     internal：聚合根、值物件、狀態機、規則
     *.Infra/                    internal：DbContext（只 map 自己的 schema）、repository
   Hosts/
-    Daigou.Api.Storefront/      公開 BFF  :5000
-    Daigou.Api.Admin/           內部 BFF  :5001（Cloudflare Access 之後）
-    Daigou.Worker/              Outbox · Saga · 排程（無 listener）
+    GreyGray.Api.Storefront/      公開 BFF  :5000
+    GreyGray.Api.Admin/           內部 BFF  :5001（Cloudflare Access 之後）
+    GreyGray.Worker/              Outbox · Saga · 排程（無 listener）
 
-tests/Daigou.Architecture.Tests/  組件參考規則的斷言，違規 build fail
+tests/GreyGray.Architecture.Tests/  組件參考規則的斷言，違規 build fail
 
 db/migrations/                  SQL migration（M0 只有 schema、role、platform 三張表）
 ops/                            建置、測試、部署腳本
@@ -47,7 +50,7 @@ docs/                           決策紀錄與規格
 ## 建置與測試
 
 ```powershell
-dotnet build .\Daigou.slnx
+dotnet build .\GreyGray.slnx
 .\ops\test.ps1                 # 不要用 dotnet test，理由寫在腳本裡
 ```
 
@@ -59,5 +62,5 @@ dotnet build .\Daigou.slnx
 3. 每個模組一個 Postgres role，只 `GRANT` 自己的 schema。
 4. 事件只承載「已發生的事實 ＋ 識別碼」，不承載對方模組的內部模型。需要細節就回頭呼叫 Contracts。
 
-第 1、3 條由 `tests/Daigou.Architecture.Tests` 與 `db/migrations/0001` 分別強制。
+第 1、3 條由 `tests/GreyGray.Architecture.Tests` 與 `db/migrations/0001` 分別強制。
 第 2、4 條靠 review——所以它們寫在這裡。

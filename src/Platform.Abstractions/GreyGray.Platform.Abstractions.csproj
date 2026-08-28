@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>GreyGray.Platform.Abstractions</RootNamespace>
+    <ModuleLayer>PlatformAbstractions</ModuleLayer>
+  </PropertyGroup>
+
+  <!--
+    這個組件不得有任何 PackageReference。
+    只放平台能力的「介面」：事件、Outbox 發布、Idempotency、Saga Timer。
+    Contracts 與 Core 都參考它；實作在 GreyGray.Platform（那邊才有 EF Core）。
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\Shared.Kernel\GreyGray.Shared.Kernel.csproj" />
+  </ItemGroup>
+
+</Project>

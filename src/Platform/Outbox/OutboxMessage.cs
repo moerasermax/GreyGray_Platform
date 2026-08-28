@@ -1,6 +1,6 @@
-using Daigou.Shared.Kernel;
+using GreyGray.Shared.Kernel;
 
-namespace Daigou.Platform.Outbox;
+namespace GreyGray.Platform.Outbox;
 
 /// <summary>
 /// 對應 <c>platform.outbox_message</c>。欄位定義見 db/migrations/0001_platform.sql。

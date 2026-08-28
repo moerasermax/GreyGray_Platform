@@ -1,6 +1,6 @@
-using Daigou.Shared.Kernel;
+using GreyGray.Shared.Kernel;
 
-namespace Daigou.Platform.Abstractions.Messaging;
+namespace GreyGray.Platform.Abstractions.Messaging;
 
 /// <summary>
 /// 模組之間的整合事件。<b>只承載「已發生的事實 ＋ 識別碼」</b>，
