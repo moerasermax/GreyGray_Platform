@@ -52,6 +52,57 @@ export function resetStorefrontMockState(): void {
   cartLines = initialCartLines();
   cartQuote = null;
   ordersStore = orderFixtures.map((o) => ({ ...o }));
+  if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(SESSION_KEY);
+}
+
+/*
+ * ── 為什麼要存進 sessionStorage ──
+ *
+ * msw 的 browser worker 是在**頁面自己的 JS context** 裡跑 handler，
+ * service worker 只負責把請求轉進來。所以整頁導覽會把上面那些 `let` 全部清空。
+ *
+ * 付款正好就是整頁導覽（`PaymentInitiation` 要求用 form POST 到 `action`），
+ * 於是「結帳建立訂單 → 導向收銀台 → 導回結果頁 → GET /v1/orders/{id}」
+ * 最後一步必定 404——第二波整合測試就是這樣撞到的，畫面顯示「找不到這張訂單」。
+ *
+ * 存進 sessionStorage 之後，語意剛好就是上面註解寫的「這次瀏覽階段」。
+ * Node 端（vitest／SSR）沒有 sessionStorage，就自動退回純記憶體，行為不變。
+ */
+const SESSION_KEY = 'gg-mock-storefront-state';
+
+function loadSession(): void {
+  if (typeof sessionStorage === 'undefined') return;
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return;
+    const d = JSON.parse(raw) as Partial<{
+      me: S['Me']; addressList: S['ShippingAddress'][]; cartLines: S['CartLine'][];
+      cartQuote: S['QuoteResult'] | null; ordersStore: S['Order'][];
+    }>;
+    if (d.me) me = d.me;
+    if (d.addressList) addressList = d.addressList;
+    if (d.cartLines) cartLines = d.cartLines;
+    if (d.cartQuote !== undefined) cartQuote = d.cartQuote;
+    if (d.ordersStore) ordersStore = d.ordersStore;
+  } catch {
+    // 壞掉的話就用初始 fixture，不要讓 mock 自己炸掉整頁
+  }
+}
+
+function saveSession(): void {
+  if (typeof sessionStorage === 'undefined') return;
+  try {
+    sessionStorage.setItem(SESSION_KEY,
+      JSON.stringify({ me, addressList, cartLines, cartQuote, ordersStore }));
+  } catch {
+    // 配額滿了就算了，mock 不值得為此中斷
+  }
+}
+
+if (typeof window !== 'undefined') {
+  loadSession();
+  // pagehide 在表單 POST 導覽時也會觸發，比 beforeunload 可靠
+  window.addEventListener('pagehide', saveSession);
 }
 
 function currentCart(): S['Cart'] {
@@ -349,7 +400,20 @@ export const storefrontHandlers = [
     const initiation: S['PaymentInitiation'] = {
       provider: 'ECPay',
       method: 'POST',
-      action: 'https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5',
+      /*
+       * **mock 模式不可以指向真的綠界。**
+       * 前端會照契約把 `fields` 原封不動 POST 到這個 `action`（docs/06 FE-4），
+       * 所以這裡填綠界的網址＝每跑一次結帳測試就真的送一包資料到第三方，
+       * 回來的還是「CheckMacValue Error」錯誤頁，看起來很像前端壞掉。
+       *
+       * 改指向 app 自己的假收銀台（`app/mock-cashier/route.ts`）。
+       * 不能指向 `STOREFRONT_BASE_URL`（:5000）——表單 POST 是**導覽**，
+       * service worker 只攔自己 scope 內的，跨來源到一個沒人在聽的埠會直接連線失敗。
+       * 相對路徑會落在 app 自己的來源上，由真的 route handler 接。
+       *
+       * `orderId` 走 query 是這個假收銀台自己的接線，`fields` 維持綠界的形狀不動。
+       */
+      action: `/mock-cashier?orderId=${order.id}`,
       fields: {
         MerchantID: '3002607',
         MerchantTradeNo: order.orderNumber,

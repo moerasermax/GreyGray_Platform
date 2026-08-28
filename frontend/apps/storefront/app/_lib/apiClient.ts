@@ -48,7 +48,23 @@ export async function serverApi(): Promise<ApiClient> {
  */
 let browserSingleton: ApiClient | null = null;
 
+/*
+ * mock 模式下，第一個請求要等 msw 的 service worker 接手。
+ *
+ * 不等的話會賽跑，而輸的一方拿到的是 ERR_CONNECTION_REFUSED（後端根本沒起），
+ * 頁面就停在「連線失敗」——實測第二波的購物車／結帳／儲值金三頁固定踩中，
+ * 按重試才會好。這是整包 mock 開發流程的地基，不是某一頁的問題。
+ *
+ * `NEXT_PUBLIC_USE_MOCK` 是編譯期字面值，關掉時整段會被搖掉，正式環境沒有成本。
+ */
+const mockReady =
+  process.env['NEXT_PUBLIC_USE_MOCK'] === '1'
+    ? import('../_mock/MockBootstrap').then((m) => m.startMock())
+    : undefined;
+
 export function browserApi(): ApiClient {
-  browserSingleton ??= new ApiClient({ baseUrl: BASE_URL });
+  browserSingleton ??= mockReady
+    ? new ApiClient({ baseUrl: BASE_URL, ready: mockReady })
+    : new ApiClient({ baseUrl: BASE_URL });
   return browserSingleton;
 }

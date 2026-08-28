@@ -18,6 +18,18 @@ export interface ApiClientOptions {
   readonly headers?: Record<string, string>;
   /** `platform.request-in-flight` 的重試次數。預設 2。 */
   readonly inFlightRetries?: number;
+  /**
+   * 送出前要等的閘門。**只有 mock 模式用得到。**
+   *
+   * msw 的 service worker 要註冊、啟動、接手頁面之後才攔得到請求，
+   * 而頁面自己的第一次取資料是在 hydration 當下就送出的——兩者會賽跑，
+   * 而且輸的一方會拿到 ERR_CONNECTION_REFUSED（後端根本沒起）。
+   * 實測第二波的購物車／結帳／儲值金三頁固定踩中：首次載入就是「連線失敗」，
+   * 按重試才會好。傳一個「worker 已就緒」的 promise 進來，賽跑就消失。
+   *
+   * 正式環境不傳，這裡就是 undefined，不會多一個 await。
+   */
+  readonly ready?: Promise<unknown> | undefined;
 }
 
 export interface RequestOptions {
@@ -41,11 +53,13 @@ export class ApiClient {
   private readonly baseUrl: string;
   private readonly baseHeaders: Record<string, string>;
   private readonly inFlightRetries: number;
+  private readonly ready: Promise<unknown> | undefined;
 
   constructor(options: ApiClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
     this.baseHeaders = options.headers ?? {};
     this.inFlightRetries = options.inFlightRetries ?? 2;
+    this.ready = options.ready;
   }
 
   get<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -100,6 +114,9 @@ export class ApiClient {
     if (options.body !== undefined) {
       init.body = JSON.stringify(options.body);
     }
+
+    // mock 模式下等 service worker 接手；正式環境 ready 是 undefined，這行等於不存在。
+    if (this.ready) await this.ready;
 
     let attempt = 0;
     for (;;) {

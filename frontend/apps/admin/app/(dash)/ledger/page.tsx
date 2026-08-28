@@ -238,7 +238,7 @@ export default function LedgerPage() {
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-fg-muted">分錄查詢</h2>
-          <div className="flex items-center gap-1.5 rounded-full bg-surface-sunken px-3 py-1 text-xs text-fg-muted">
+          <div className="flex items-center gap-1.5 rounded-full bg-surface-sunken px-3 py-1 text-xs text-fg-on-tint">
             <LockIcon className="h-3.5 w-3.5" />
             <span>分錄一經過帳即不可修改或刪除，更正只能開立反向分錄</span>
           </div>
@@ -308,7 +308,7 @@ export default function LedgerPage() {
                 <p className="text-sm text-fg">{selectedEntry.memo}</p>
               </div>
             ) : null}
-            <div className="flex items-start gap-2 rounded-card bg-surface-sunken p-3 text-xs text-fg-muted">
+            <div className="flex items-start gap-2 rounded-card bg-surface-sunken p-3 text-xs text-fg-on-tint">
               <LockIcon className="mt-0.5 h-4 w-4 shrink-0" />
               <p>這裡沒有編輯也沒有刪除。分錄一經過帳即不可修改，更正只能另開一筆反向分錄沖銷。</p>
             </div>

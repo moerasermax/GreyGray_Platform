@@ -138,10 +138,17 @@ export default function CheckoutPage() {
         buyerNote: buyerNote || null,
       };
       const order = await checkoutActionRef.current!.run(input);
+      /*
+       * **成功之後不要把 submitting 放掉。**
+       * `router.push` 是非同步的，如果在這裡 `finally { setSubmitting(false) }`，
+       * 按鈕會在導向完成前就解除 disabled——而那個時候冪等鍵已經因為成功而輪替過了，
+       * 使用者在那個空隙再點一下就是**第二張訂單**。
+       * 實測：真實速度連點五次會送出 3 次請求、產生 2 把不同的鍵。
+       * 失敗才要放開，讓人能用同一把鍵重試。
+       */
       router.push(`/payment/${order.id}`);
     } catch (cause) {
       setSubmitError(describeError(cause));
-    } finally {
       setSubmitting(false);
     }
   }

@@ -21,7 +21,14 @@ import { useEffect } from 'react';
 
 let started: Promise<unknown> | null = null;
 
-function startOnce() {
+/**
+ * 啟動 msw 的 worker，只會真的跑一次。
+ *
+ * **`_lib/apiClient.ts` 也會 await 這一把**——service worker 要接手之後才攔得到請求，
+ * 而頁面第一次取資料是在 hydration 當下送出的，兩者會賽跑。共用同一個 promise
+ * 才能保證「請求送出時 worker 一定已經就緒」。
+ */
+export function startMock() {
   if (started) return started;
   started = (async () => {
     const [{ isMockEnabled }, { adminWorker }] = await Promise.all([
@@ -43,7 +50,7 @@ function startOnce() {
 export function MockBootstrap() {
   useEffect(() => {
     if (process.env['NEXT_PUBLIC_USE_MOCK'] !== '1') return;
-    void startOnce();
+    void startMock();
   }, []);
 
   return null;
