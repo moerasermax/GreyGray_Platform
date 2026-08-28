@@ -166,6 +166,79 @@ rollback 用 `CancellationToken.None`——取消也會確實回滾，marker 不
 
 ---
 
+## 後端第三＋四波總驗收（2026-08-28，由 Claude 執行）—— **M0 完成**
+
+驗 `7fe8237`（BE-5 組合根 ＋ BE-7 通路接縫）與 `25a0dad`（BE-6 hello-world 垂直切片）。
+在 detached 於 `25a0dad` 的乾淨 worktree 跑，不在 Codex 的工作樹上。
+
+```
+dotnet build .\GreyGray.slnx     0 警告 0 錯誤，20.12 秒
+.\ops\test.ps1                   50 條全綠
+                                 架構 14 ／契約 16 ／端對端 1 ／Platform 19
+```
+
+| # | 檢查 | 結果 |
+|---|---|---|
+| 1 | 越界檔案 | ⚠️ 五處，全是「跨波」不是「同波互蓋」，見下 |
+| 2 | 金額位置的 `decimal` / `double` | ✅ `Shared.Kernel` 以外**為零** |
+| 3 | `DateTimeOffset.UtcNow` | ✅ 只有 `Time/SystemClock.cs:12` |
+| 4 | `new JsonSerializerOptions` | ✅ 只有 `Json/GreyGrayJson.cs:50` |
+| 5 | migration 的 `SET ROLE` ＋ owner 斷言 | ✅ **這次真的適用**：`0003`、`0004` 都有 `SET ROLE greygray_owner` ＋ `RESET ROLE` ＋ 斷言 `DO` 區塊，訊息直指「開頭少了 SET ROLE」 |
+| 6 | 租戶設定 transaction-local | ✅ 沿用第二波的 `set_config(..., true)` |
+| 7 | 注入架構違規會不會紅 | ✅ 這次注入的是**這一波新加的規則**（在 `Identity.Infra` 加一個 public 型別），「Infra 對外只暴露各自的組合根」FAIL 且訊息清楚；移除後 14/14 |
+| 8 | `KnownEventTypes` 對事件目錄 | ✅ 契約測試涵蓋，仍是 44 |
+| 9 | `AddOpenApi()` 對凍結契約 | ✅ 行為正確，仍 FAIL-FAST（見下） |
+| 10 | 服務清單有前端 5002／5003 | ✅ 第二波已補，本波未動 |
+
+**結論：通過。M0 完成。**
+
+### 第一次有業務程式碼，六條鐵則額外查過
+
+| 鐵則 | 結果 |
+|---|---|
+| 金額一律 `Money` | N/A —— 這一波沒有金額欄位 |
+| 時間一律經 `IClock` | ✅ `CustomerProvisioningService` 與 Notification handler 都用 `clock.UtcNow` |
+| 模組只參考別人的 `*.Contracts` | ✅ Host 只呼叫 `*.Infra` 的 `Add*Module`，沒有 `using` 任何 `*.Core` |
+| 禁止跨 schema JOIN | ✅ 全 repo 掃過，**零** |
+| 可預期失敗回 `Result` | ✅ 顯示名稱空白／超長都回 `Result.Failure`，不是丟例外 |
+| 註解繁中、命名英文 | ✅ |
+
+`Customer` 是 `internal sealed`，outbox 與業務資料共用 `IdentityDbContext`，
+一次 `SaveChanges` 的隱式交易保證原子性——ADR-016 做對了。
+`0003` 用 CHECK constraint 把 M0 鎖住（`source_channel = 0`、
+`quantity_channel_allocated = 0`），欄位為 M3 多通路預留但現在改不動。
+
+### 第 1 條：五處越界，但性質不同
+
+`Identity.Contracts`（＋`ICustomerProvisioning` input port）·
+`tests/GreyGray.Architecture.Tests/ModuleCompositionRootTests.cs`（＋2 條新規則）·
+三個 Host 的 `Program.cs`（模組接線）· `ops/self-test.ps1` · `GreyGray.slnx`
+
+**全部都是「後面的波動到前面的波已完成的檔案」，不是「同一波兩個 agent 互相覆蓋」。**
+所有權表的目的是防後者。這件事每一波都會重複發生，所以規則要講清楚：
+
+> **所有權表是「同一波之內」的邊界，不是跨波凍結。**
+> 後續波次為了接線而修改前面波次的檔案是正常的；
+> 要擋的是同一波裡兩個平行 agent 動到同一個檔案。
+
+`ICustomerProvisioning` 是純新增、沒動任何事件、44 條契約測試未變。
+Core 的型別全是 internal，Host 要呼叫就必須有 Contracts 上的 port——架構上非放那裡不可。
+
+### M0「完成」的實際含義，不要誤讀
+
+1. **14 個模組只接了 2 個**（Identity、Catalog）。這是 BE-5 的明訂範圍（「先只做 Identity 與 Catalog」），
+   其餘 12 個是照樣板複製的工作。
+2. **`/v1/customers` 是 Development-only ＋ `ExcludeFromDescription()`**，
+   正式環境仍然只有 `/health`。它是驗證垂直切片用的，不是契約端點。
+3. **因此 BE-8 的 OpenAPI gate 最終驗收沒有隨 BE-6 完成**——
+   `HANDOFF_3` 原本寫「待 BE-6 提供 `/v1` endpoints 後完成」，但 BE-6 提供的不算。
+   那一關要等 M1a 真正實作契約端點。
+
+**一句話**：地基與第一條垂直切片都通了，架構被端對端證明可行；
+但系統對外仍然什麼都不做。業務功能是 M1a 的事。
+
+---
+
 ## 2026-08-28 第二輪：邊界稽核修掉的六類問題
 
 派工前做了一次完整稽核，發現的都不是小事——每一條都會在平行開發時被放大。
