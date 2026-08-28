@@ -8,6 +8,7 @@ param(
     [Parameter(Mandatory)][string]$InstallRoot,
     [Parameter(Mandatory)][string]$NssmPath,
     [Parameter(Mandatory)][pscredential]$ServiceCredential,
+    [string]$NodePath,
     [pscredential]$MigrationCredential,
     [string[]]$MigrationFiles = @(),
     [switch]$SkipMigrations,
@@ -26,6 +27,7 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 . "$PSScriptRoot\lib\Process.ps1"
 . "$PSScriptRoot\lib\Deployment.ps1"
+. "$PSScriptRoot\lib\Node.ps1"
 $manifestPath = "$PSScriptRoot\service-manifest.ps1"
 $manifest = & $manifestPath
 
@@ -43,11 +45,17 @@ if ($artifactFull.Equals($installFull, [System.StringComparison]::OrdinalIgnoreC
 
 $serviceNames = @($manifest.Services | ForEach-Object { $_.Name })
 if (($serviceNames | Select-Object -Unique).Count -ne $serviceNames.Count) { throw 'service manifest 有重複的 Name。' }
+$nodeServices = @($manifest.Services | Where-Object { $_.Kind -eq 'NextStandalone' })
+if ($nodeServices.Count -ne 2) { throw 'service manifest 必須正好有兩個 NextStandalone service。' }
+$resolvedNodePath = Resolve-NodeExecutable -NodePath $NodePath
 foreach ($definition in $manifest.Services) {
     $artifactDirectory = Join-Path $artifactFull $definition.ArtifactDirectory
-    $executable = Join-Path $artifactDirectory $definition.Executable
-    if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
-        throw "self-contained artifact 不完整，找不到：$executable"
+    $entryPoint = [System.IO.Path]::GetFullPath((Join-Path $artifactDirectory $definition.ArtifactEntryPoint))
+    if (-not (Test-PathWithinRoot -Path $entryPoint -Root $artifactDirectory)) {
+        throw "artifact entrypoint 越出自己的目錄：$entryPoint"
+    }
+    if (-not (Test-Path -LiteralPath $entryPoint -PathType Leaf)) {
+        throw "artifact 不完整，找不到：$entryPoint"
     }
 }
 
@@ -57,7 +65,7 @@ if ($ValidateOnly) {
             -MigrationCredential $MigrationCredential -DatabaseHost $DatabaseHost `
             -DatabasePort $DatabasePort -DatabaseName $DatabaseName -PsqlPath $PsqlPath -ValidateOnly
     }
-    Write-Host "✓ deploy 參數驗證通過：$($manifest.Services.Count) 個 win-x64 self-contained service；未碰 NSSM、排程或 YC。"
+    Write-Host "✓ deploy 參數驗證通過：3 個 win-x64 self-contained + 2 個 Next standalone；node.exe=$resolvedNodePath；未碰 NSSM、排程或 YC。"
     return
 }
 
@@ -66,6 +74,10 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     throw '實際部署必須在系統管理員 PowerShell 執行。'
 }
 if (-not (Test-Path -LiteralPath $NssmPath -PathType Leaf)) { throw "找不到 NSSM：$NssmPath" }
+$nodeVersion = Invoke-NativeCommand -FilePath $resolvedNodePath -ArgumentList @('--version') -EchoOutput
+if ($nodeVersion.StdOut.Trim() -notmatch '^v(?<major>\d+)' -or [int]$Matches.major -lt 20) {
+    throw "Node 必須 >= 20；目前輸出：$($nodeVersion.StdOut.Trim())"
+}
 
 $releaseId = [datetime]::UtcNow.ToString('yyyyMMddHHmmssfff')
 $releaseRoot = Join-Path $installFull "releases\$releaseId"
@@ -95,14 +107,19 @@ function Invoke-Nssm {
 function Get-ManagedApplicationTokens {
     $tokens = @()
     foreach ($definition in $manifest.Services) {
-        $processName = [System.IO.Path]::GetFileNameWithoutExtension($definition.Executable)
-        foreach ($process in @(Get-Process -Name $processName -ErrorAction SilentlyContinue)) {
-            $token = Get-GreyGrayProcessToken -Process $process
-            if ($token.Path -and (Test-PathWithinRoot -Path $token.Path -Root $installFull)) { $tokens += $token }
+        if ($definition.Kind -eq 'DotNet') {
+            foreach ($process in @(Get-Process -Name $definition.ProcessName -ErrorAction SilentlyContinue)) {
+                $token = Get-GreyGrayProcessToken -Process $process
+                if ($token.Path -and (Test-PathWithinRoot -Path $token.Path -Root $installFull)) {
+                    Add-Member -InputObject $token -NotePropertyName ServiceName -NotePropertyValue $definition.Name
+                    $tokens += $token
+                }
+            }
         }
         if ([int]$definition.Port -gt 0) {
             foreach ($process in @(Get-PortOwnerProcess -Port ([int]$definition.Port))) {
                 $token = Get-GreyGrayProcessToken -Process $process
+                Add-Member -InputObject $token -NotePropertyName ServiceName -NotePropertyValue $definition.Name
                 if (-not ($tokens | Where-Object { $_.Id -eq $token.Id -and $_.StartTimeUtc -eq $token.StartTimeUtc })) {
                     $tokens += $token
                 }
@@ -110,6 +127,27 @@ function Get-ManagedApplicationTokens {
         }
     }
     return $tokens
+}
+
+function Test-DeploymentTokenOwnership {
+    param([Parameter(Mandatory)]$Token)
+
+    $definition = $manifest.Services | Where-Object { $_.Name -eq $Token.ServiceName } | Select-Object -First 1
+    if ($null -eq $definition) { return $false }
+    if ($definition.Kind -eq 'DotNet') {
+        return $Token.Path -and (Test-PathWithinRoot -Path $Token.Path -Root $installFull)
+    }
+
+    # Node 在 InstallRoot 外；只有命令列精確含某個已安裝 release 的 server.js 才能認領。
+    $releasesRoot = Join-Path $installFull 'releases'
+    foreach ($release in @(Get-ChildItem -LiteralPath $releasesRoot -Directory -ErrorAction SilentlyContinue)) {
+        $entryPoint = Join-Path (Join-Path $release.FullName $definition.ArtifactDirectory) $definition.ArtifactEntryPoint
+        if ((Test-Path -LiteralPath $entryPoint -PathType Leaf) -and
+            (Test-NodeProcessIdentity -Token $Token -NodePath $resolvedNodePath -EntryPointPath $entryPoint)) {
+            return $true
+        }
+    }
+    return $false
 }
 
 $oldTokens = @(Get-ManagedApplicationTokens)
@@ -123,10 +161,18 @@ foreach ($definition in $manifest.Services) {
 }
 
 # 不能只相信 NSSM/排程狀態：逐一驗證舊 PID 與 port holder 真的消失。
-Wait-ProcessTokensExit -Tokens $oldTokens -InstallRoot $installFull -TimeoutSeconds 30
+Wait-ProcessTokensExit -Tokens $oldTokens -InstallRoot $installFull -TimeoutSeconds 30 `
+    -OwnershipValidator { param($token) Test-DeploymentTokenOwnership -Token $token }
 foreach ($definition in $manifest.Services) {
     if ([int]$definition.Port -gt 0) {
-        Assert-PortReleased -Port ([int]$definition.Port) -InstallRoot $installFull
+        $portDefinition = $definition
+        $portOwnershipValidator = {
+            param($token)
+            Add-Member -InputObject $token -NotePropertyName ServiceName -NotePropertyValue $portDefinition.Name
+            Test-DeploymentTokenOwnership -Token $token
+        }.GetNewClosure()
+        Assert-PortReleased -Port ([int]$definition.Port) -InstallRoot $installFull `
+            -OwnershipValidator $portOwnershipValidator
     }
 }
 
@@ -134,13 +180,28 @@ $servicePassword = $ServiceCredential.GetNetworkCredential().Password
 try {
     foreach ($definition in $manifest.Services) {
         $service = Get-Service -Name $definition.Name -ErrorAction SilentlyContinue
-        $executable = Join-Path (Join-Path $releaseRoot $definition.ArtifactDirectory) $definition.Executable
-        $appDirectory = Split-Path -Parent $executable
+        $artifactDirectory = Join-Path $releaseRoot $definition.ArtifactDirectory
+        $entryPoint = Join-Path $artifactDirectory $definition.ArtifactEntryPoint
+        $appDirectory = Join-Path $artifactDirectory $definition.WorkingDirectory
+        $executable = if ($definition.Kind -eq 'NextStandalone') { $resolvedNodePath } else { $entryPoint }
+        $applicationArguments = @()
+        if ($definition.Kind -eq 'NextStandalone') {
+            $applicationArguments = @($entryPoint)
+        }
+        else {
+            $applicationArguments = @($definition.Arguments)
+        }
         if ($null -eq $service) {
             Invoke-Nssm -Arguments @('install', $definition.Name, $executable) | Out-Null
         }
         Invoke-Nssm -Arguments @('set', $definition.Name, 'Application', $executable) | Out-Null
         Invoke-Nssm -Arguments @('set', $definition.Name, 'AppDirectory', $appDirectory) | Out-Null
+        if ($applicationArguments.Count -gt 0) {
+            Invoke-Nssm -Arguments (@('set', $definition.Name, 'AppParameters') + $applicationArguments) | Out-Null
+        }
+        else {
+            Invoke-Nssm -Arguments @('reset', $definition.Name, 'AppParameters') | Out-Null
+        }
         Invoke-Nssm -Arguments @('set', $definition.Name, 'Start', 'SERVICE_AUTO_START') | Out-Null
         Invoke-Nssm -Arguments @('set', $definition.Name, 'AppExit', 'Default', 'Restart') | Out-Null
         Invoke-Nssm -Arguments @('set', $definition.Name, 'AppRestartDelay', '60000') | Out-Null
@@ -149,8 +210,14 @@ try {
         Invoke-Nssm -Arguments @('set', $definition.Name, 'AppStderr', (Join-Path $logsRoot "$($definition.Name).stderr.log")) | Out-Null
         Invoke-Nssm -Arguments @('set', $definition.Name, 'AppRotateFiles', '1') | Out-Null
         Invoke-Nssm -Arguments @('set', $definition.Name, 'AppRotateBytes', '10485760') | Out-Null
-        $environmentArguments = @('set', $definition.Name, 'AppEnvironmentExtra', 'DOTNET_ENVIRONMENT=Production')
-        if ([int]$definition.Port -gt 0) {
+        if ($definition.Kind -eq 'NextStandalone') {
+            $environmentArguments = @('set', $definition.Name, 'AppEnvironmentExtra',
+                'NODE_ENV=production', "PORT=$($definition.Port)", 'HOSTNAME=127.0.0.1')
+        }
+        else {
+            $environmentArguments = @('set', $definition.Name, 'AppEnvironmentExtra', 'DOTNET_ENVIRONMENT=Production')
+        }
+        if ($definition.Kind -eq 'DotNet' -and [int]$definition.Port -gt 0) {
             $environmentArguments += 'ASPNETCORE_ENVIRONMENT=Production'
             # Cloudflare Tunnel 與 health probe 都在本機；不要把 BFF listener 暴露到 LAN。
             $environmentArguments += "ASPNETCORE_URLS=http://127.0.0.1:$($definition.Port)"
@@ -173,6 +240,7 @@ function Assert-NewApplicationProcess {
     param($Definition)
 
     $expectedRoot = Join-Path $releaseRoot $Definition.ArtifactDirectory
+    $expectedEntryPoint = Join-Path $expectedRoot $Definition.ArtifactEntryPoint
     $deadline = [datetime]::UtcNow.AddSeconds($HealthTimeoutSeconds)
     do {
         $candidates = @()
@@ -180,8 +248,7 @@ function Assert-NewApplicationProcess {
             $candidates = @(Get-PortOwnerProcess -Port ([int]$Definition.Port))
         }
         else {
-            $processName = [System.IO.Path]::GetFileNameWithoutExtension($Definition.Executable)
-            $candidates = @(Get-Process -Name $processName -ErrorAction SilentlyContinue)
+            $candidates = @(Get-Process -Name $Definition.ProcessName -ErrorAction SilentlyContinue)
         }
 
         foreach ($process in $candidates) {
@@ -189,7 +256,13 @@ function Assert-NewApplicationProcess {
             if (-not (Test-ProcessStartedAfter -ProcessStartTime $process.StartTime -RestartBoundaryUtc $restartBoundaryUtc)) {
                 throw "$($Definition.Name) 由舊 PID $($process.Id) 回應；StartTime 不晚於本次重啟，拒絕假綠。"
             }
-            if (-not $token.Path -or -not (Test-PathWithinRoot -Path $token.Path -Root $expectedRoot)) {
+            if ($Definition.Kind -eq 'NextStandalone') {
+                if (-not (Test-NodeProcessIdentity -Token $token -NodePath $resolvedNodePath `
+                        -EntryPointPath $expectedEntryPoint)) {
+                    throw "$($Definition.Name) PID $($process.Id) 不是可信 node.exe 或沒有執行本次 release 的 server.js：$expectedEntryPoint"
+                }
+            }
+            elseif (-not $token.Path -or -not (Test-PathWithinRoot -Path $token.Path -Root $expectedRoot)) {
                 throw "$($Definition.Name) PID $($process.Id) 並非從本次 release 啟動：$($token.Path)"
             }
 

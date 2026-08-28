@@ -113,11 +113,12 @@ public sealed class OutboxDispatcher(
 
     private async Task SetTenantAsync(TenantId tenantId, CancellationToken cancellationToken)
     {
-        // tenantId 是 Guid 強型別，不含外部輸入字元。這裡不能改用 bind parameter：
-        // PostgreSQL 的 SET 文法不接受參數 placeholder。LOCAL 確保 transaction pooling
+        // SET LOCAL 文法不接受 bind parameter；set_config(..., true) 與它等價，
+        // 且能讓 tenant id 保持參數化。第三個參數 true 確保 transaction pooling
         // 不會把租戶設定洩漏到下一個借用同一條連線的請求。
-        var sql = $"SET LOCAL app.tenant_id = '{tenantId.Value:D}'";
-        await dbContext.Database.ExecuteSqlRawAsync(sql, cancellationToken);
+        await dbContext.Database.ExecuteSqlInterpolatedAsync($"""
+            SELECT set_config('app.tenant_id', {tenantId.Value.ToString("D")}, true)
+            """, cancellationToken);
     }
 
     private async Task InvokeHandlersAsync(

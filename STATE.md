@@ -1,10 +1,10 @@
 # 現況
 
-**最後更新**：2026-08-28（後端第一波：BE-1 Outbox ＋ BE-4 可觀測性 ＋ BE-8 CI／部署）
+**最後更新**：2026-08-28（後端第二波：BE-2 消費端冪等 ＋ BE-3 Idempotency／Saga Timer；補齊五服務部署）
 
 ## 一句話
 
-後端第一波基礎設施已落地：Outbox、事件型別登錄、source-generated JSON、OTel 與安全部署工具都有實作與測試；**業務模組與 `/v1` API 端點仍未實作**。因此即時 OpenAPI gate 目前會正確 fail-fast，不可宣稱整條 CI 已全綠。
+後端前兩波基礎設施已落地：Outbox、消費端冪等、API idempotency、Saga Timer、OTel 與五服務安全部署都有實作與測試；**業務模組與 `/v1` API 端點仍未實作**。因此即時 OpenAPI gate 目前會正確 fail-fast，不可宣稱整條 CI 已全綠。
 
 ## 已完成
 
@@ -13,8 +13,8 @@
 | Solution（51 專案） | ✅ `dotnet build` 0 error 0 warning |
 | 模組硬邊界 | ✅ **12 條**架構測試全綠（新加的兩條都注入違規驗證過會紅） |
 | 線上格式與事件目錄 | ✅ **16 條**契約測試全綠（`tests/GreyGray.Contracts.Tests`，同樣注入驗證過） |
-| Platform 基礎設施 | ✅ Outbox publisher／dispatcher、44 事件 registry、`PlatformDbContext`、OTel、clock／correlation context |
-| Platform 整合測試 | ✅ **6 條**全綠；真 PostgreSQL 17 Testcontainers，含 rollback、雙 dispatcher、retry |
+| Platform 基礎設施 | ✅ Outbox、processed-message decorator、API idempotency、Saga Timer、44 事件 registry、`PlatformDbContext`、OTel、clock／correlation context |
+| Platform 整合測試 | ✅ **18 條**全綠；真 PostgreSQL 17 Testcontainers，含 rollback／retry、並行去重、lease fencing、雙 worker timer |
 | 14 個模組的 Contracts（ID／DTO／介面／44 個事件） | ✅ 可編譯 |
 | Shared.Kernel（Money、Currency、Result、IClock、Dimensions、**JSON**） | ✅ |
 | Platform.Abstractions（事件、Outbox、Idempotency、Saga、**事件型別登錄、IAuditWriter**） | ✅ 介面 |
@@ -23,7 +23,7 @@
 | **前端 workspace（Next.js ×2 ＋ token ＋ api-client）** | ✅ `pnpm build` 兩個 app 都過 |
 | **設計 token（Soft Seoul ＋ Admin）** | ✅ 對比度實際量過，都達 AA |
 | 三個 Host 的 `Program.cs` | ⚠️ OTel 與 `/health` 已接；仍沒有 `/v1` 端點或業務模組接線 |
-| CI／Windows 部署工具 | ⚠️ build、tests、PS 5 self-test、versioned release、NSSM、watchdog 已完成；即時 OpenAPI gate 等 `/v1` 端點後才能綠 |
+| CI／Windows 部署工具 | ⚠️ 五服務 manifest、.NET／Next standalone artifacts、PS 5 self-test、versioned release、NSSM、watchdog 已完成；即時 OpenAPI gate 等 `/v1` 端點後才能綠 |
 
 ## 後端第一波總驗收（2026-08-28，由 Claude 執行）
 
@@ -61,14 +61,14 @@ dotnet build .\GreyGray.slnx     0 警告 0 錯誤，20.85 秒
 
 兩處都是新增而非覆蓋，且第一波沒有別的包會碰到這些路徑，**沒有造成任何工作被蓋掉**。
 
-### 兩個要處理的工程問題
+### 第一波驗收揭露的兩個工程問題
 
-1. **`SET LOCAL` 是用字串內插組出來的**：
+1. ✅ **字串內插 `SET LOCAL` 已修正**：
    `var sql = $"SET LOCAL app.tenant_id = '{tenantId.Value:D}'"`。
    `tenantId.Value` 是 `Guid` 且用 `:D` 格式化，塞不進引號，所以**現在是安全的**。
    但形狀是 SQL injection 的形狀，下一個人照抄去接字串型別的參數就出事。
-   PostgreSQL 的 `SET LOCAL` 不吃參數，正解是
-   `SELECT set_config('app.tenant_id', @tenantId, true)`——等效且可參數化。
+   Outbox、processed-message 與 Saga dispatcher 現在都改用
+   `SELECT set_config('app.tenant_id', @tenantId, true)`——等效 transaction-local 且可參數化。
 2. **CI 的 `windows-contract` job 從現在到 M1a 端點接線前會一直是紅的。**
    gate 本身沒寫錯（它拒絕把只有 `/health` 當成契約同步，這正是要的行為），
    但「CI 長期紅燈」會訓練所有人忽略 CI，那比沒有 gate 更危險。要決定是接受，
@@ -79,6 +79,30 @@ dotnet build .\GreyGray.slnx     0 警告 0 錯誤，20.85 秒
 驗收當下它已經在寫 BE-2（`ProcessedMessage`、`IdempotentIntegrationEventHandler`），
 但派工書寫的是「只做這三包，第二波等驗收過再說」。
 交付本身沒被汙染（BE-2 的檔案是未提交的），但**下一次派工要把這條講得更死**。
+
+---
+
+## 後端第二波與五服務部署驗收（2026-08-28）
+
+- **BE-2**：`platform.processed_message` 以 `(event_id, handler_name)` 去重；marker、handler
+  副作用與 `SaveChanges` 共用模組 DbContext transaction。兩個獨立 scope 並行競爭時仍只執行一次，
+  handler 中途失敗會完整 rollback 並可重試。
+- **BE-3 / Idempotency**：四種 outcome、24 小時 retention、首次 response 原狀快照與原 HTTP status
+  都保留；同 key 不同 payload 會拒絕。過期／abandon reclaim 使用 DB `created_at` fencing token，
+  舊請求不能覆蓋新 lease 的完成結果。
+- **BE-3 / Saga Timer**：排程、取消、cancel-all、固定 advisory lock `1002` 與失敗重試已完成；
+  兩個 worker 同時掃描只會派送一次，tenant 經 correlation scope 與 transaction-local
+  `set_config(..., true)` 傳遞。
+- **BE-8 補齊**：service manifest 現為 3 個 .NET ＋ 2 個 Next standalone；前端固定
+  `GreyGray-Web-Storefront:5002`、`GreyGray-Web-Admin:5003`，正式服務直接執行可信
+  `node.exe + server.js`。Node／pnpm 缺失會明確 fail-fast。
+- **Windows + pnpm artifact**：standalone 內的 symlink／virtual-store context 會在建置時實體化，
+  不要求 YC 開 symlink 權限。Storefront／Admin 各解參考 20 個 link，最終 artifact 均為
+  0 reparse point，從 workspace 外啟動後 `/` 都回 HTTP 200。
+
+驗收結果：Release build **0 warning／0 error**；Architecture **12/12**、Contracts **16/16**、
+Platform **18/18**，合計 **46/46**；`ops/self-test.ps1` 全綠。Live OpenAPI gate 仍因尚無
+`/v1` endpoints 誠實紅燈，狀態與第一波相同。
 
 ---
 
@@ -114,7 +138,10 @@ dotnet build .\GreyGray.slnx     0 警告 0 錯誤，20.85 秒
 
 ## 未完成
 
-**後端**：BE-1 與 BE-4 已完成；BE-8 的工具與 fail-closed 門檻已完成，但其 live OpenAPI 驗收依賴 M0-6 的 `/v1` 端點。尚待 BE-2（inbox）、BE-3（idempotency ＋ Saga Timer）、BE-5（Identity／Catalog 組合根）、BE-7（audit／通路 schema）、BE-6（hello-world 垂直切片與 API 接線）。詳見 `docs/03-M0工作包.md` 與 `docs/07-後端派工書.md`。
+**後端**：BE-1、BE-2、BE-3、BE-4 已完成；BE-8 的五服務工具與 fail-closed 門檻已完成，
+但 live OpenAPI 驗收仍依賴 M0-6 的 `/v1` 端點。尚待 BE-5（Identity／Catalog 組合根）、
+BE-7（audit／通路 schema）、BE-6（hello-world 垂直切片與 API 接線）。詳見
+`docs/03-M0工作包.md` 與 `docs/07-後端派工書.md`。
 
 **前端**：FE-1 ～ FE-8，見 `docs/06-前端工作包.md`。
 目前只有骨架與 token，兩個 app 各只有一頁佔位。
@@ -161,10 +188,16 @@ Storefront frozen OpenAPI 曾有兩個 `1:1` description 未加引號，嚴格 Y
 `frontend/*/package.json` 目前用 caret 範圍，靠 `pnpm-lock.yaml` 保證重現。
 第一輪整合完成後應改成精確版本，與 `Directory.Packages.props` 的做法一致。
 
+### Windows 不可直接複製 pnpm 的 Next standalone
+`.next/standalone` 會含指向 pnpm virtual store 的 symlink／reparse point；`Copy-Item` 與
+`robocopy` 在一般 Windows 權限下可能 Access denied，單純解參考又會遺失套件的 realpath
+依賴 context。正式入口只能走 `ops/build-frontends.ps1` 的 materializer，並以「0 reparse ＋
+workspace 外 `node server.js` 回 HTTP 200」作 portability 證據。
+
 ## 下一步
 
-1. **後端第二波**：BE-2（inbox）與 BE-3（idempotency ＋ Saga Timer）平行
-2. 接著 BE-5（Identity／Catalog 組合根）與 BE-7（audit／通路 schema），再由 BE-6 做 hello-world 垂直切片與 `/v1` API 接線
+1. **後端第三波**：BE-5（Identity／Catalog 組合根）與 BE-7（audit／通路 schema）平行
+2. 接著由 BE-6 做 hello-world 垂直切片與 `/v1` API 接線
 3. BE-6 完成後重跑 strict live OpenAPI gate，處理真實 schema drift，完成 M0-8 驗收
 4. **前端**：FE-1（型別 ＋ mock）、FE-2（Soft Seoul 元件庫）、FE-6（後台殼）可平行
 5. M-1 環境整備可以完全並行

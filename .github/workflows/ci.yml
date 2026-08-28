@@ -41,6 +41,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup pnpm 11.5
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.0
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
@@ -53,6 +65,10 @@ jobs:
       - name: Build
         shell: pwsh
         run: dotnet build .\GreyGray.slnx -c Release --no-restore --nologo
+
+      - name: Build Next standalone deployment artifacts
+        shell: powershell
+        run: .\ops\build-frontends.ps1 -OutputRoot "$env:RUNNER_TEMP\greygray-artifacts"
 
       - name: Validate deployment scripts without deploying
         shell: powershell

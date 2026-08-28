@@ -9,7 +9,11 @@ param(
     [switch]$Publish,
 
     [ValidateSet('win-x64')]
-    [string]$RuntimeIdentifier = 'win-x64'
+    [string]$RuntimeIdentifier = 'win-x64',
+
+    [string]$NodePath,
+
+    [string]$PnpmPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -23,8 +27,16 @@ if ($LASTEXITCODE -ne 0) { throw "架構測試沒過。硬邊界被破壞了，�
 
 if (-not $Publish) { return }
 
+# 前端是兩個 Next standalone 常駐服務。node/pnpm 任一缺失都要在改動 artifacts 前明確失敗。
+$frontendBuild = @{
+    OutputRoot = (Join-Path $repo 'artifacts')
+}
+if ($NodePath) { $frontendBuild.NodePath = $NodePath }
+if ($PnpmPath) { $frontendBuild.PnpmPath = $PnpmPath }
+& "$PSScriptRoot\build-frontends.ps1" @frontendBuild
+
 # 正式機沒有 dotnet runtime，所以一律 self-contained（ADR-003）。
-# 產出是三個獨立資料夾，用 NSSM 各自註冊成 Windows service。
+# 加上兩個 Next standalone artifact，共五個 NSSM service。
 $hosts = @('GreyGray.Api.Storefront', 'GreyGray.Api.Admin', 'GreyGray.Worker')
 $artifactsRoot = [System.IO.Path]::GetFullPath((Join-Path $repo 'artifacts'))
 foreach ($h in $hosts) {

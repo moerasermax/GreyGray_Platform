@@ -29,11 +29,68 @@ function Get-GreyGrayProcessToken {
 
     $path = $null
     try { $path = $Process.Path } catch { }
+    $commandLine = $null
+    try {
+        $cimProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $($Process.Id)" -ErrorAction Stop
+        if ($null -ne $cimProcess) { $commandLine = $cimProcess.CommandLine }
+    }
+    catch { }
     return [pscustomobject]@{
         Id = $Process.Id
         StartTimeUtc = $Process.StartTime.ToUniversalTime()
         Path = $path
+        CommandLine = $commandLine
     }
+}
+
+function Test-CommandLineReferencesPath {
+    [CmdletBinding()]
+    param(
+        [string]$CommandLine,
+        [Parameter(Mandatory)][string]$Path
+    )
+
+    if (-not $CommandLine) { return $false }
+    $fullPath = [System.IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
+    $offset = 0
+    while ($offset -lt $CommandLine.Length) {
+        $index = $CommandLine.IndexOf($fullPath, $offset, [System.StringComparison]::OrdinalIgnoreCase)
+        if ($index -lt 0) { return $false }
+        $beforeValid = $index -eq 0 -or [char]::IsWhiteSpace($CommandLine[$index - 1]) -or $CommandLine[$index - 1] -eq '"'
+        $afterIndex = $index + $fullPath.Length
+        $afterValid = $afterIndex -eq $CommandLine.Length -or
+            [char]::IsWhiteSpace($CommandLine[$afterIndex]) -or $CommandLine[$afterIndex] -eq '"'
+        if ($beforeValid -and $afterValid) { return $true }
+        $offset = $index + 1
+    }
+    return $false
+}
+
+function Test-NodeProcessIdentity {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]$Token,
+        [Parameter(Mandatory)][string]$NodePath,
+        [Parameter(Mandatory)][string]$EntryPointPath
+    )
+
+    if (-not $Token.Path) { return $false }
+    if (-not ([System.IO.Path]::GetFullPath($Token.Path).Equals(
+            [System.IO.Path]::GetFullPath($NodePath), [System.StringComparison]::OrdinalIgnoreCase))) {
+        return $false
+    }
+    return Test-CommandLineReferencesPath -CommandLine $Token.CommandLine -Path $EntryPointPath
+}
+
+function Test-ProcessTokenBelongsToRoot {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]$Token,
+        [Parameter(Mandatory)][string]$Root
+    )
+
+    if ($Token.Path -and (Test-PathWithinRoot -Path $Token.Path -Root $Root)) { return $true }
+    return Test-CommandLineReferencesPath -CommandLine $Token.CommandLine -Path $Root
 }
 
 function Test-SameProcessTokenIsAlive {
@@ -70,7 +127,8 @@ function Wait-ProcessTokensExit {
     param(
         [Parameter(Mandatory)][object[]]$Tokens,
         [Parameter(Mandatory)][string]$InstallRoot,
-        [int]$TimeoutSeconds = 30
+        [int]$TimeoutSeconds = 30,
+        [scriptblock]$OwnershipValidator
     )
 
     $deadline = [datetime]::UtcNow.AddSeconds($TimeoutSeconds)
@@ -81,7 +139,13 @@ function Wait-ProcessTokensExit {
     } while ([datetime]::UtcNow -lt $deadline)
 
     foreach ($token in $alive) {
-        if (-not $token.Path -or -not (Test-PathWithinRoot -Path $token.Path -Root $InstallRoot)) {
+        $owned = if ($null -ne $OwnershipValidator) {
+            [bool](& $OwnershipValidator $token)
+        }
+        else {
+            Test-ProcessTokenBelongsToRoot -Token $token -Root $InstallRoot
+        }
+        if (-not $owned) {
             throw "舊 PID $($token.Id) 仍存活，且無法證明它屬於 $InstallRoot；拒絕強制終止。"
         }
         Stop-Process -Id $token.Id -Force -ErrorAction Stop
@@ -98,7 +162,8 @@ function Assert-PortReleased {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][int]$Port,
-        [Parameter(Mandatory)][string]$InstallRoot
+        [Parameter(Mandatory)][string]$InstallRoot,
+        [scriptblock]$OwnershipValidator
     )
 
     $owners = @(Get-PortOwnerProcess -Port $Port)
@@ -106,7 +171,13 @@ function Assert-PortReleased {
 
     foreach ($owner in $owners) {
         $token = Get-GreyGrayProcessToken -Process $owner
-        if (-not $token.Path -or -not (Test-PathWithinRoot -Path $token.Path -Root $InstallRoot)) {
+        $owned = if ($null -ne $OwnershipValidator) {
+            [bool](& $OwnershipValidator $token)
+        }
+        else {
+            Test-ProcessTokenBelongsToRoot -Token $token -Root $InstallRoot
+        }
+        if (-not $owned) {
             throw "port $Port 仍由外部 PID $($token.Id) 佔用；拒絕誤殺非 GreyGray 程序。"
         }
         Stop-Process -Id $token.Id -Force -ErrorAction Stop

@@ -21,12 +21,23 @@ if ($parseFailures.Count -gt 0) { throw "PowerShell 靜態解析失敗：$($pars
 Write-Host 'PASS PowerShell AST：所有 ops/*.ps1 無語法錯誤'
 
 $manifest = & "$PSScriptRoot\service-manifest.ps1"
-if ($manifest.Services.Count -ne 3) { throw 'service manifest 必須正好有三個後端 Host。' }
-if (($manifest.Services.Name | Select-Object -Unique).Count -ne 3) { throw 'service manifest 名稱重複。' }
-if ((@($manifest.Services | Where-Object { $_.Port -gt 0 }).Port | Sort-Object) -join ',' -ne '5000,5001') {
-    throw 'API port 必須正好是 5000 與 5001；Worker 不開 listener。'
+if ($manifest.Services.Count -ne 5) { throw 'service manifest 必須正好有五個 service。' }
+if (($manifest.Services.Name | Select-Object -Unique).Count -ne 5) { throw 'service manifest 名稱重複。' }
+if ((@($manifest.Services.Port | Sort-Object) -join ',') -ne '0,5000,5001,5002,5003') {
+    throw 'service ports 必須正好是 Worker=0 與 5000..5003。'
 }
-Write-Host 'PASS service manifest：3 services；API ports 5000/5001；Worker 無 listener'
+$worker = @($manifest.Services | Where-Object { $_.Name -eq 'GreyGray-Worker' -and $_.Port -eq 0 })
+$webServices = @($manifest.Services | Where-Object { $_.Kind -eq 'NextStandalone' })
+if ($worker.Count -ne 1 -or $webServices.Count -ne 2) { throw 'Worker/NextStandalone 數量不正確。' }
+if ((@($webServices.Name | Sort-Object) -join ',') -ne 'GreyGray-Web-Admin,GreyGray-Web-Storefront') {
+    throw '前端 NSSM 名稱必須明確使用 GreyGray-Web-*。'
+}
+foreach ($web in $webServices) {
+    if ($web.Executable -ne 'node.exe' -or @($web.Arguments).Count -ne 1 -or $web.Arguments[0] -ne 'server.js') {
+        throw "$($web.Name) 必須直接 node.exe + server.js，不可走 npm/pnpm shim。"
+    }
+}
+Write-Host 'PASS service manifest：5 services；ports 5000..5003 + Worker 0；Next 直接 node.exe + server.js'
 
 $boundary = [datetime]::UtcNow
 if (-not (Test-ProcessStartedAfter -ProcessStartTime $boundary.AddSeconds(1) -RestartBoundaryUtc $boundary)) {
@@ -44,18 +55,77 @@ try {
     New-Item -ItemType Directory -Path $artifactRoot, $installRoot -Force | Out-Null
     foreach ($definition in $manifest.Services) {
         $directory = Join-Path $artifactRoot $definition.ArtifactDirectory
-        New-Item -ItemType Directory -Path $directory -Force | Out-Null
-        New-Item -ItemType File -Path (Join-Path $directory $definition.Executable) -Force | Out-Null
+        $entryPoint = Join-Path $directory $definition.ArtifactEntryPoint
+        New-Item -ItemType Directory -Path (Split-Path -Parent $entryPoint) -Force | Out-Null
+        New-Item -ItemType File -Path $entryPoint -Force | Out-Null
     }
     $fakeNssm = Join-Path $tempRoot 'nssm.exe'
     New-Item -ItemType File -Path $fakeNssm -Force | Out-Null
+    $fakeRuntime = Join-Path $tempRoot 'runtime'
+    New-Item -ItemType Directory -Path $fakeRuntime -Force | Out-Null
+    $fakeNode = Join-Path $fakeRuntime 'node.exe'
+    $fakePnpm = Join-Path $fakeRuntime 'pnpm.cmd'
+    New-Item -ItemType File -Path $fakeNode, $fakePnpm -Force | Out-Null
     $secure = New-Object Security.SecureString
     foreach ($character in 'self-test-only'.ToCharArray()) { $secure.AppendChar($character) }
     $secure.MakeReadOnly()
     $credential = New-Object Management.Automation.PSCredential('greygray_selftest', $secure)
 
+    $oldWebEntryPoint = Join-Path $installRoot 'releases\old\GreyGray.Web.Storefront\apps\storefront\server.js'
+    New-Item -ItemType Directory -Path (Split-Path -Parent $oldWebEntryPoint) -Force | Out-Null
+    New-Item -ItemType File -Path $oldWebEntryPoint -Force | Out-Null
+    $validNodeToken = [pscustomobject]@{
+        Path = $fakeNode
+        CommandLine = '"' + $fakeNode + '" "' + $oldWebEntryPoint + '"'
+    }
+    if (-not (Test-NodeProcessIdentity -Token $validNodeToken -NodePath $fakeNode -EntryPointPath $oldWebEntryPoint)) {
+        throw '外部 node.exe + 精確 server.js 應可建立 ownership 證據。'
+    }
+    $wrongServerToken = [pscustomobject]@{
+        Path = $fakeNode
+        CommandLine = '"' + $fakeNode + '" "' + ($oldWebEntryPoint + '.old') + '"'
+    }
+    if (Test-NodeProcessIdentity -Token $wrongServerToken -NodePath $fakeNode -EntryPointPath $oldWebEntryPoint) {
+        throw '錯誤 server.js commandline 不可被認成 GreyGray Node service。'
+    }
+    $wrongNodeToken = [pscustomobject]@{
+        Path = (Join-Path $tempRoot 'foreign\node.exe')
+        CommandLine = 'node.exe "' + $oldWebEntryPoint + '"'
+    }
+    if (Test-NodeProcessIdentity -Token $wrongNodeToken -NodePath $fakeNode -EntryPointPath $oldWebEntryPoint) {
+        throw '外部 node path 不可只因 server.js 相同就被認領。'
+    }
+    Write-Host 'PASS Node ownership：可信 node.exe + 精確 server.js；外部 node/錯 commandline 均拒絕'
+
+    $missingNodeRejected = $false
+    try {
+        & "$PSScriptRoot\deploy.ps1" -ArtifactRoot $artifactRoot -InstallRoot $installRoot `
+            -NssmPath $fakeNssm -NodePath (Join-Path $tempRoot 'missing\node.exe') `
+            -ServiceCredential $credential -SkipMigrations -ValidateOnly
+    }
+    catch {
+        $missingNodeRejected = $_.Exception.Message -match 'node\.exe' -and $_.Exception.Message -match 'M-1'
+    }
+    if (-not $missingNodeRejected) { throw 'deploy 找不到 node.exe 時沒有明確 M-1 fail-fast。' }
+    Write-Host 'PASS node 缺失負向測試：deploy 明確 M-1 fail-fast，未 silently skip'
+
+    $missingPnpmRejected = $false
+    try {
+        & "$PSScriptRoot\build-frontends.ps1" -NodePath $fakeNode `
+            -PnpmPath (Join-Path $tempRoot 'missing\pnpm.cmd') -ValidateOnly
+    }
+    catch {
+        $missingPnpmRejected = $_.Exception.Message -match 'pnpm' -and $_.Exception.Message -match 'M-1'
+    }
+    if (-not $missingPnpmRejected) { throw 'frontend build 找不到 pnpm 時沒有明確 M-1 fail-fast。' }
+    Write-Host 'PASS pnpm 缺失負向測試：frontend build 明確 M-1 fail-fast'
+
+    & "$PSScriptRoot\build-frontends.ps1" -NodePath $fakeNode -PnpmPath $fakePnpm -ValidateOnly
+    Write-Host 'PASS frontend build 參數：ValidateOnly 未執行 pnpm 或寫 artifacts'
+
     & "$PSScriptRoot\deploy.ps1" -ArtifactRoot $artifactRoot -InstallRoot $installRoot `
-        -NssmPath $fakeNssm -ServiceCredential $credential -SkipMigrations -ValidateOnly
+        -NssmPath $fakeNssm -NodePath $fakeNode `
+        -ServiceCredential $credential -SkipMigrations -ValidateOnly
     Write-Host 'PASS deploy 參數：ValidateOnly 未觸碰 NSSM、排程、DB 或網路'
 
     & "$PSScriptRoot\invoke-migrations.ps1" `
