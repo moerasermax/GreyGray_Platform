@@ -22,7 +22,7 @@
 ## 目錄
 
 ```
-GreyGray.slnx                     49 個專案
+GreyGray.slnx                     50 個專案
 Directory.Build.props           TargetFramework、Nullable、TreatWarningsAsErrors
 Directory.Packages.props        中央套件版本管理（版本一律釘死）
 dotnet.config                   dotnet test 的 MTP opt-in（此 SDK 版本尚未生效，見 ops/test.ps1）
@@ -40,11 +40,23 @@ src/
     GreyGray.Api.Admin/           內部 BFF  :5001（Cloudflare Access 之後）
     GreyGray.Worker/              Outbox · Saga · 排程（無 listener）
 
-tests/GreyGray.Architecture.Tests/  組件參考規則的斷言，違規 build fail
+tests/
+  GreyGray.Architecture.Tests/  組件參考規則的斷言（12 條），違規 build fail
+  GreyGray.Contracts.Tests/     線上格式與事件目錄的斷言（16 條），ADR-018 的守門人
 
-db/migrations/                  SQL migration（M0 只有 schema、role、platform 三張表）
+frontend/                       pnpm workspace，與後端完全分離
+  apps/storefront/              客人端 · Soft Seoul · :5002 → BFF :5000
+  apps/admin/                   團隊端 · 中性密集 · :5003 → BFF :5001
+  packages/ui/                  設計 token —— 顏色與尺寸的唯一來源
+  packages/api-client/          HTTP、Money、Problem Details、冪等鍵、產生的型別
+
+db/migrations/                  SQL migration（M0 只有 schema、role、platform 四張表）
 ops/                            建置、測試、部署腳本
 docs/                           決策紀錄與規格
+  00-decisions.md               18 條 ADR
+  05-API契約.md                  **前後端唯一的邊界，已凍結**
+  api/openapi.*.yaml            機器可讀的契約，前端由它產型別
+  06-前端工作包.md / 07-後端派工書.md / 08-Codex啟動prompt.md
 ```
 
 ## 建置與測試
@@ -59,6 +71,8 @@ dotnet build .\GreyGray.slnx
 1. 模組只能參考其他模組的 `*.Contracts`，**不得參考** `*.Core`。Core 裡的型別一律 `internal`。
 2. 跨模組取資料走 Contracts 介面（同步）或訂閱事件建自己的 read model（非同步）。
    **禁止跨 schema JOIN，沒有例外。**
+   （ADR-016 讓 `platform` 的表 map 進每個模組的 DbContext，那是同一交易寫兩張表，
+   不是 JOIN，不要拿它當放寬這條的理由。）
 3. 每個模組一個 Postgres role，只 `GRANT` 自己的 schema。
 4. 事件只承載「已發生的事實 ＋ 識別碼」，不承載對方模組的內部模型。需要細節就回頭呼叫 Contracts。
 

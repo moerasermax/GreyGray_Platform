@@ -2,16 +2,19 @@
 
 代購業務系統（出國採購開團 ＋ 本地批發現貨）。模組化單體，.NET 10，14 個限界上下文。
 
-**現在的狀態：M0 骨架完成，業務邏輯一行都還沒寫。**
-下一件事是 **M0-1 Platform Outbox 實作**——沒有它模組之間無法溝通，其他都卡在那。
+**現在的狀態：後端骨架 ＋ 前端骨架 ＋ 已凍結的 API 契約，業務邏輯一行都還沒寫。**
+前後端平行開發中：後端交給 Codex（`docs/07`），前端由多個 agent 分包（`docs/06`）。
+後端的下一件事是 **M0-1 Platform Outbox 實作**——沒有它模組之間無法溝通，其他都卡在那。
 
 ## 開工前讀這些（照順序，不要跳）
 
 1. `STATE.md` —— 現況、已知問題、下一步
 2. `management/history/HANDOFF_1.md` —— 上一輪做了什麼、踩到哪些坑
 3. `management/history/NextWork.md` —— 待辦順序
-4. `docs/00-decisions.md` —— **15 條 ADR。已決定的不要重新討論，也不要「順手改成更好的做法」。**
-5. `docs/03-M0工作包.md` —— M0-1 ～ M0-8 的產出、做法要點、驗收
+4. `docs/00-decisions.md` —— **18 條 ADR。已決定的不要重新討論，也不要「順手改成更好的做法」。**
+5. `docs/05-API契約.md` —— **前後端唯一的邊界，已凍結。要改回來提，不得單方面改。**
+6. 你做後端 → `docs/03-M0工作包.md` ＋ `docs/07-後端派工書.md`（**§0 是稽核已改過的東西**）
+   你做前端 → `docs/06-前端工作包.md` ＋ `frontend/README.md`
 
 規格來源不在 repo 裡，是兩個 Claude artifact：
 [後端藍圖 v1.0](https://claude.ai/code/artifact/9a61eb42-df39-418e-9789-38b8ffa8a6f2)（23 張圖）、
@@ -29,11 +32,23 @@
 5. 可預期的業務失敗回 `Result` / `Result<T>`；例外留給「不該發生」的狀況。
 6. 註解與 XML doc 用繁體中文，命名用英文。
 
+前端另有四條（`frontend/README.md`）：只從 token 取顏色與尺寸、不做金額運算、
+不猜業務規則、不直接 `fetch`。
+
 ## 建置與測試
 
 ```powershell
 dotnet build .\GreyGray.slnx
 .\ops\test.ps1
+```
+
+前端：
+
+```bash
+cd frontend
+pnpm install
+pnpm typecheck && pnpm build
+pnpm api:generate     # 契約改了要重跑
 ```
 
 **不要用 `dotnet test`。** SDK 10.0.301 ＋ xunit.v3 的組合下它會走 VSTest 路徑直接報錯，
@@ -55,7 +70,9 @@ dotnet build .\GreyGray.slnx
 
 技術棧 .NET 10（ADR-001）／自架 YC 不上雲（ADR-002）／Native ＋ NSSM 不用 Docker（ADR-003）／
 硬邊界維持（ADR-004）／前台 Soft Seoul（ADR-009）／運費超商 60 宅配 120（ADR-010）／
-M1a 只做綠界（ADR-011）／多租戶只留欄位（ADR-006）／Payment 不記帳（ADR-008）。
+M1a 只做綠界（ADR-011）／多租戶只留欄位（ADR-006）／Payment 不記帳（ADR-008）／
+`platform` schema 是共用例外，outbox 由模組自己的 DbContext 寫（ADR-016）／
+支撐模組不被業務模組依賴、支撐之間可以（ADR-017）／JSON 線上格式（ADR-018）。
 
 ## 唯一還沒決定的
 
