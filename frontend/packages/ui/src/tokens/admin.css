@@ -63,6 +63,9 @@
   --ga-space-6: 24px;
   --ga-space-7: 32px;
 
+  /* 後台工作區的最大寬度。對帳表格要寬，但超過這個寬度掃一列眼睛要跑太遠。 */
+  --ga-container-max: 1400px;
+
   --ga-row-height: 40px;
   --ga-row-height-dense: 32px;
 

@@ -35,9 +35,11 @@ docs/06-前端工作包.md 的 **FE-1，就這一包**。
   packages/api-client/src/mock/**
   packages/api-client/src/endpoints/**
 
-已預先授權的唯一例外：
-  packages/api-client/package.json 的 devDependencies 可以加 msw。
-  **只准動 devDependencies 這一個區塊**，其他欄位一律不准碰。
+【依賴已經幫你裝好了，不要跑 pnpm install】
+  msw 2.15 與 vitest 3.2 已經加進 packages/api-client 的 devDependencies，
+  `pnpm --filter @greygray/api-client test` 這條 script 也已經在了。
+  **package.json 與 pnpm-lock.yaml 一律不准碰**——另外兩個 agent 正在同一棵樹上工作，
+  你跑 install 會動到他們腳下的 node_modules。缺套件就停下來回報。
 
 【特別注意】
 1. `pnpm api:generate` 已經跑得通、型別也已經產出來了（storefront 1,776 行／
@@ -50,11 +52,23 @@ docs/06-前端工作包.md 的 **FE-1，就這一包**。
 4. 分頁 mock 要真的能翻到第二頁，最後一頁回 nextCursor: null。
    只回一頁的 mock 會讓無限捲動的 bug 拖到上線才出現。
 5. mock 要能用 NEXT_PUBLIC_USE_MOCK=1 開關，後端好了之後不改任何頁面程式碼就能切過去。
+6. **「掛載」不歸你。** msw 在瀏覽器要 public/mockServiceWorker.js ＋ app/layout.tsx 初始化，
+   SSR 要另一組 setupServer——那些都是無主共用檔，**你不要碰**。
+   你的交付到 packages/api-client/src/mock/ 為止：匯出瀏覽器端與 node 端兩個進入點，
+   然後在回報裡寫清楚「整合的人要在哪個檔案加哪幾行、要跑哪個 msw init 指令」。
+   前台商品頁走 SSR（FE-3），所以 node 端那條路徑不能省。
+7. 契約裡**沒有 operationId**，函式名要你自己取。交付時附一張
+   「HTTP 方法 ＋ 路徑 → 函式名」對照表，第二波五個人要照著接。
+8. tsconfig.base.json 開了 exactOptionalPropertyTypes、noUncheckedIndexedAccess、
+   verbatimModuleSyntax。配 openapi-typescript 產的型別會很難纏，那是刻意的，
+   **不要去改 tsconfig**（也是無主檔案）。
 
 【交付前一定要做】
   pnpm --filter @greygray/api-client typecheck     # 必須綠
+  pnpm --filter @greygray/api-client test          # smoke test 必須綠
   git status                                       # 清單裡只准有 frontend/ 底下的檔案
 看到 src/、ops/、.github/ 出現在變更清單裡，代表你走錯工作區了，停下來回報。
+package.json 或 pnpm-lock.yaml 出現在清單裡也一樣，停下來回報。
 
 交付時附上：跑過的指令與實際輸出、你動過的檔案清單、
 以及**你認為契約有問題的地方**（不要默默在前端補，那是最貴的技術債）。
@@ -86,6 +100,12 @@ docs/06-前端工作包.md 的 **FE-2，就這一包**。
   packages/ui/src/components/**
   packages/ui/src/index.ts
 
+已預先授權的例外（就這一個）：
+  apps/storefront/app/kitchen-sink/page.tsx —— 驗收用的展示頁，**只准新建這一個檔案**。
+  docs/06 寫的是 `app/_kitchen-sink/`，那是錯的：底線開頭在 App Router 是 private folder，
+  不會產生路由，做出來打不開。**以這裡的路徑為準。**
+  這頁是暫時的，第二波由 FE-3 刪掉。
+
 **元件清單就是文件裡那張表，不要多做。** 多做的沒有人會用，還會擋到別人。
 
 【特別注意】
@@ -99,15 +119,20 @@ docs/06-前端工作包.md 的 **FE-2，就這一包**。
 3. **前台刻意不做深色模式**（token 檔頭有寫理由）。不要順手加。
 4. 動態一律 150–300ms，用 token 的 --gg-duration-* 與 --gg-ease-*。
    **不要引入 GSAP**——M1a 的動態 CSS transition 就夠，多一個 60KB 的函式庫不划算。
-5. 不要用 emoji 當圖示。SVG inline 或 Heroicons/Lucide 擇一，**整包只准用一套**。
+5. 不要用 emoji 當圖示。**圖示一律 inline SVG，不准加任何圖示套件**——
+   package.json 是無主共用檔，而且另外兩個 agent 正在同一棵樹上工作，
+   你跑 pnpm install 會動到他們腳下的 node_modules。
+   自己在 components/icons/ 底下放一組，風格統一。
 6. `PriceDisplay` 內部呼叫 formatMoney()，禁止呼叫端自己格式化。
    `Skeleton` 要保留與實際內容相同的高度，否則載入完會跳版。
    `Countdown` 吃後端給的 closesAt，但能不能下單看 isAcceptingOrders。
 7. 只在真的需要互動時才加 'use client'。
 
 【交付前一定要做】
-  pnpm --filter @greygray/ui typecheck      # 必須綠
-  git status                                 # 清單裡只准有 frontend/ 底下的檔案
+  pnpm --filter @greygray/ui typecheck         # 必須綠
+  pnpm --filter @greygray/storefront typecheck # kitchen sink 頁也要綠
+  git status                                   # 清單裡只准有 frontend/ 底下的檔案
+                                               # 出現任何 package.json 就是走錯了
 外加 docs/06 的 FE-2 驗收四條：kitchen sink 頁、375/768/1024/1440 四個寬度無水平捲動、
 鍵盤走得完且每一步看得到焦點框、內文對比度 ≥ 4.5:1。
 
@@ -142,6 +167,11 @@ FE-7、FE-8 依賴你做出來的殼與元件，但那是下一波，你不要�
   apps/admin/app/(dash)/page.tsx
   apps/admin/app/login/**
 
+已預先授權的例外（就這一個，而且是必做）：
+  **刪除 apps/admin/app/page.tsx**（現有的骨架佔位頁，檔頭自己寫了「會被 FE-6 換掉」）。
+  它與你要建的 (dash)/page.tsx 都解析到 `/`，兩個並存 Next.js 直接 build fail。
+  不刪你的 build 驗收不會綠。這是唯一准你動的所有權表外檔案。
+
 【特別注意】
 1. **首頁最重要的一塊是「負債 vs 現金」**（GET /v1/ledger/liability-vs-cash）。
    isBreached = true 代表正在用還沒交貨的錢過日子——這是代購生意最典型的崩壞前兆。
@@ -154,15 +184,20 @@ FE-7、FE-8 依賴你做出來的殼與元件，但那是下一波，你不要�
 5. 角色檢查：用端點的 x-required-role 決定選單顯不顯示。
    **但前端隱藏只是體驗，不是安全**——真正的檢查在後端，不要因為前端擋了就假設安全。
 6. DataTable 在 20 列與 0 列都要正常，0 列是 EmptyState 不是一片空白。
-7. FE-1 的 mock 可能還沒好。你可以先用自己的暫時假資料把畫面做出來，
+7. FE-1 的 mock 還沒好（他跟你同時在跑）。你就是要用自己的暫時假資料把畫面做出來，
    但**不要把假資料寫進 packages/api-client**（那是 FE-1 的地盤），
    放在自己的路由資料夾底下，交付時列出來。
+8. **不要加任何套件、不要跑 pnpm install。** package.json 是無主共用檔，
+   而且另外兩個 agent 正在同一棵樹上工作。圖示一律 inline SVG。缺什麼停下來回報。
+9. tsconfig.base.json 開了 exactOptionalPropertyTypes、noUncheckedIndexedAccess、
+   verbatimModuleSyntax，型別會比你習慣的嚴。那是刻意的，**不要改 tsconfig**。
 
 【交付前一定要做】
   pnpm --filter @greygray/ui typecheck
   pnpm --filter @greygray/admin typecheck
   pnpm --filter @greygray/admin build
   git status                                # 清單裡只准有 frontend/ 底下的檔案
+                                            # 除了刪掉 app/page.tsx 之外不該有別的越界
 
 交付時附上：跑過的指令與實際輸出、動過的檔案清單、
 淺色與深色兩套的截圖、以及你認為契約有問題的地方。

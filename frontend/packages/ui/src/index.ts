@@ -23,3 +23,34 @@ export const SoftSeoulPalette = {
   /** 淺底上的粉紅文字與連結，6.04:1 ✓ */
   primaryText: 'var(--gg-primary-text)',
 } as const;
+
+// ── FE-2：Soft Seoul 元件庫 ──────────────────────────────────────────────
+// 就 docs/06-前端工作包.md FE-2 那張表列出的元件，不多做。
+
+export * from './components/icons';
+
+export * from './components/Button';
+export * from './components/IconButton';
+export * from './components/Spinner';
+export * from './components/Card';
+export * from './components/ProductCard';
+export * from './components/CategoryChip';
+export * from './components/Badge';
+export * from './components/FavoriteHeart';
+export * from './components/SearchBar';
+export * from './components/Avatar';
+export * from './components/PriceDisplay';
+export * from './components/QuantityStepper';
+export * from './components/BottomActionBar';
+export * from './components/BottomSheet';
+export * from './components/Dialog';
+export * from './components/Toast';
+export * from './components/Skeleton';
+export * from './components/EmptyState';
+export * from './components/ErrorState';
+export * from './components/Countdown';
+export * from './components/Field';
+export * from './components/Input';
+export * from './components/Select';
+export * from './components/Textarea';
+export * from './components/Tabs';

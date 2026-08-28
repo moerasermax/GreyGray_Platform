@@ -2,6 +2,15 @@
 @import '@greygray/ui/tokens/soft-seoul.css';
 
 /*
+ * Tailwind v4 的自動內容掃描不會跟著 workspace symlink 走進 packages/ui/src，
+ * 那裡的 class 會被靜默丟掉——build 照樣全綠，但 Dialog/Drawer 拿不到 fixed 與
+ * 遮罩、Skeleton 拿不到 animate-pulse。第一波驗收實測後台少了 36/47 個 class。
+ * 這一行是元件庫能不能顯示的前提，不要刪。
+ */
+@source "../../../packages/ui/src";
+
+
+/*
  * 把 Soft Seoul 的 token 接到 Tailwind v4 的 theme 上。
  *
  * 用 `@theme inline` 而不是 `@theme`：inline 才會讓 Tailwind 把值原樣當成

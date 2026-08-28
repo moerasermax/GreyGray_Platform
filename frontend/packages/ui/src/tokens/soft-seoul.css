@@ -54,6 +54,9 @@
   --gg-gradient-cta: linear-gradient(135deg, #db2777 0%, #8b5cf6 100%);
 
   /* ── 圓角。全站沒有直角 ───────────────────────────────────────────── */
+  /* BottomSheet 展開後的最大高度。留 20vh 讓客人看得到底下還有頁面，知道可以關掉。 */
+  --gg-sheet-max-h: 80vh;
+
   --gg-radius-sm: 10px;
   --gg-radius-md: 16px;
   --gg-radius-lg: 24px;

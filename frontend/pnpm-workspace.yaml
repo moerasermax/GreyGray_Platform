@@ -5,3 +5,6 @@ packages:
 # 這是它正常運作的必要步驟，明確放行。其餘套件一律不給跑 build script。
 allowBuilds:
   esbuild: true
+  # msw 的 postinstall 只有在 package.json 設了 workerDirectory 時才做事。
+  # 我們不設，service worker 由整合時手動跑 `msw init` 放進 app 的 public/。
+  msw: false

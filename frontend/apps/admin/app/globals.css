@@ -2,6 +2,15 @@
 @import '@greygray/ui/tokens/admin.css';
 
 /*
+ * Tailwind v4 的自動內容掃描不會跟著 workspace symlink 走進 packages/ui/src，
+ * 那裡的 class 會被靜默丟掉——build 照樣全綠，但 Dialog/Drawer 拿不到 fixed 與
+ * 遮罩、Skeleton 拿不到 animate-pulse。第一波驗收實測後台少了 36/47 個 class。
+ * 這一行是元件庫能不能顯示的前提，不要刪。
+ */
+@source "../../../packages/ui/src";
+
+
+/*
  * 後台的 theme。與前台是兄弟不是雙胞胎——共用同一支粉紅當品牌記號，其餘完全不同。
  * 密、中性、有深色模式。理由寫在 `@greygray/ui/tokens/admin.css` 的檔頭。
  */

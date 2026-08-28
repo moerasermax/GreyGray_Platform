@@ -8,15 +8,20 @@
   "exports": {
     ".": "./src/index.ts",
     "./storefront": "./src/types.storefront.ts",
-    "./admin": "./src/types.admin.ts"
+    "./admin": "./src/types.admin.ts",
+    "./mock/*": "./src/mock/*.ts",
+    "./endpoints/*": "./src/endpoints/*.ts"
   },
   "scripts": {
     "generate": "openapi-typescript ../../../docs/api/openapi.storefront.yaml -o src/types.storefront.ts && openapi-typescript ../../../docs/api/openapi.admin.yaml -o src/types.admin.ts",
     "typecheck": "tsc --noEmit",
-    "build": "tsc --noEmit"
+    "build": "tsc --noEmit",
+    "test": "vitest run"
   },
   "devDependencies": {
+    "msw": "^2.11.0",
     "openapi-typescript": "^7.9.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
   }
 }

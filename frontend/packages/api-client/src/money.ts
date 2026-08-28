@@ -76,7 +76,11 @@ export interface FormatMoneyOptions {
    * 台幣的日常金額沒有分——顯示 `NT$180` 而不是 `NT$180.00`。
    * 但**帳務畫面（後台的分錄、對帳）要設成 `true`**，因為那裡的一分錢差異就是要查的東西。
    */
-  readonly showDecimals?: boolean;
+  /*
+   * `| undefined` 是必要的，不是贅字：tsconfig 開了 exactOptionalPropertyTypes，
+   * 少了它，呼叫端傳一個型別為 `boolean | undefined` 的變數進來會編譯失敗。
+   */
+  readonly showDecimals?: boolean | undefined;
 }
 
 /**
