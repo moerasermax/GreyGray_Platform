@@ -1,6 +1,6 @@
 # NextWork
 
-接在第五輪（後端第三波模組組合根與通路 schema 接縫）之後。
+接在第六輪（後端第四波 M0 hello-world 本機驗收候選）之後。
 **前後端從這裡開始平行**，兩條線互不擋。
 
 ## 後端（Codex）
@@ -17,7 +17,12 @@
 - [x] 第三波：BE-5 模組組合根樣板（Identity 與 Catalog）· BE-7 通路接縫進 schema
       49/49 tests 全綠（Architecture 14／Contracts 16／Platform 19）；三個 Host 已接入兩個模組，
       `0003_channel_seams.sql` 已在 PostgreSQL 17 實跑、重跑、權限與故障注入驗證（見 `HANDOFF_5.md`）。
-- [ ] 第四波：BE-6 hello-world 端對端 —— **這一包通過就是 M0 完成**
+- [ ] 第四波：BE-6 hello-world 端對端
+      本機程式與永久 E2E 已完成：Identity／outbox 同交易、Worker→Notification 去重、
+      trace context、架構負向測試、三個 executable 停止後再啟動都通過（見 `HANDOFF_6.md`）。
+      尚差 YC 的 NSSM＋BootTrigger reboot 與可查詢 OTLP trace，故完整 M0 仍不得勾選。
+- [ ] M1a：依 frozen contract 實作 `/v1/auth/register` 與其餘正式 endpoints，讓 strict live
+      OpenAPI comparison 歸零；M0 `/v1/customers` 是 Development-only test hook，不可冒充。
 
 每包交付後由我做總驗收（`docs/07-後端派工書.md` §5 的十條），
 任何一條不過就整包退回，不做部分接受。

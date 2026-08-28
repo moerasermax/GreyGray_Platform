@@ -1,5 +1,6 @@
 using GreyGray.Modules.Catalog.Infra;
 using GreyGray.Modules.Identity.Infra;
+using GreyGray.Modules.Notification.Infra;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.Configuration;
@@ -12,11 +13,12 @@ namespace GreyGray.Architecture.Tests;
 /// <summary>鎖住 M0-5 的兩個模組組合根樣板，後續 12 個模組照這個形狀複製。</summary>
 public sealed class ModuleCompositionRootTests
 {
-    [Fact(DisplayName = "Identity / Catalog Infra 對外只暴露各自的組合根")]
+    [Fact(DisplayName = "Identity / Catalog / Notification Infra 對外只暴露各自的組合根")]
     public void Infra_exposes_only_the_composition_root()
     {
         AssertOnlyExportedType(typeof(IdentityModuleRegistration));
         AssertOnlyExportedType(typeof(CatalogModuleRegistration));
+        AssertOnlyExportedType(typeof(NotificationModuleRegistration));
     }
 
     [Fact(DisplayName = "模組連線字串延後到解析 DbContext 才檢查，且 model 含自己的 schema 與 Platform 表")]
@@ -32,6 +34,11 @@ public sealed class ModuleCompositionRootTests
             static (services, configuration) => services.AddCatalogModule(configuration),
             "catalog",
             "GreyGray_catalog");
+        AssertModule(
+            typeof(NotificationModuleRegistration),
+            static (services, configuration) => services.AddNotificationModule(configuration),
+            "notify",
+            "GreyGray_notify");
     }
 
     private static void AssertOnlyExportedType(Type compositionRoot)

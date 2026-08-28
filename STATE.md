@@ -1,28 +1,29 @@
 # 現況
 
-**最後更新**：2026-08-28（後端第三波：BE-5 Identity／Catalog 組合根 ＋ BE-7 五個通路 schema 接縫）
+**最後更新**：2026-08-28（後端第四波：BE-6 M0 hello-world 本機驗收候選）
 
 ## 一句話
 
-後端前三波已落地：可靠性基礎設施、Identity／Catalog 組合根樣板、五個通路 schema 接縫與五服務安全部署都有實作與測試；**BE-6 hello-world 垂直切片與 `/v1` API 端點仍未實作**。因此即時 OpenAPI gate 仍會正確 fail-fast，不可宣稱 M0 或整條 CI 已完成。
+後端四波的本機程式已落地：`Identity → outbox → Worker → Notification` 真實垂直切片與永久 PostgreSQL 17 E2E 已通過；M0 `/v1/customers` 是 Development-only、OpenAPI-excluded test hook。**YC 的 NSSM＋BootTrigger reboot 與可查詢 OTLP trace 尚未驗收，frozen M1a `/v1` API 尚未實作**，所以仍不可宣稱完整 M0、整條 CI 或正式部署完成。
 
 ## 已完成
 
 | 項目 | 狀態 |
 |---|---|
-| Solution（51 專案） | ✅ `dotnet build` 0 error 0 warning |
+| Solution（52 專案） | ✅ `dotnet build -c Release` 0 error 0 warning |
 | 模組硬邊界 | ✅ **14 條**架構測試全綠；新組合根 public-type 規則已故障注入驗證會紅 |
 | 線上格式與事件目錄 | ✅ **16 條**契約測試全綠（`tests/GreyGray.Contracts.Tests`，同樣注入驗證過） |
 | Platform 基礎設施 | ✅ Outbox、processed-message decorator、API idempotency、Saga Timer、44 事件 registry、`PlatformDbContext`、OTel、clock／correlation context |
 | Platform 整合測試 | ✅ **19 條**全綠；真 PostgreSQL 17 Testcontainers，含 rollback／retry、並行去重、lease fencing、雙 worker timer 與 `0003` 實跑 |
+| M0 永久 E2E | ✅ **1 條**全綠；真 PostgreSQL 17、真 Storefront／Admin／Worker processes、重送去重、停止後再啟動、Production test hook 404、`0004` owner 故障注入 |
 | 14 個模組的 Contracts（ID／DTO／介面／44 個事件） | ✅ 可編譯 |
 | Shared.Kernel（Money、Currency、Result、IClock、Dimensions、**JSON**） | ✅ |
 | Platform.Abstractions（事件、Outbox、Idempotency、Saga、**事件型別登錄、IAuditWriter**） | ✅ 介面 |
-| DB schema 與 role 的 migration | ✅ **已在 PG 17 容器上實跑並驗證**（15 schema／17 role／9 表，owner、權限、重跑與約束都對）|
+| DB schema 與 role 的 migration | ✅ `0001..0004` **已在 PG 17 容器上實跑並驗證**；新增 `iam.customer`／`notify.notification`，owner、權限、重跑與約束都對 |
 | **API 契約（`docs/05` ＋ 兩份 OpenAPI）** | ✅ v1.0 已凍結，24 ＋ 29 個端點 |
 | **前端 workspace（Next.js ×2 ＋ token ＋ api-client）** | ✅ `pnpm build` 兩個 app 都過 |
 | **設計 token（Soft Seoul ＋ Admin）** | ✅ 對比度實際量過，都達 AA |
-| 三個 Host 的 `Program.cs` | ⚠️ OTel、`/health`、Identity／Catalog 模組已接；仍沒有 `/v1` 端點 |
+| 三個 Host 的 `Program.cs` | ✅ Storefront 有 Development-only M0 test hook；Worker 已接 outbox、Saga Timer 與啟動時 registry 驗證；Admin health 可重啟。正式公開 `/v1` 仍待 M1a |
 | CI／Windows 部署工具 | ⚠️ 五服務 manifest、.NET／Next standalone artifacts、PS 5 self-test、versioned release、NSSM、watchdog 已完成；即時 OpenAPI gate 等 `/v1` 端點後才能綠 |
 
 ## 後端第一波總驗收（2026-08-28，由 Claude 執行）
@@ -197,10 +198,9 @@ rollback 用 `CancellationToken.None`——取消也會確實回滾，marker 不
 
 ## 未完成
 
-**後端**：BE-1、BE-2、BE-3、BE-4、BE-5、BE-7 已完成；BE-8 的五服務工具與
-fail-closed 門檻已完成，但 live OpenAPI 驗收仍依賴 M0-6 的 `/v1` 端點。
-尚待 BE-6（hello-world 垂直切片、API 接線、連續 trace 與重啟驗收）。詳見
-`docs/03-M0工作包.md` 與 `docs/07-後端派工書.md`。
+**後端**：BE-1～BE-5、BE-7 與 BE-6 的本機程式／永久 E2E 已完成；BE-8 的五服務工具與
+fail-closed 門檻已完成。正式 M0 尚差 YC NSSM＋BootTrigger reboot 與可查詢 OTLP trace；
+strict live OpenAPI 要等 M1a frozen endpoints 實作後才能歸零。詳見 `management/history/HANDOFF_6.md`。
 
 **前端**：FE-1 ～ FE-8，見 `docs/06-前端工作包.md`。
 目前只有骨架與 token，兩個 app 各只有一頁佔位。
@@ -229,11 +229,11 @@ fail-closed 門檻已完成，但 live OpenAPI 驗收仍依賴 M0-6 的 `/v1` �
 ### `Microsoft.OpenApi` pin 在 2.12.2，不要跳 3.x
 `Microsoft.AspNetCore.OpenApi` 的 source generator 產的碼依賴 2.x 的 API 形狀。
 
-### 即時 OpenAPI gate 現在必定紅
+### 即時 OpenAPI gate 現在仍必定紅
 `ops/check-openapi.ps1` 會啟動剛建好的 Storefront／Admin Host 並抓 `/openapi/v1.json`。
-兩個 Host 現在都只有 `/health`，所以 gate 會以 exit 1 fail-fast；這是防止空 schema 假綠，
-不是工具故障。`docs/08` 把 BE-8 排在第一波，但 `docs/03` 的 M0-8 又依賴 M0-6，
-完整驗收只能在 API 端點接線後完成。
+公開文件中兩個 Host 現在都只有 `/health`；M0 `/v1/customers` 刻意只在 Development 映射並
+`ExcludeFromDescription()`，所以 gate 會以 exit 1 fail-fast。這是防止空 schema 假綠，不是工具故障。
+Frozen `/v1/auth/register` 與其餘 endpoints 屬 M1a，完整比較只能在正式 API 接線後完成。
 
 ### 多個 source-generated `JsonSerializerContext` 不可共用同一個 options instance
 實測會拋出 `InvalidOperationException`：options 被第一個 context 封裝後不能再修改。
@@ -255,11 +255,10 @@ workspace 外 `node server.js` 回 HTTP 200」作 portability 證據。
 
 ## 下一步
 
-1. **後端第四波**：BE-6 hello-world 垂直切片與 `/v1` API 接線
-2. 完成 API 寫入 → Identity 資料 ＋ Outbox 同交易 → Worker 消費 → Notification 去重的真實路徑
-3. BE-6 完成後重跑 strict live OpenAPI gate，處理真實 schema drift，完成 M0-8 驗收
+1. **後端 M1a**：實作 frozen `/v1/auth/register` 的手機／密碼／session／idempotency 正式流程
+2. M1a endpoints 接線後讓 strict live OpenAPI schema drift 歸零，不可用 M0 hook 冒充
+3. **正式機驗收**：M-1、五服務部署、NSSM＋BootTrigger reboot 與可查詢 OTLP trace
 4. **前端**：FE-1（型別 ＋ mock）、FE-2（Soft Seoul 元件庫）、FE-6（後台殼）可平行
-5. M-1 環境整備可以完全並行
 
 ## 待決策
 

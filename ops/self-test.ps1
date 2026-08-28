@@ -132,7 +132,8 @@ try {
         -MigrationFiles @(
             'db\migrations\0001_schemas_and_roles.sql',
             'db\migrations\0002_platform.sql',
-            'db\migrations\0003_channel_seams.sql') `
+            'db\migrations\0003_channel_seams.sql',
+            'db\migrations\0004_hello_world.sql') `
         -MigrationCredential $credential -DatabaseName 'greygray_selftest' -ValidateOnly
     Write-Host 'PASS migration 參數：只接受 db/migrations 明確檔案；ValidateOnly 未連線 DB'
 

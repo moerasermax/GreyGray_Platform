@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using GreyGray.Api.Storefront;
 using GreyGray.Modules.Catalog.Infra;
 using GreyGray.Modules.Identity.Infra;
 using GreyGray.Platform.Observability;
@@ -44,6 +45,7 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.MapM0CustomerEndpoints();
 }
 
 app.UseExceptionHandler();

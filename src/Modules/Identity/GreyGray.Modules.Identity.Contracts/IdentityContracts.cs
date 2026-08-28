@@ -94,6 +94,17 @@ public interface ICustomerDirectory
     Task<Result<ShippingAddress>> GetAddressAsync(AddressId id, CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// M0 Host-facing 客戶建檔 input port；用它驗證「客戶資料與 outbox 同交易」。
+/// M1a 的公開註冊、密碼與 session 是另一個使用案例，不得把這個介面偽裝成已完成認證。
+/// </summary>
+public interface ICustomerProvisioning
+{
+    Task<Result<CustomerSummary>> CreateAsync(
+        string displayName,
+        CancellationToken cancellationToken);
+}
+
 public interface IStaffDirectory
 {
     Task<Result<StaffRole>> GetRoleAsync(StaffId id, CancellationToken cancellationToken);

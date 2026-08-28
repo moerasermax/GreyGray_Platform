@@ -1,7 +1,13 @@
+using GreyGray.Modules.Identity.Contracts;
+using GreyGray.Modules.Identity.Core;
+using GreyGray.Platform.Messaging;
 using GreyGray.Platform.Modules;
+using GreyGray.Platform.Outbox;
+using GreyGray.Shared.Kernel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace GreyGray.Modules.Identity.Infra;
 
@@ -44,6 +50,23 @@ internal sealed class IdentityModule : IModuleRegistration
             }
 
             options.UseNpgsql(connectionString);
+        });
+
+        services.TryAddSingleton<EventTypeRegistry>();
+        services.AddScoped<ICustomerProvisioning>(serviceProvider =>
+        {
+            var dbContext = serviceProvider.GetRequiredService<IdentityDbContext>();
+            var publisher = new OutboxEventPublisher<IdentityDbContext>(
+                dbContext,
+                serviceProvider.GetRequiredService<ICorrelationContext>(),
+                serviceProvider.GetRequiredService<EventTypeRegistry>());
+
+            return new CustomerProvisioningService(
+                new IdentityCustomerRepository(dbContext),
+                dbContext,
+                publisher,
+                serviceProvider.GetRequiredService<IClock>(),
+                serviceProvider.GetRequiredService<ICorrelationContext>());
         });
 
         return services;
