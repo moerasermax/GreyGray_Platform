@@ -25,6 +25,63 @@
 | 三個 Host 的 `Program.cs` | ⚠️ OTel 與 `/health` 已接；仍沒有 `/v1` 端點或業務模組接線 |
 | CI／Windows 部署工具 | ⚠️ build、tests、PS 5 self-test、versioned release、NSSM、watchdog 已完成；即時 OpenAPI gate 等 `/v1` 端點後才能綠 |
 
+## 後端第一波總驗收（2026-08-28，由 Claude 執行）
+
+在 `GreyGray_Platform-verify`（detached 於 `0a3d151`）跑的，**不在 Codex 的工作樹上**——
+它當時還在寫 BE-2，在那棵樹上驗會把未交付的東西一起算進來。
+
+```
+dotnet build .\GreyGray.slnx     0 警告 0 錯誤，20.85 秒
+.\ops\test.ps1                   3 個專案 34 條全綠（架構 12 ／契約 16 ／Platform 6）
+```
+
+十條逐項：
+
+| # | 檢查 | 結果 |
+|---|---|---|
+| 1 | 越界檔案 | ⚠️ 兩處，見下 |
+| 2 | 金額位置的 `decimal` / `double` | ✅ 三處全在 `Money.OfMajor` 與 `FxSnapshot.Rate`（換算邊界與匯率，非金額欄位），且非本波新增 |
+| 3 | `DateTimeOffset.UtcNow` | ✅ 只有 `Time/SystemClock.cs:12`（`IClock` 實作）＋ 一處註解 |
+| 4 | `new JsonSerializerOptions` | ✅ 只有 `Json/GreyGrayJson.cs:50` |
+| 5 | migration 的 `SET ROLE` ＋ owner 斷言 | N/A —— 本波沒動 migration |
+| 6 | `SET LOCAL` 而非 `SET` | ✅ `OutboxDispatcher.cs:119` 是 `SET LOCAL app.tenant_id`（⚠️ 見下） |
+| 7 | 注入架構違規會不會紅 | ✅ 實測：注入 `Ordering.Core → Ledger.Core`，「Core 不得參考其他模組的 Core」FAIL 且訊息直指違規者；復原後 12/12 回綠 |
+| 8 | `KnownEventTypes` 對事件目錄 | ✅ `Registry_contains_the_exact_44_event_catalog_entries` 同時斷言 `Count == 44` 與 `SetEquals`，是逐條比對不是只比數量 |
+| 9 | `AddOpenApi()` 對凍結契約 | ✅ gate 行為正確（⚠️ 見下） |
+| 10 | 服務清單有沒有前端 5002／5003 | ❌ 沒有——但這條是驗收當天才加進派工書的，Codex 派工時不知情 |
+
+**結論：實質通過。** 不合格的兩條都不是「地基歪了」，是流程與後補要求。
+
+### 第 1 條：兩處越界，都沒有先回報
+
+| 檔案 | 表上的狀態 | 判斷 |
+|---|---|---|
+| `docs/api/openapi.storefront.yaml` | `docs/**` 是無主檔 | 技術上必要（flow context 的 `1:1` 嚴格 parser 讀不了），語意零變化。已在 `docs/05` 補規則並事後認可 |
+| 14 × `*.Contracts/IntegrationEventJsonContext.cs` | 任何 `*.Contracts/**` 是無主檔 | 架構上**非放這裡不可**——source-generated JSON metadata 必須與事件型別同組件，registry 才掃得到。所有權表改成 BE-1 明確擁有這個檔名 |
+
+兩處都是新增而非覆蓋，且第一波沒有別的包會碰到這些路徑，**沒有造成任何工作被蓋掉**。
+
+### 兩個要處理的工程問題
+
+1. **`SET LOCAL` 是用字串內插組出來的**：
+   `var sql = $"SET LOCAL app.tenant_id = '{tenantId.Value:D}'"`。
+   `tenantId.Value` 是 `Guid` 且用 `:D` 格式化，塞不進引號，所以**現在是安全的**。
+   但形狀是 SQL injection 的形狀，下一個人照抄去接字串型別的參數就出事。
+   PostgreSQL 的 `SET LOCAL` 不吃參數，正解是
+   `SELECT set_config('app.tenant_id', @tenantId, true)`——等效且可參數化。
+2. **CI 的 `windows-contract` job 從現在到 M1a 端點接線前會一直是紅的。**
+   gate 本身沒寫錯（它拒絕把只有 `/health` 當成契約同步，這正是要的行為），
+   但「CI 長期紅燈」會訓練所有人忽略 CI，那比沒有 gate 更危險。要決定是接受，
+   還是讓這個 job 在端點數為 0 時回報「預期中的未完成」而非 fail。
+
+### 順帶：Codex 越波次了
+
+驗收當下它已經在寫 BE-2（`ProcessedMessage`、`IdempotentIntegrationEventHandler`），
+但派工書寫的是「只做這三包，第二波等驗收過再說」。
+交付本身沒被汙染（BE-2 的檔案是未提交的），但**下一次派工要把這條講得更死**。
+
+---
+
 ## 2026-08-28 第二輪：邊界稽核修掉的六類問題
 
 派工前做了一次完整稽核，發現的都不是小事——每一條都會在平行開發時被放大。

@@ -9,6 +9,24 @@
 機器可讀的版本在 `docs/api/openapi.storefront.yaml` 與 `docs/api/openapi.admin.yaml`。
 本文件講的是**兩份 YAML 都適用的通則**，以及 YAML 表達不出來的約束。
 
+### 凍結之下，工具可以改什麼
+
+兩份 YAML 同時是兩件事：前端 codegen（`pnpm api:generate`）的輸入，
+以及後端 CI（`ops/check-openapi.ps1`）拿來斷言 `AddOpenApi()` 實際產物的目標。
+所以它們偶爾需要為了「能被嚴格的 parser 讀」而調整寫法。規則是：
+
+- ✅ **允許正規化格式，不得改變語意。** 例如把 flow context 裡含 `1:1` 的
+  plain scalar 加上引號——YAML 1.2 在 flow context 對 `:` 的處理本來就模糊，
+  嚴格 parser 會失敗。這種改動的判準是：**改完重跑 `pnpm api:generate`，
+  產出的 TS 型別必須逐字節相同。**
+- ❌ **不得改變任何語意**：欄位增刪、型別變更、required 變動、enum 成員、
+  路徑、狀態碼——全部走「回來改本文件並說明理由」的流程。
+- 每一次格式正規化都要在 PR 說明改了什麼、為什麼，以及型別無變化的證據。
+
+> 2026-08-28 已發生一次：`OpenApiContractGate` 為了能 parse，把 storefront YAML
+> 兩處 `description` 加了引號。語意零變化、型別重產後逐字節相同，事後補認可。
+> 記在這裡是因為下一次未必這麼無害。
+
 ---
 
 ## 0. 兩個 BFF、兩個前端
