@@ -17,7 +17,7 @@
 | 14 個模組的 Contracts（ID／DTO／介面／44 個事件） | ✅ 可編譯 |
 | Shared.Kernel（Money、Currency、Result、IClock、Dimensions、**JSON**） | ✅ |
 | Platform.Abstractions（事件、Outbox、Idempotency、Saga、**事件型別登錄、IAuditWriter**） | ✅ 介面 |
-| DB schema 與 role 的 migration | ✅ SQL 已寫，**尚未在任何資料庫上執行過** |
+| DB schema 與 role 的 migration | ✅ **已在 PG 17.11 容器上實跑並驗證**（15 schema／17 role／4 表，owner 與權限都對）|
 | **API 契約（`docs/05` ＋ 兩份 OpenAPI）** | ✅ v1.0 已凍結，24 ＋ 29 個端點 |
 | **前端 workspace（Next.js ×2 ＋ token ＋ api-client）** | ✅ `pnpm build` 兩個 app 都過 |
 | **設計 token（Soft Seoul ＋ Admin）** | ✅ 對比度實際量過，都達 AA |
@@ -32,7 +32,7 @@
 | A1 | `outbox_message.aggregate_type/id` 是 NOT NULL，但 `PublishAsync` 拿不到值 | `IIntegrationEvent` 加兩個 abstract 成員，44 個事件全部填好，**編譯器強制** |
 | A2 | `static abstract EventType` 只能正向，dispatcher 反查不回 CLR 型別 | 新增 `IIntegrationEventTypeRegistry` |
 | A3 | 「outbox 同交易」與「每模組一個 DbContext、不 map 別人的表」互斥 | ADR-016：`platform` schema 是刻意的共用例外 |
-| B | `ALTER DEFAULT PRIVILEGES FOR ROLE greygray_owner` 只對 owner 建的物件生效，`0002` 沒 `SET ROLE` → **所有模組 role 對所有表零權限** | 加 `SET ROLE` ＋ 結尾 owner 斷言（忘了會在 COMMIT 前爆） |
+| B | `ALTER DEFAULT PRIVILEGES FOR ROLE greygray_owner` 只對 owner 建的物件生效，`0002` 沒 `SET ROLE` → **所有模組 role 對所有表零權限** | 加 `SET ROLE` ＋ 結尾 owner 斷言。**已在真的 PG 17 上三種情境各跑一次驗證**（見下） |
 | C | 5 條訂閱關係缺 `ProjectReference`，含 `Ledger → procurement.GoodsReceived`（DR 存貨/CR 現金，關鍵路徑） | 全部補上 |
 | D | 沒有測試阻止業務模組依賴支撐模組；Contracts 可用 PackageReference 繞過 | 架構測試 10 → 12 條，兩條都注入驗證過 |
 | E | 44 個事件的 JSON 形狀沒定案，outbox payload 一旦有資料就改不動 | ADR-018 ＋ `GreyGrayJson.Options` 為唯一來源 |
@@ -41,6 +41,17 @@
 **連帶**：`IAuditWriter` 與 `AuditCategory` 從 `Audit.Contracts` 移到
 `Platform.Abstractions.Audit`（ADR-017）——個資存取留痕是同步的，
 留在 Audit.Contracts 會逼 `Identity.Core` 依賴支撐模組。
+
+### B 的實測（2026-08-28，PostgreSQL 17.11 容器）
+
+| 情境 | migration 回報 | 實際結果 |
+|---|---|---|
+| 修正前：無 `SET ROLE`、無斷言 | **成功** | 14 個模組 role 對 `outbox_message` **零權限**——靜默失敗 |
+| 只忘 `SET ROLE`（斷言在）| **失敗並整個 rollback** | platform schema 一張表都沒建，錯誤訊息直指原因 |
+| 修正後 | 成功 | 15 個 role 權限正確、4 張表 owner 都是 `greygray_owner`、無 BYPASSRLS |
+
+第一列就是這條沒被抓到的話會發生的事：部署腳本一片綠，
+然後服務啟動時報 `permission denied for table`，而訊息完全不指向真正的原因。
 
 ## 未完成
 
@@ -56,7 +67,8 @@
 | 項目 | 狀態 |
 |---|---|
 | 開發機 dotnet 10.0.301 / Node 24.15 / pnpm 11.5 | ✅ |
-| 開發機 PostgreSQL | ❓ 未確認 |
+| 開發機 Docker Desktop 4.87（Testcontainers 用）| ✅ `postgres:17-alpine` 已預先拉好 |
+| 開發機 PostgreSQL（原生安裝）| ❌ 沒有，也不需要——測試走容器 |
 | 正式機 YC：dotnet / PostgreSQL / Valkey / cloudflared | ❌ 四項都還沒裝（M-1） |
 | ngrok → cloudflared 遷移 | ❌ 未開始 |
 | 有線網路、UPS、Defender 排除、專屬 Windows 帳號 | ❌ 全部未做（M-1） |
