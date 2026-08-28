@@ -1,0 +1,92 @@
+<Solution>
+  <Folder Name="/_root/">
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="global.json" />
+    <File Path="README.md" />
+    <File Path="STATE.md" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Shared.Kernel/Daigou.Shared.Kernel.csproj" />
+    <Project Path="src/Platform.Abstractions/Daigou.Platform.Abstractions.csproj" />
+    <Project Path="src/Platform/Daigou.Platform.csproj" />
+  </Folder>
+  <Folder Name="/src/Hosts/">
+    <Project Path="src/Hosts/Daigou.Api.Storefront/Daigou.Api.Storefront.csproj" />
+    <Project Path="src/Hosts/Daigou.Api.Admin/Daigou.Api.Admin.csproj" />
+    <Project Path="src/Hosts/Daigou.Worker/Daigou.Worker.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Identity/">
+    <Project Path="src/Modules/Identity/Daigou.Modules.Identity.Contracts/Daigou.Modules.Identity.Contracts.csproj" />
+    <Project Path="src/Modules/Identity/Daigou.Modules.Identity.Core/Daigou.Modules.Identity.Core.csproj" />
+    <Project Path="src/Modules/Identity/Daigou.Modules.Identity.Infra/Daigou.Modules.Identity.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Catalog/">
+    <Project Path="src/Modules/Catalog/Daigou.Modules.Catalog.Contracts/Daigou.Modules.Catalog.Contracts.csproj" />
+    <Project Path="src/Modules/Catalog/Daigou.Modules.Catalog.Core/Daigou.Modules.Catalog.Core.csproj" />
+    <Project Path="src/Modules/Catalog/Daigou.Modules.Catalog.Infra/Daigou.Modules.Catalog.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Campaign/">
+    <Project Path="src/Modules/Campaign/Daigou.Modules.Campaign.Contracts/Daigou.Modules.Campaign.Contracts.csproj" />
+    <Project Path="src/Modules/Campaign/Daigou.Modules.Campaign.Core/Daigou.Modules.Campaign.Core.csproj" />
+    <Project Path="src/Modules/Campaign/Daigou.Modules.Campaign.Infra/Daigou.Modules.Campaign.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Pricing/">
+    <Project Path="src/Modules/Pricing/Daigou.Modules.Pricing.Contracts/Daigou.Modules.Pricing.Contracts.csproj" />
+    <Project Path="src/Modules/Pricing/Daigou.Modules.Pricing.Core/Daigou.Modules.Pricing.Core.csproj" />
+    <Project Path="src/Modules/Pricing/Daigou.Modules.Pricing.Infra/Daigou.Modules.Pricing.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Inventory/">
+    <Project Path="src/Modules/Inventory/Daigou.Modules.Inventory.Contracts/Daigou.Modules.Inventory.Contracts.csproj" />
+    <Project Path="src/Modules/Inventory/Daigou.Modules.Inventory.Core/Daigou.Modules.Inventory.Core.csproj" />
+    <Project Path="src/Modules/Inventory/Daigou.Modules.Inventory.Infra/Daigou.Modules.Inventory.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Checkout/">
+    <Project Path="src/Modules/Checkout/Daigou.Modules.Checkout.Contracts/Daigou.Modules.Checkout.Contracts.csproj" />
+    <Project Path="src/Modules/Checkout/Daigou.Modules.Checkout.Core/Daigou.Modules.Checkout.Core.csproj" />
+    <Project Path="src/Modules/Checkout/Daigou.Modules.Checkout.Infra/Daigou.Modules.Checkout.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Ordering/">
+    <Project Path="src/Modules/Ordering/Daigou.Modules.Ordering.Contracts/Daigou.Modules.Ordering.Contracts.csproj" />
+    <Project Path="src/Modules/Ordering/Daigou.Modules.Ordering.Core/Daigou.Modules.Ordering.Core.csproj" />
+    <Project Path="src/Modules/Ordering/Daigou.Modules.Ordering.Infra/Daigou.Modules.Ordering.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Procurement/">
+    <Project Path="src/Modules/Procurement/Daigou.Modules.Procurement.Contracts/Daigou.Modules.Procurement.Contracts.csproj" />
+    <Project Path="src/Modules/Procurement/Daigou.Modules.Procurement.Core/Daigou.Modules.Procurement.Core.csproj" />
+    <Project Path="src/Modules/Procurement/Daigou.Modules.Procurement.Infra/Daigou.Modules.Procurement.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Fulfillment/">
+    <Project Path="src/Modules/Fulfillment/Daigou.Modules.Fulfillment.Contracts/Daigou.Modules.Fulfillment.Contracts.csproj" />
+    <Project Path="src/Modules/Fulfillment/Daigou.Modules.Fulfillment.Core/Daigou.Modules.Fulfillment.Core.csproj" />
+    <Project Path="src/Modules/Fulfillment/Daigou.Modules.Fulfillment.Infra/Daigou.Modules.Fulfillment.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Payment/">
+    <Project Path="src/Modules/Payment/Daigou.Modules.Payment.Contracts/Daigou.Modules.Payment.Contracts.csproj" />
+    <Project Path="src/Modules/Payment/Daigou.Modules.Payment.Core/Daigou.Modules.Payment.Core.csproj" />
+    <Project Path="src/Modules/Payment/Daigou.Modules.Payment.Infra/Daigou.Modules.Payment.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Ledger/">
+    <Project Path="src/Modules/Ledger/Daigou.Modules.Ledger.Contracts/Daigou.Modules.Ledger.Contracts.csproj" />
+    <Project Path="src/Modules/Ledger/Daigou.Modules.Ledger.Core/Daigou.Modules.Ledger.Core.csproj" />
+    <Project Path="src/Modules/Ledger/Daigou.Modules.Ledger.Infra/Daigou.Modules.Ledger.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Notification/">
+    <Project Path="src/Modules/Notification/Daigou.Modules.Notification.Contracts/Daigou.Modules.Notification.Contracts.csproj" />
+    <Project Path="src/Modules/Notification/Daigou.Modules.Notification.Core/Daigou.Modules.Notification.Core.csproj" />
+    <Project Path="src/Modules/Notification/Daigou.Modules.Notification.Infra/Daigou.Modules.Notification.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Audit/">
+    <Project Path="src/Modules/Audit/Daigou.Modules.Audit.Contracts/Daigou.Modules.Audit.Contracts.csproj" />
+    <Project Path="src/Modules/Audit/Daigou.Modules.Audit.Core/Daigou.Modules.Audit.Core.csproj" />
+    <Project Path="src/Modules/Audit/Daigou.Modules.Audit.Infra/Daigou.Modules.Audit.Infra.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Reporting/">
+    <Project Path="src/Modules/Reporting/Daigou.Modules.Reporting.Contracts/Daigou.Modules.Reporting.Contracts.csproj" />
+    <Project Path="src/Modules/Reporting/Daigou.Modules.Reporting.Core/Daigou.Modules.Reporting.Core.csproj" />
+    <Project Path="src/Modules/Reporting/Daigou.Modules.Reporting.Infra/Daigou.Modules.Reporting.Infra.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Daigou.Architecture.Tests/Daigou.Architecture.Tests.csproj" />
+  </Folder>
+</Solution>

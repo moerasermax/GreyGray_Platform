@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Daigou.Modules.Reporting.Infra</RootNamespace>
+    <ModuleName>Reporting</ModuleName>
+    <ModuleLayer>Infra</ModuleLayer>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Daigou.Modules.Reporting.Core\Daigou.Modules.Reporting.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+  </ItemGroup>
+
+</Project>

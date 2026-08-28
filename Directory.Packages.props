@@ -1,0 +1,43 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <!--
+    版本一律釘死，不用浮動範圍。
+    NuGetAudit 在 Directory.Build.props 被升成 error——有已知弱點的套件會讓 build 直接失敗，
+    這是刻意的（藍圖 §08 供應鏈那段）。升級靠 Renovate 開 PR，不靠人記得。
+    最後對照 nuget.org：2026-08-28。
+  -->
+
+  <ItemGroup Label="Persistence">
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageVersion Include="Npgsql" Version="10.0.3" />
+  </ItemGroup>
+
+  <ItemGroup Label="Hosting">
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.9.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
+    <!-- 傳遞相依，2.0.0 有 GHSA-v5pm-xwqc-g5wc（高）。靠 transitive pinning 拉上來。 -->
+    <PackageVersion Include="Microsoft.OpenApi" Version="2.12.2" />
+  </ItemGroup>
+
+  <ItemGroup Label="Observability">
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.18.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Testing">
+    <!-- xunit.v3 4.x 自帶 Microsoft.Testing.Platform 執行器，不需要 VSTest 那套 -->
+    <PackageVersion Include="xunit.v3" Version="4.0.0" />
+    <PackageVersion Include="NetArchTest.Rules" Version="1.3.2" />
+    <PackageVersion Include="Shouldly" Version="4.3.0" />
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.14.0" />
+  </ItemGroup>
+</Project>

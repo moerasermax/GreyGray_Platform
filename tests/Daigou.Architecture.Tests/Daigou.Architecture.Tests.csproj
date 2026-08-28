@@ -1,0 +1,68 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Daigou.Architecture.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <ModuleLayer>Test</ModuleLayer>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="NetArchTest.Rules" />
+    <PackageReference Include="Shouldly" />
+  </ItemGroup>
+
+  <ItemGroup Label="要斷言的全部組件">
+    <ProjectReference Include="..\..\src\Shared.Kernel\Daigou.Shared.Kernel.csproj" />
+    <ProjectReference Include="..\..\src\Platform.Abstractions\Daigou.Platform.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Platform\Daigou.Platform.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\Daigou.Modules.Identity.Contracts\Daigou.Modules.Identity.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\Daigou.Modules.Identity.Core\Daigou.Modules.Identity.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\Daigou.Modules.Identity.Infra\Daigou.Modules.Identity.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Catalog\Daigou.Modules.Catalog.Contracts\Daigou.Modules.Catalog.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Catalog\Daigou.Modules.Catalog.Core\Daigou.Modules.Catalog.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Catalog\Daigou.Modules.Catalog.Infra\Daigou.Modules.Catalog.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Campaign\Daigou.Modules.Campaign.Contracts\Daigou.Modules.Campaign.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Campaign\Daigou.Modules.Campaign.Core\Daigou.Modules.Campaign.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Campaign\Daigou.Modules.Campaign.Infra\Daigou.Modules.Campaign.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Pricing\Daigou.Modules.Pricing.Contracts\Daigou.Modules.Pricing.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Pricing\Daigou.Modules.Pricing.Core\Daigou.Modules.Pricing.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Pricing\Daigou.Modules.Pricing.Infra\Daigou.Modules.Pricing.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Inventory\Daigou.Modules.Inventory.Contracts\Daigou.Modules.Inventory.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Inventory\Daigou.Modules.Inventory.Core\Daigou.Modules.Inventory.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Inventory\Daigou.Modules.Inventory.Infra\Daigou.Modules.Inventory.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Checkout\Daigou.Modules.Checkout.Contracts\Daigou.Modules.Checkout.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Checkout\Daigou.Modules.Checkout.Core\Daigou.Modules.Checkout.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Checkout\Daigou.Modules.Checkout.Infra\Daigou.Modules.Checkout.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ordering\Daigou.Modules.Ordering.Contracts\Daigou.Modules.Ordering.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ordering\Daigou.Modules.Ordering.Core\Daigou.Modules.Ordering.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ordering\Daigou.Modules.Ordering.Infra\Daigou.Modules.Ordering.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Procurement\Daigou.Modules.Procurement.Contracts\Daigou.Modules.Procurement.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Procurement\Daigou.Modules.Procurement.Core\Daigou.Modules.Procurement.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Procurement\Daigou.Modules.Procurement.Infra\Daigou.Modules.Procurement.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Fulfillment\Daigou.Modules.Fulfillment.Contracts\Daigou.Modules.Fulfillment.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Fulfillment\Daigou.Modules.Fulfillment.Core\Daigou.Modules.Fulfillment.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Fulfillment\Daigou.Modules.Fulfillment.Infra\Daigou.Modules.Fulfillment.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Payment\Daigou.Modules.Payment.Contracts\Daigou.Modules.Payment.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Payment\Daigou.Modules.Payment.Core\Daigou.Modules.Payment.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Payment\Daigou.Modules.Payment.Infra\Daigou.Modules.Payment.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ledger\Daigou.Modules.Ledger.Contracts\Daigou.Modules.Ledger.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ledger\Daigou.Modules.Ledger.Core\Daigou.Modules.Ledger.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ledger\Daigou.Modules.Ledger.Infra\Daigou.Modules.Ledger.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Notification\Daigou.Modules.Notification.Contracts\Daigou.Modules.Notification.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Notification\Daigou.Modules.Notification.Core\Daigou.Modules.Notification.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Notification\Daigou.Modules.Notification.Infra\Daigou.Modules.Notification.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Audit\Daigou.Modules.Audit.Contracts\Daigou.Modules.Audit.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Audit\Daigou.Modules.Audit.Core\Daigou.Modules.Audit.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Audit\Daigou.Modules.Audit.Infra\Daigou.Modules.Audit.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Reporting\Daigou.Modules.Reporting.Contracts\Daigou.Modules.Reporting.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Reporting\Daigou.Modules.Reporting.Core\Daigou.Modules.Reporting.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Reporting\Daigou.Modules.Reporting.Infra\Daigou.Modules.Reporting.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Hosts\Daigou.Api.Storefront\Daigou.Api.Storefront.csproj" />
+    <ProjectReference Include="..\..\src\Hosts\Daigou.Api.Admin\Daigou.Api.Admin.csproj" />
+    <ProjectReference Include="..\..\src\Hosts\Daigou.Worker\Daigou.Worker.csproj" />
+  </ItemGroup>
+
+</Project>

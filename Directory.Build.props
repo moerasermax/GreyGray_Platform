@@ -1,0 +1,25 @@
+<Project>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <!--
+    模組硬邊界規則 (docs/01-系統結構.md §組件參考規則)
+      *.Contracts  只可參考 Shared.Kernel
+      *.Core       可參考 自己的 Contracts、別人的 Contracts、Shared.Kernel、Platform.Abstractions
+      *.Infra      可參考 自己的 Core、Platform
+      Hosts        可參考 *.Contracts、*.Infra(僅組合根)、Platform；不得參考 *.Core
+    以上由 tests/Daigou.Architecture.Tests 斷言，違規 build fail。
+  -->
+
+</Project>

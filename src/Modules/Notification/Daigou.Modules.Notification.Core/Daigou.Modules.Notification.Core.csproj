@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Daigou.Modules.Notification.Core</RootNamespace>
+    <ModuleName>Notification</ModuleName>
+    <ModuleLayer>Core</ModuleLayer>
+  </PropertyGroup>
+
+  <ItemGroup Label="自己的契約">
+    <ProjectReference Include="..\Daigou.Modules.Notification.Contracts\Daigou.Modules.Notification.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Label="平台能力（Outbox / EventBus / Clock 抽象）">
+    <ProjectReference Include="..\..\..\Platform.Abstractions\Daigou.Platform.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Label="其他模組的契約——只能是 Contracts，永遠不可以是 Core">
+    <ProjectReference Include="..\..\Procurement\Daigou.Modules.Procurement.Contracts\Daigou.Modules.Procurement.Contracts.csproj" />
+    <ProjectReference Include="..\..\Ordering\Daigou.Modules.Ordering.Contracts\Daigou.Modules.Ordering.Contracts.csproj" />
+    <ProjectReference Include="..\..\Fulfillment\Daigou.Modules.Fulfillment.Contracts\Daigou.Modules.Fulfillment.Contracts.csproj" />
+    <ProjectReference Include="..\..\Identity\Daigou.Modules.Identity.Contracts\Daigou.Modules.Identity.Contracts.csproj" />
+    <ProjectReference Include="..\..\Payment\Daigou.Modules.Payment.Contracts\Daigou.Modules.Payment.Contracts.csproj" />
+    <ProjectReference Include="..\..\Campaign\Daigou.Modules.Campaign.Contracts\Daigou.Modules.Campaign.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

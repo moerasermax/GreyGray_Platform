@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Daigou.Modules.Identity.Contracts</RootNamespace>
+    <ModuleName>Identity</ModuleName>
+    <ModuleLayer>Contracts</ModuleLayer>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Shared.Kernel\Daigou.Shared.Kernel.csproj" />
+    <ProjectReference Include="..\..\..\Platform.Abstractions\Daigou.Platform.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

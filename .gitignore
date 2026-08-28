@@ -1,0 +1,12 @@
+bin/
+obj/
+*.user
+.vs/
+.idea/
+artifacts/
+publish/
+*.log
+appsettings.*.local.json
+.env
+.env.*
+secrets/

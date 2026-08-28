@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Daigou.Modules.Campaign.Core</RootNamespace>
+    <ModuleName>Campaign</ModuleName>
+    <ModuleLayer>Core</ModuleLayer>
+  </PropertyGroup>
+
+  <ItemGroup Label="自己的契約">
+    <ProjectReference Include="..\Daigou.Modules.Campaign.Contracts\Daigou.Modules.Campaign.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Label="平台能力（Outbox / EventBus / Clock 抽象）">
+    <ProjectReference Include="..\..\..\Platform.Abstractions\Daigou.Platform.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Label="其他模組的契約——只能是 Contracts，永遠不可以是 Core">
+    <ProjectReference Include="..\..\Ordering\Daigou.Modules.Ordering.Contracts\Daigou.Modules.Ordering.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>
