@@ -1,0 +1,191 @@
+/*
+ * GreyGray 後台的設計 token
+ *
+ * 跟前台是**兄弟不是雙胞胎**：共用同一支粉紅當品牌記號，其餘完全不同。
+ * 前台是逛街，後台是一天盯八小時的工作台，兩者的目標本來就相反：
+ *
+ *   前台        後台
+ *   柔粉底      中性底，資訊不跟背景搶
+ *   寬鬆        密（density 8/10，8–32px 尺度）
+ *   圓潤        中等圓角（8–12px），表格要能對齊
+ *   無深色      **有深色**，因為對帳常常是晚上做的
+ *   動效柔      動效壓到最低，資料表上的彈跳只會讓人看不清楚
+ *
+ * ── 金額欄位一定要 tabular-nums ──
+ * 這是後台最容易被忽略也最有感的一條：比例數字讓上下兩列的位數對不齊，
+ * 掃一欄金額時眼睛得逐格重新對焦。用 --gg-font-numeric 那個 class。
+ */
+
+:root {
+  /* ── 中性底 ───────────────────────────────────────────────────────── */
+  --ga-bg: #f8fafc;
+  --ga-surface: #ffffff;
+  --ga-surface-sunken: #f1f5f9;
+  --ga-border: #e2e8f0;
+  --ga-border-strong: #cbd5e1;
+
+  --ga-fg: #0f172a;
+  --ga-fg-muted: #64748b;   /* 在 #f8fafc 上 4.76:1 ✓ */
+  --ga-fg-subtle: #94a3b8;  /* 只給非文字的圖示與分隔線，不要放文字 */
+
+  /* ── 品牌記號。後台只用一點點，讓兩個 app 認得出是同一個產品 ────── */
+  --ga-primary: #db2777;
+  --ga-primary-hover: #be185d;
+  --ga-on-primary: #ffffff;
+  --ga-primary-subtle: #fce7f3;
+
+  /* ── 狀態燈。訂單狀態、對帳差異、庫存水位都吃這組 ───────────────── */
+  --ga-success: #15803d;
+  --ga-success-subtle: #dcfce7;
+  --ga-warning: #b45309;
+  --ga-warning-subtle: #fef3c7;
+  --ga-danger: #b91c1c;
+  --ga-danger-subtle: #fee2e2;
+  --ga-info: #1d4ed8;
+  --ga-info-subtle: #dbeafe;
+
+  /* ── 會計方向。借貸兩色不可以只靠顏色分辨，一定要同時有文字 ────── */
+  --ga-debit: #1d4ed8;
+  --ga-credit: #b45309;
+
+  /* ── 圓角。比前台收斂，表格才對得齊 ─────────────────────────────── */
+  --ga-radius-sm: 6px;
+  --ga-radius-md: 10px;
+  --ga-radius-lg: 14px;
+  --ga-radius-pill: 9999px;
+
+  /* ── 間距（density 8/10：密）────────────────────────────────────── */
+  --ga-space-1: 4px;
+  --ga-space-2: 8px;
+  --ga-space-3: 12px;
+  --ga-space-4: 16px;
+  --ga-space-5: 20px;
+  --ga-space-6: 24px;
+  --ga-space-7: 32px;
+
+  --ga-row-height: 40px;
+  --ga-row-height-dense: 32px;
+
+  --ga-shadow-card: 0 1px 2px rgba(15, 23, 42, 0.05), 0 1px 3px rgba(15, 23, 42, 0.06);
+  --ga-shadow-popover: 0 4px 6px rgba(15, 23, 42, 0.05), 0 12px 32px rgba(15, 23, 42, 0.12);
+
+  /* ── 字體 ─────────────────────────────────────────────────────────── */
+  --ga-font-sans: 'Inter', 'Noto Sans TC', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+  --ga-font-mono: 'JetBrains Mono', 'Noto Sans TC', ui-monospace, 'Cascadia Mono',
+    'Consolas', monospace;
+
+  --ga-text-xs: 0.75rem;
+  --ga-text-sm: 0.8125rem;  /* 13px。後台正文，密但仍在可讀範圍 */
+  --ga-text-base: 0.875rem; /* 14px */
+  --ga-text-lg: 1rem;
+  --ga-text-xl: 1.25rem;
+  --ga-text-2xl: 1.5rem;
+
+  --ga-leading-tight: 1.3;
+  --ga-leading-normal: 1.5;
+
+  --ga-duration-fast: 120ms;
+  --ga-duration-base: 180ms;
+  --ga-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --ga-touch-min: 36px;   /* 後台以滑鼠為主，但仍不低於 36 */
+
+  --ga-sidebar-width: 232px;
+  --ga-topbar-height: 56px;
+  --ga-z-topbar: 40;
+  --ga-z-popover: 60;
+  --ga-z-modal: 100;
+}
+
+/*
+ * 深色模式：後台**要**有。對帳、看採購清單常常是深夜的事。
+ * 只換 token 值，不換任何結構。
+ */
+:root[data-theme='dark'],
+:root:not([data-theme='light']) {
+  @media (prefers-color-scheme: dark) {
+    --ga-bg: #0b1120;
+    --ga-surface: #111827;
+    --ga-surface-sunken: #0f172a;
+    --ga-border: #1f2937;
+    --ga-border-strong: #334155;
+
+    --ga-fg: #e2e8f0;
+    --ga-fg-muted: #94a3b8;
+    --ga-fg-subtle: #64748b;
+
+    --ga-primary: #f472b6;
+    --ga-primary-hover: #f9a8d4;
+    --ga-on-primary: #500724;
+    --ga-primary-subtle: #4c0519;
+
+    --ga-success: #4ade80;
+    --ga-success-subtle: #052e16;
+    --ga-warning: #fbbf24;
+    --ga-warning-subtle: #451a03;
+    --ga-danger: #f87171;
+    --ga-danger-subtle: #450a0a;
+    --ga-info: #60a5fa;
+    --ga-info-subtle: #172554;
+
+    --ga-debit: #60a5fa;
+    --ga-credit: #fbbf24;
+
+    --ga-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --ga-shadow-popover: 0 12px 32px rgba(0, 0, 0, 0.6);
+  }
+}
+
+:root[data-theme='dark'] {
+  --ga-bg: #0b1120;
+  --ga-surface: #111827;
+  --ga-surface-sunken: #0f172a;
+  --ga-border: #1f2937;
+  --ga-border-strong: #334155;
+
+  --ga-fg: #e2e8f0;
+  --ga-fg-muted: #94a3b8;
+  --ga-fg-subtle: #64748b;
+
+  --ga-primary: #f472b6;
+  --ga-primary-hover: #f9a8d4;
+  --ga-on-primary: #500724;
+  --ga-primary-subtle: #4c0519;
+
+  --ga-success: #4ade80;
+  --ga-success-subtle: #052e16;
+  --ga-warning: #fbbf24;
+  --ga-warning-subtle: #451a03;
+  --ga-danger: #f87171;
+  --ga-danger-subtle: #450a0a;
+  --ga-info: #60a5fa;
+  --ga-info-subtle: #172554;
+
+  --ga-debit: #60a5fa;
+  --ga-credit: #fbbf24;
+
+  --ga-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --ga-shadow-popover: 0 12px 32px rgba(0, 0, 0, 0.6);
+}
+
+/*
+ * 金額與數量欄位一律加這個 class。
+ * 沒加的話上下兩列的位數對不齊，掃一整欄金額時眼睛要逐格重新對焦。
+ */
+.gg-numeric {
+  font-family: var(--ga-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  text-align: right;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

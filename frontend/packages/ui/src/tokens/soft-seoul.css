@@ -1,0 +1,146 @@
+/*
+ * Soft Seoul —— GreyGray 前台的設計 token（ADR-009）
+ *
+ * 這個檔案是**前台所有顏色、圓角、間距、動態的唯一來源**。
+ * 元件裡不准出現任何 raw hex、任何 px 圓角——一律用這裡的變數。
+ * 平行開發時這條特別重要：四個人各自挑一個粉紅色，出來就是四個產品。
+ *
+ * ── 對比度都實際量過（WCAG 2.1 相對亮度公式），不是憑感覺 ──
+ * 工具建議的 #EC4899 拿來當白字按鈕底色只有 3.53:1，**過不了 AA 的 4.5:1**。
+ * 所以粉紅色拆成三個角色，用途不可以互換：
+ *
+ *   --gg-pink-decor   #EC4899  只給漸層、裝飾、圖示描邊。上面不可以放小字。
+ *   --gg-primary      #DB2777  互動元件底色（按鈕、選中態），白字 4.60:1 ✓
+ *   --gg-primary-text #BE185D  淺底上的粉紅文字與連結，6.04:1 ✓
+ *
+ * 內文 #831843 在 #FDF2F8 上是 8.84:1，次要文字 #8A5A72 是 5.08:1，兩個都過。
+ *
+ * ── 全站沒有一個直角（ADR-009）──
+ * 最小圓角是 --gg-radius-sm（10px）。要用 0 請先說明理由。
+ */
+
+:root {
+  /* ── 品牌色 ────────────────────────────────────────────────────────── */
+  --gg-pink-decor: #ec4899;
+  --gg-primary: #db2777;
+  --gg-primary-hover: #be185d;
+  --gg-primary-text: #be185d;
+  --gg-on-primary: #ffffff;
+
+  --gg-secondary: #f9a8d4;
+  --gg-accent: #8b5cf6;
+  --gg-accent-text: #6d28d9;
+
+  /* ── 表面 ─────────────────────────────────────────────────────────── */
+  --gg-bg: #fdf2f8;
+  --gg-surface: #ffffff;
+  --gg-surface-sunken: #fce7f3;
+  --gg-border: #fbcfe8;
+  --gg-border-strong: #f9a8d4;
+
+  /* ── 文字 ─────────────────────────────────────────────────────────── */
+  --gg-fg: #831843;
+  --gg-fg-muted: #8a5a72;
+  --gg-fg-on-dark: #ffffff;
+
+  /* ── 狀態 ─────────────────────────────────────────────────────────── */
+  --gg-success: #15803d;
+  --gg-warning: #b45309;
+  --gg-danger: #be123c;
+  --gg-info: #6d28d9;
+
+  /* ── 柔粉漸層 banner（ADR-009 的切版重點）────────────────────────── */
+  --gg-gradient-banner: linear-gradient(135deg, #fbcfe8 0%, #f9a8d4 45%, #ddd6fe 100%);
+  --gg-gradient-cta: linear-gradient(135deg, #db2777 0%, #8b5cf6 100%);
+
+  /* ── 圓角。全站沒有直角 ───────────────────────────────────────────── */
+  --gg-radius-sm: 10px;
+  --gg-radius-md: 16px;
+  --gg-radius-lg: 24px;
+  --gg-radius-xl: 32px;
+  --gg-radius-pill: 9999px;
+
+  /* ── 間距（density 5/10：標準）───────────────────────────────────── */
+  --gg-space-1: 4px;
+  --gg-space-2: 8px;
+  --gg-space-3: 12px;
+  --gg-space-4: 16px;
+  --gg-space-5: 24px;
+  --gg-space-6: 32px;
+  --gg-space-7: 48px;
+  --gg-space-8: 64px;
+
+  /* ── 陰影。柔、無硬邊，不要 1px 黑線那種 ────────────────────────── */
+  --gg-shadow-card: 0 1px 2px rgba(131, 24, 67, 0.04), 0 8px 24px rgba(131, 24, 67, 0.06);
+  --gg-shadow-raised: 0 2px 4px rgba(131, 24, 67, 0.06), 0 16px 40px rgba(131, 24, 67, 0.1);
+  --gg-shadow-bottom-bar: 0 -4px 24px rgba(131, 24, 67, 0.08);
+
+  /* ── 字體 ─────────────────────────────────────────────────────────── */
+  /*
+   * 關鍵技巧：Nunito 沒有繁體中文字符，所以中文字會**自動落到下一個字體**。
+   * 把 Nunito 放前面 → 拉丁字母與數字用它（圓潤、貼近韓系柔美），
+   * 中文用 Noto Sans TC。這樣不用寫兩個 class 就能兩邊都對。
+   * 順序寫反的話中文正常但數字會變成 Noto 的直筆畫，整個調性就散了。
+   */
+  --gg-font-sans: 'Nunito', 'Noto Sans TC', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+  --gg-font-display: 'Nunito', 'Noto Sans TC', sans-serif;
+
+  --gg-text-xs: 0.75rem;    /* 12px。比這個小就不要放正文 */
+  --gg-text-sm: 0.875rem;   /* 14px */
+  --gg-text-base: 1rem;     /* 16px。正文基準 */
+  --gg-text-lg: 1.125rem;
+  --gg-text-xl: 1.375rem;
+  --gg-text-2xl: 1.75rem;
+  --gg-text-3xl: 2.25rem;
+
+  --gg-leading-tight: 1.25;
+  --gg-leading-normal: 1.6;  /* 中文行高要比拉丁字寬鬆一點才不擠 */
+
+  /* ── 動態。150–300ms，超過就開始像卡頓 ─────────────────────────── */
+  --gg-duration-fast: 150ms;
+  --gg-duration-base: 220ms;
+  --gg-duration-slow: 320ms;
+  --gg-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --gg-ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  /* ── 觸控。44×44 是下限不是建議值 ───────────────────────────────── */
+  --gg-touch-min: 44px;
+
+  /* ── 版面 ─────────────────────────────────────────────────────────── */
+  --gg-container-max: 1200px;
+  --gg-bottom-bar-height: 72px;
+  --gg-z-bottom-bar: 40;
+  --gg-z-header: 50;
+  --gg-z-modal: 100;
+}
+
+/*
+ * 前台**刻意不做深色模式**。
+ * 理由：Soft Seoul 的整套調性建立在淺粉底上，硬翻深色會變成完全不同的產品，
+ * 而工時要多一倍。後台有深色模式（見 admin.css），因為那是每天盯八小時的畫面。
+ * 這裡明確宣告，免得有人以為是漏掉的。
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: light;
+  }
+}
+
+/* 尊重系統的減少動態設定。這是無障礙硬性要求，不是加分項。 */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --gg-duration-fast: 0ms;
+    --gg-duration-base: 0ms;
+    --gg-duration-slow: 0ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

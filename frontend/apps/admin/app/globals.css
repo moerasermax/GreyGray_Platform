@@ -1,0 +1,94 @@
+@import 'tailwindcss';
+@import '@greygray/ui/tokens/admin.css';
+
+/*
+ * 後台的 theme。與前台是兄弟不是雙胞胎——共用同一支粉紅當品牌記號，其餘完全不同。
+ * 密、中性、有深色模式。理由寫在 `@greygray/ui/tokens/admin.css` 的檔頭。
+ */
+@theme inline {
+  --color-bg: var(--ga-bg);
+  --color-surface: var(--ga-surface);
+  --color-surface-sunken: var(--ga-surface-sunken);
+  --color-border-soft: var(--ga-border);
+  --color-border-strong: var(--ga-border-strong);
+
+  --color-fg: var(--ga-fg);
+  --color-fg-muted: var(--ga-fg-muted);
+  --color-fg-subtle: var(--ga-fg-subtle);
+
+  --color-primary: var(--ga-primary);
+  --color-primary-hover: var(--ga-primary-hover);
+  --color-on-primary: var(--ga-on-primary);
+  --color-primary-subtle: var(--ga-primary-subtle);
+
+  --color-success: var(--ga-success);
+  --color-success-subtle: var(--ga-success-subtle);
+  --color-warning: var(--ga-warning);
+  --color-warning-subtle: var(--ga-warning-subtle);
+  --color-danger: var(--ga-danger);
+  --color-danger-subtle: var(--ga-danger-subtle);
+  --color-info: var(--ga-info);
+  --color-info-subtle: var(--ga-info-subtle);
+
+  --color-debit: var(--ga-debit);
+  --color-credit: var(--ga-credit);
+
+  --radius-sm: var(--ga-radius-sm);
+  --radius-card: var(--ga-radius-md);
+  --radius-lg: var(--ga-radius-lg);
+
+  --shadow-card: var(--ga-shadow-card);
+  --shadow-popover: var(--ga-shadow-popover);
+
+  --font-sans: var(--ga-font-sans);
+  --font-mono: var(--ga-font-mono);
+}
+
+@layer base {
+  body {
+    background-color: var(--ga-bg);
+    color: var(--ga-fg);
+    font-family: var(--ga-font-sans);
+    font-size: var(--ga-text-base);
+    line-height: var(--ga-leading-normal);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ga-primary);
+    outline-offset: 2px;
+    border-radius: var(--ga-radius-sm);
+  }
+
+  button,
+  [role='button'],
+  a {
+    cursor: pointer;
+  }
+
+  /*
+   * 所有金額與數量欄位都要用這個。
+   * 沒用的話上下兩列的位數對不齊，掃一整欄金額時眼睛要逐格重新對焦——
+   * 這是後台最容易被忽略、實際上最有感的一條。
+   */
+  .gg-numeric,
+  td[data-numeric],
+  th[data-numeric] {
+    font-family: var(--ga-font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+    text-align: right;
+  }
+
+  /*
+   * 借貸方向不可以只靠顏色分辨（色覺障礙約 8% 的男性）。
+   * 顏色是輔助，文字「借 / 貸」才是主要訊息。
+   */
+  [data-direction='Debit'] {
+    color: var(--ga-debit);
+  }
+
+  [data-direction='Credit'] {
+    color: var(--ga-credit);
+  }
+}

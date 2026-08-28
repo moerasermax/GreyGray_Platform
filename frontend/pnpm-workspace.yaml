@@ -1,0 +1,7 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+# esbuild 是 openapi-typescript 的相依，安裝時要跑 postinstall 取平台二進位。
+# 這是它正常運作的必要步驟，明確放行。其餘套件一律不給跑 build script。
+allowBuilds:
+  esbuild: true

@@ -1,0 +1,102 @@
+@import 'tailwindcss';
+@import '@greygray/ui/tokens/soft-seoul.css';
+
+/*
+ * 把 Soft Seoul 的 token 接到 Tailwind v4 的 theme 上。
+ *
+ * 用 `@theme inline` 而不是 `@theme`：inline 才會讓 Tailwind 把值原樣當成
+ * `var(--gg-*)` 的參照，而不是在編譯期把它攤平成字面值。
+ * 攤平之後 `prefers-reduced-motion` 那類的覆寫就失效了。
+ *
+ * **元件裡一律用這裡的 utility（bg-primary、rounded-card…），
+ * 不要寫 bg-[#db2777] 這種任意值。** 平行開發時這條是分水嶺。
+ */
+@theme inline {
+  --color-primary: var(--gg-primary);
+  --color-primary-hover: var(--gg-primary-hover);
+  --color-primary-text: var(--gg-primary-text);
+  --color-on-primary: var(--gg-on-primary);
+  --color-secondary: var(--gg-secondary);
+  --color-accent: var(--gg-accent);
+  --color-accent-text: var(--gg-accent-text);
+
+  --color-bg: var(--gg-bg);
+  --color-surface: var(--gg-surface);
+  --color-surface-sunken: var(--gg-surface-sunken);
+  --color-border-soft: var(--gg-border);
+  --color-border-strong: var(--gg-border-strong);
+
+  --color-fg: var(--gg-fg);
+  --color-fg-muted: var(--gg-fg-muted);
+
+  --color-success: var(--gg-success);
+  --color-warning: var(--gg-warning);
+  --color-danger: var(--gg-danger);
+  --color-info: var(--gg-info);
+
+  --radius-sm: var(--gg-radius-sm);
+  --radius-card: var(--gg-radius-md);
+  --radius-lg: var(--gg-radius-lg);
+  --radius-xl: var(--gg-radius-xl);
+  --radius-pill: var(--gg-radius-pill);
+
+  --shadow-card: var(--gg-shadow-card);
+  --shadow-raised: var(--gg-shadow-raised);
+  --shadow-bottom-bar: var(--gg-shadow-bottom-bar);
+
+  --font-sans: var(--gg-font-sans);
+  --font-display: var(--gg-font-display);
+
+  --ease-out-soft: var(--gg-ease-out);
+  --ease-spring: var(--gg-ease-spring);
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--gg-bg);
+    color: var(--gg-fg);
+    font-family: var(--gg-font-sans);
+    font-size: var(--gg-text-base);
+    line-height: var(--gg-leading-normal);
+    -webkit-font-smoothing: antialiased;
+
+    /*
+     * 底部常駐加購列會蓋住最後一段內容。
+     * 補上等高的 padding，並加 safe-area——iPhone 的 home indicator 會吃掉一截。
+     */
+    padding-bottom: calc(var(--gg-bottom-bar-height) + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* 焦點框不可以拿掉。鍵盤使用者沒有它就完全不知道自己在哪裡。 */
+  :focus-visible {
+    outline: 2px solid var(--gg-primary);
+    outline-offset: 2px;
+    border-radius: var(--gg-radius-sm);
+  }
+
+  /* 可點的東西一律 pointer。 */
+  button,
+  [role='button'],
+  a {
+    cursor: pointer;
+  }
+
+  /* 觸控目標下限 44×44，這是下限不是建議值。 */
+  button,
+  [role='button'],
+  input[type='checkbox'],
+  input[type='radio'] {
+    min-height: var(--gg-touch-min);
+    min-width: var(--gg-touch-min);
+  }
+
+  /* 商品圖統一 1:1 裁切（前台 UX 規則）。 */
+  .gg-square-media {
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+  }
+}

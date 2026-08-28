@@ -1,0 +1,21 @@
+{
+  "name": "greygray-frontend",
+  "private": true,
+  "packageManager": "pnpm@11.5.0",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"./apps/*\" dev",
+    "dev:storefront": "pnpm --filter @greygray/storefront dev",
+    "dev:admin": "pnpm --filter @greygray/admin dev",
+    "build": "pnpm --recursive --filter \"./packages/*\" build && pnpm --recursive --filter \"./apps/*\" build",
+    "lint": "pnpm --recursive lint",
+    "typecheck": "pnpm --recursive typecheck",
+    "test": "pnpm --recursive test",
+    "api:generate": "pnpm --filter @greygray/api-client generate"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  }
+}

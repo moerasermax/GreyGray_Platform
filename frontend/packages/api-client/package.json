@@ -1,0 +1,22 @@
+{
+  "name": "@greygray/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./storefront": "./src/types.storefront.ts",
+    "./admin": "./src/types.admin.ts"
+  },
+  "scripts": {
+    "generate": "openapi-typescript ../../../docs/api/openapi.storefront.yaml -o src/types.storefront.ts && openapi-typescript ../../../docs/api/openapi.admin.yaml -o src/types.admin.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.9.0",
+    "typescript": "^5.9.0"
+  }
+}
