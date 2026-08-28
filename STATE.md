@@ -166,7 +166,12 @@ rollback 用 `CancellationToken.None`——取消也會確實回滾，marker 不
 
 ---
 
-## 後端第三＋四波總驗收（2026-08-28，由 Claude 執行）—— **M0 完成**
+## 後端第三＋四波總驗收（2026-08-28，由 Claude 執行）—— **M0 程式完成，部署未驗**
+
+> 我原本寫「M0 完成」，那講過頭了。Codex 的 `HANDOFF_6` 用的是「M0 本機功能驗收候選」，
+> 那個講法才對：程式路徑、交易、冪等、trace、migration、架構邊界都驗過了，
+> 但 **YC 上沒跑過 NSSM ＋ 重開機**，trace 也**沒送進可查詢的 OTLP backend**。
+> M-1 環境整備一件都還沒做，所以部署那一半根本還沒有機會被驗。
 
 驗 `7fe8237`（BE-5 組合根 ＋ BE-7 通路接縫）與 `25a0dad`（BE-6 hello-world 垂直切片）。
 在 detached 於 `25a0dad` 的乾淨 worktree 跑，不在 Codex 的工作樹上。
