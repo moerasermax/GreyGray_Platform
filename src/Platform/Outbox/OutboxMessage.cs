@@ -47,8 +47,13 @@ public sealed class OutboxMessage
 /// Outbox 派送器的行為契約。實作要點（見 docs/06-狀態機與Saga.md 圖 15）：
 /// <list type="number">
 ///   <item>用 <c>SELECT ... FOR UPDATE SKIP LOCKED</c> 取批次，讓多實例可安全並行。</item>
-///   <item>派送前先 <c>SET LOCAL app.tenant_id</c>（<b>LOCAL</b>，不是 SET——
-///         pgBouncer transaction pooling 會讓 session 變數跨交易洩漏）。</item>
+///   <item>派送前先設定 transaction-local 的租戶：
+///         <c>SELECT set_config('app.tenant_id', @tenantId, true)</c>。
+///         第三個參數 <b>true</b> 就是 <c>SET LOCAL</c> 的語意，**不可以省**——
+///         pgBouncer transaction pooling 會讓 session 變數跨交易洩漏，
+///         症狀是隨機的跨租戶讀取，而且不會有任何錯誤訊息。
+///         用 <c>set_config</c> 而不是 <c>SET LOCAL</c> 的理由：後者的文法不接受
+///         bind parameter，只能字串拼接；前者等效且租戶 id 可以維持參數化。</item>
 ///   <item>失敗則 attempts+1、next_attempt_at 指數退避；超過上限進死信並告警。</item>
 ///   <item>整個 Worker 進程用 Postgres advisory lock 互斥，避免部署時新舊兩份同時派送。</item>
 /// </list>

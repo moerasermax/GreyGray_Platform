@@ -47,8 +47,8 @@ $outputFull = [System.IO.Path]::GetFullPath($OutputRoot)
 
 $nodeVersion = Invoke-NativeCommand -FilePath $node -ArgumentList @('--version') `
     -WorkingDirectory $frontendRoot -EchoOutput
-if ($nodeVersion.StdOut.Trim() -notmatch '^v(?<major>\d+)' -or [int]$Matches.major -lt 20) {
-    throw "Node 必須 >= 20；目前輸出：$($nodeVersion.StdOut.Trim())"
+if ($nodeVersion.StdOut.Trim() -notmatch '^v(?<major>\d+)' -or [int]$Matches.major -lt 22) {
+    throw "Node 必須 >= 22（與 frontend/package.json 的 engines 一致）；目前輸出：$($nodeVersion.StdOut.Trim())"
 }
 Invoke-PnpmCommand -PnpmPath $pnpm -ArgumentList @('--version') -WorkingDirectory $frontendRoot
 Invoke-PnpmCommand -PnpmPath $pnpm `

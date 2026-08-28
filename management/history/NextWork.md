@@ -31,9 +31,15 @@
 
 照 `docs/06-前端工作包.md`，檔案所有權表是邊界。
 
-- [ ] 第一波：FE-1 型別 ＋ mock ＋ 端點層 · FE-2 Soft Seoul 元件庫 · FE-6 後台殼與儀表板
-      FE-1 的 mock 是全部人的資料來源，**它最先要好**。
+**工作在 `GreyGray_Platform-fe` 的 `feat/frontend-wave-1` 分支，不在這棵樹上。**
+
+- [x] 第一波：FE-1 型別 ＋ mock ＋ 端點層 · FE-2 Soft Seoul 元件庫 · FE-6 後台殼與儀表板
+      驗收通過（`f67e944`）。msw 的 SSR 與 browser 兩端都實測過，
+      `NEXT_PUBLIC_USE_MOCK=1` 可用，**第二波完全不需要後端**。
+      驗收紀錄在 `docs/09-前端第一波派工prompt.md` 末尾。
 - [ ] 第二波：FE-3 逛與找 · FE-4 買 · FE-5 我的 · FE-7 商品與開團 · FE-8 訂單與帳務
+      五則子 agent prompt 已備妥（`6c56e52`），派工前已先拆掉路由衝突
+      並建立共用的 `app/_lib/apiClient.ts`。**進行中。**
 
 ## 可完全並行（跟寫程式互不相干，但擋 M1 上線）
 
@@ -41,7 +47,7 @@
       .NET 10 SDK ＋ PostgreSQL 17（data 與 `pg_wal` **一定要 C 槽 NVMe**）＋ Valkey ／
       專屬 Windows 帳號並設 ACL ／ Defender 排除 pg 目錄 ／ ngrok → cloudflared ／
       接有線網路 ／ 買 UPS ／ Windows Update 改手動加維護窗
-- [ ] Node 20+ 也要裝上 YC（前端兩個 process），並登記進 prod-monitor 的 port 指紋（5002 / 5003）
+- [ ] Node 22+ 也要裝上 YC（前端兩個 process），並登記進 prod-monitor 的 port 指紋（5002 / 5003）
 
 ## 擋著的決策
 
