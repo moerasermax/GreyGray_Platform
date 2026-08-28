@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using GreyGray.Modules.Catalog.Infra;
+using GreyGray.Modules.Identity.Infra;
 using GreyGray.Platform.Observability;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -28,8 +30,12 @@ builder.Services
         .AddOtlpExporter());
 
 // TODO(M0-1..3)：AddPlatform() —— Outbox、Idempotency、Saga Timer。
-// TODO(M0-5)：逐一 AddXxxModule() —— 只能呼叫 *.Infra 公開的註冊擴充方法，
-//             不得 using 任何 *.Core 命名空間（Architecture.Tests 會擋）。
+builder.Services
+    .AddIdentityModule(builder.Configuration)
+    .AddCatalogModule(builder.Configuration);
+
+// TODO(M0-5)：Identity／Catalog 樣板驗收後，逐一複製到其餘模組。
+//             只能呼叫 *.Infra 公開的註冊擴充方法，不得 using 任何 *.Core 命名空間。
 // TODO(M1a-1)：BFF 認證 —— access token 永不進瀏覽器，
 //              前端只拿 HttpOnly; Secure; SameSite=Lax cookie。
 

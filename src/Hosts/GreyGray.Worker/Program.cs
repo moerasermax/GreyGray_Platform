@@ -1,3 +1,5 @@
+using GreyGray.Modules.Catalog.Infra;
+using GreyGray.Modules.Identity.Infra;
 using GreyGray.Platform.Observability;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -24,7 +26,12 @@ builder.Services
         .AddOtlpExporter());
 
 // TODO(M0-1..3)：AddPlatform() —— 含 OutboxDispatcherService 與 SagaTimerService。
-// TODO(M0-5)：逐一 AddXxxModule() —— Worker 需要全部模組的事件 handler。
+builder.Services
+    .AddIdentityModule(builder.Configuration)
+    .AddCatalogModule(builder.Configuration);
+
+// TODO(M0-5)：Identity／Catalog 樣板驗收後，逐一複製到其餘模組；
+//             Worker 最終需要全部模組的事件 handler。
 // TODO(M3-6)：Cloudflare Queues consumer —— 拉取 webhook 緩衝層的訊息。
 
 var host = builder.Build();

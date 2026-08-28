@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using GreyGray.Modules.Catalog.Infra;
+using GreyGray.Modules.Identity.Infra;
 using GreyGray.Platform.Observability;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -27,7 +29,11 @@ builder.Services
         .AddOtlpExporter());
 
 // TODO(M0-1..3)：AddPlatform() —— Outbox、Idempotency、Saga Timer。
-// TODO(M0-5)：逐一 AddXxxModule()。
+builder.Services
+    .AddIdentityModule(builder.Configuration)
+    .AddCatalogModule(builder.Configuration);
+
+// TODO(M0-5)：Identity／Catalog 樣板驗收後，逐一複製到其餘模組。
 // TODO(M1a-2)：Cloudflare Access JWT 驗證 —— 驗 CF 公鑰、比對 aud，
 //              解析失敗一律拒絕，不得 fallback 成匿名。
 

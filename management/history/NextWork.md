@@ -1,6 +1,6 @@
 # NextWork
 
-接在第四輪（後端第二波可靠性基礎設施）之後。
+接在第五輪（後端第三波模組組合根與通路 schema 接縫）之後。
 **前後端從這裡開始平行**，兩條線互不擋。
 
 ## 後端（Codex）
@@ -14,7 +14,9 @@
       46/46 tests 全綠（Platform 18 條）；processed-message transaction、並行去重、
       API idempotency lease fencing、Saga advisory lock／rollback／tenant 傳遞均已驗證。
       同輪補齊 BE-8 五服務 manifest 與兩個可攜式 Next standalone artifacts（見 `HANDOFF_4.md`）。
-- [ ] 第三波：BE-5 模組組合根樣板（**先只做 Identity 與 Catalog**）· BE-7 通路接縫進 schema
+- [x] 第三波：BE-5 模組組合根樣板（Identity 與 Catalog）· BE-7 通路接縫進 schema
+      49/49 tests 全綠（Architecture 14／Contracts 16／Platform 19）；三個 Host 已接入兩個模組，
+      `0003_channel_seams.sql` 已在 PostgreSQL 17 實跑、重跑、權限與故障注入驗證（見 `HANDOFF_5.md`）。
 - [ ] 第四波：BE-6 hello-world 端對端 —— **這一包通過就是 M0 完成**
 
 每包交付後由我做總驗收（`docs/07-後端派工書.md` §5 的十條），

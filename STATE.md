@@ -1,28 +1,28 @@
 # 現況
 
-**最後更新**：2026-08-28（後端第二波：BE-2 消費端冪等 ＋ BE-3 Idempotency／Saga Timer；補齊五服務部署）
+**最後更新**：2026-08-28（後端第三波：BE-5 Identity／Catalog 組合根 ＋ BE-7 五個通路 schema 接縫）
 
 ## 一句話
 
-後端前兩波基礎設施已落地：Outbox、消費端冪等、API idempotency、Saga Timer、OTel 與五服務安全部署都有實作與測試；**業務模組與 `/v1` API 端點仍未實作**。因此即時 OpenAPI gate 目前會正確 fail-fast，不可宣稱整條 CI 已全綠。
+後端前三波已落地：可靠性基礎設施、Identity／Catalog 組合根樣板、五個通路 schema 接縫與五服務安全部署都有實作與測試；**BE-6 hello-world 垂直切片與 `/v1` API 端點仍未實作**。因此即時 OpenAPI gate 仍會正確 fail-fast，不可宣稱 M0 或整條 CI 已完成。
 
 ## 已完成
 
 | 項目 | 狀態 |
 |---|---|
 | Solution（51 專案） | ✅ `dotnet build` 0 error 0 warning |
-| 模組硬邊界 | ✅ **12 條**架構測試全綠（新加的兩條都注入違規驗證過會紅） |
+| 模組硬邊界 | ✅ **14 條**架構測試全綠；新組合根 public-type 規則已故障注入驗證會紅 |
 | 線上格式與事件目錄 | ✅ **16 條**契約測試全綠（`tests/GreyGray.Contracts.Tests`，同樣注入驗證過） |
 | Platform 基礎設施 | ✅ Outbox、processed-message decorator、API idempotency、Saga Timer、44 事件 registry、`PlatformDbContext`、OTel、clock／correlation context |
-| Platform 整合測試 | ✅ **18 條**全綠；真 PostgreSQL 17 Testcontainers，含 rollback／retry、並行去重、lease fencing、雙 worker timer |
+| Platform 整合測試 | ✅ **19 條**全綠；真 PostgreSQL 17 Testcontainers，含 rollback／retry、並行去重、lease fencing、雙 worker timer 與 `0003` 實跑 |
 | 14 個模組的 Contracts（ID／DTO／介面／44 個事件） | ✅ 可編譯 |
 | Shared.Kernel（Money、Currency、Result、IClock、Dimensions、**JSON**） | ✅ |
 | Platform.Abstractions（事件、Outbox、Idempotency、Saga、**事件型別登錄、IAuditWriter**） | ✅ 介面 |
-| DB schema 與 role 的 migration | ✅ **已在 PG 17.11 容器上實跑並驗證**（15 schema／17 role／4 表，owner 與權限都對）|
+| DB schema 與 role 的 migration | ✅ **已在 PG 17 容器上實跑並驗證**（15 schema／17 role／9 表，owner、權限、重跑與約束都對）|
 | **API 契約（`docs/05` ＋ 兩份 OpenAPI）** | ✅ v1.0 已凍結，24 ＋ 29 個端點 |
 | **前端 workspace（Next.js ×2 ＋ token ＋ api-client）** | ✅ `pnpm build` 兩個 app 都過 |
 | **設計 token（Soft Seoul ＋ Admin）** | ✅ 對比度實際量過，都達 AA |
-| 三個 Host 的 `Program.cs` | ⚠️ OTel 與 `/health` 已接；仍沒有 `/v1` 端點或業務模組接線 |
+| 三個 Host 的 `Program.cs` | ⚠️ OTel、`/health`、Identity／Catalog 模組已接；仍沒有 `/v1` 端點 |
 | CI／Windows 部署工具 | ⚠️ 五服務 manifest、.NET／Next standalone artifacts、PS 5 self-test、versioned release、NSSM、watchdog 已完成；即時 OpenAPI gate 等 `/v1` 端點後才能綠 |
 
 ## 後端第一波總驗收（2026-08-28，由 Claude 執行）
@@ -197,9 +197,9 @@ rollback 用 `CancellationToken.None`——取消也會確實回滾，marker 不
 
 ## 未完成
 
-**後端**：BE-1、BE-2、BE-3、BE-4 已完成；BE-8 的五服務工具與 fail-closed 門檻已完成，
-但 live OpenAPI 驗收仍依賴 M0-6 的 `/v1` 端點。尚待 BE-5（Identity／Catalog 組合根）、
-BE-7（audit／通路 schema）、BE-6（hello-world 垂直切片與 API 接線）。詳見
+**後端**：BE-1、BE-2、BE-3、BE-4、BE-5、BE-7 已完成；BE-8 的五服務工具與
+fail-closed 門檻已完成，但 live OpenAPI 驗收仍依賴 M0-6 的 `/v1` 端點。
+尚待 BE-6（hello-world 垂直切片、API 接線、連續 trace 與重啟驗收）。詳見
 `docs/03-M0工作包.md` 與 `docs/07-後端派工書.md`。
 
 **前端**：FE-1 ～ FE-8，見 `docs/06-前端工作包.md`。
@@ -255,8 +255,8 @@ workspace 外 `node server.js` 回 HTTP 200」作 portability 證據。
 
 ## 下一步
 
-1. **後端第三波**：BE-5（Identity／Catalog 組合根）與 BE-7（audit／通路 schema）平行
-2. 接著由 BE-6 做 hello-world 垂直切片與 `/v1` API 接線
+1. **後端第四波**：BE-6 hello-world 垂直切片與 `/v1` API 接線
+2. 完成 API 寫入 → Identity 資料 ＋ Outbox 同交易 → Worker 消費 → Notification 去重的真實路徑
 3. BE-6 完成後重跑 strict live OpenAPI gate，處理真實 schema drift，完成 M0-8 驗收
 4. **前端**：FE-1（型別 ＋ mock）、FE-2（Soft Seoul 元件庫）、FE-6（後台殼）可平行
 5. M-1 環境整備可以完全並行
