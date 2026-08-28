@@ -1,0 +1,1325 @@
+openapi: 3.1.0
+
+info:
+  title: GreyGray Storefront BFF
+  version: "1.0.0"
+  description: |
+    客人端 BFF（Web / LINE LIFF）。
+
+    **通則見 `docs/05-API契約.md`，本檔不重複。** 特別注意：
+
+    - 所有寫入端點必須帶 `Idempotency-Key`
+    - 金額一律 `{amountMinor, currency}`，前端只顯示不運算
+    - enum 是字串，前端必須容忍未知值
+    - 錯誤一律 `application/problem+json`，機器讀 `code` 不讀 `title`
+
+servers:
+  - url: http://localhost:5000
+    description: 開發機
+  - url: https://api.greygray.tw
+    description: 正式（經 cloudflared）
+
+tags:
+  - name: auth
+    description: 註冊與登入
+  - name: me
+    description: 個人資料、地址、儲值金
+  - name: catalog
+    description: 商品與分類
+  - name: campaign
+    description: 開團
+  - name: cart
+    description: 購物車與詢價
+  - name: order
+    description: 訂單
+  - name: payment
+    description: 付款
+  - name: fulfillment
+    description: 物流（M1b）
+  - name: procurement
+    description: 現場詢價回覆（M1b）
+
+security:
+  - sessionCookie: []
+
+paths:
+  # ── auth ────────────────────────────────────────────────────────────────
+  /v1/auth/register:
+    post:
+      tags: [auth]
+      summary: 註冊
+      description: |
+        **欄位暫定。** 歷史會員是否從租用平台遷移尚未決定，
+        匯出檔的實際欄位會反過來決定這裡的設計（`docs/00-decisions.md` 末段）。
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: 建立成功，同時登入
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SessionCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+          # identity.phone-already-registered / identity.weak-password
+
+  /v1/auth/login:
+    post:
+      tags: [auth]
+      summary: 登入
+      description: M1a 只有「手機號碼 ＋ 密碼」。LINE Login 綁定排 M1b。
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phoneNumber, password]
+              properties:
+                phoneNumber: { type: string, example: "0912345678" }
+                password: { type: string, format: password, minLength: 8 }
+      responses:
+        '200':
+          description: 登入成功
+          headers:
+            Set-Cookie: { $ref: '#/components/headers/SessionCookie' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401':
+          description: |
+            帳號或密碼錯誤。`code: identity.invalid-credentials`。
+            **刻意不區分「帳號不存在」與「密碼錯誤」**——區分了等於送對方一份帳號列舉工具。
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/auth/logout:
+    post:
+      tags: [auth]
+      summary: 登出
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204':
+          description: 已登出，session cookie 已清除
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: 'gg_session=; Max-Age=0'
+
+  # ── me ──────────────────────────────────────────────────────────────────
+  /v1/me:
+    get:
+      tags: [me]
+      summary: 目前登入的客戶
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    patch:
+      tags: [me]
+      summary: 修改非敏感欄位
+      description: 手機號碼與身分證字號不在這裡改——那是需要二次驗證的流程，排 M1b。
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName: { type: string, maxLength: 50 }
+                email: { type: [string, 'null'], format: email }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+
+  /v1/me/addresses:
+    get:
+      tags: [me]
+      summary: 我的收件地址
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ShippingAddress' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [me]
+      summary: 新增收件地址
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ShippingAddressInput' }
+      responses:
+        '201':
+          description: 已建立
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShippingAddress' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+
+  /v1/me/addresses/{addressId}:
+    parameters:
+      - name: addressId
+        in: path
+        required: true
+        schema: { $ref: '#/components/schemas/Id' }
+    put:
+      tags: [me]
+      summary: 修改收件地址
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ShippingAddressInput' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShippingAddress' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [me]
+      summary: 刪除收件地址
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204': { description: 已刪除 }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/me/stored-value:
+    get:
+      tags: [me]
+      summary: 儲值金餘額
+      description: |
+        來自 Ledger 的 `IStoredValueQuery`。
+        退款走儲值金完全不動金流、零手續費，所以這個數字在退款流程裡會被看到。
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [balance]
+                properties:
+                  balance: { $ref: '#/components/schemas/Money' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ── catalog ─────────────────────────────────────────────────────────────
+  /v1/categories:
+    get:
+      tags: [catalog]
+      summary: 分類清單
+      description: 前台「橫捲圓形分類標」的資料來源。回傳的是已發布且底下有上架商品的分類。
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Category' }
+
+  /v1/products:
+    get:
+      tags: [catalog]
+      summary: 商品列表
+      description: 商品卡牆。**不含價格明細**——價格屬於開團定價或現貨標價，見 `priceFrom`。
+      security: []
+      parameters:
+        - name: categoryId
+          in: query
+          schema: { $ref: '#/components/schemas/Id' }
+        - name: q
+          in: query
+          description: 關鍵字，比對商品名稱與變體名稱
+          schema: { type: string, maxLength: 100 }
+        - name: mode
+          in: query
+          description: 只看現貨或只看預購
+          schema: { $ref: '#/components/schemas/FulfillmentMode' }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProductListItem' }
+                  nextCursor: { type: [string, 'null'] }
+
+  /v1/products/{productId}:
+    get:
+      tags: [catalog]
+      summary: 商品詳情
+      description: 含所有 SKU、可用量、以及（若屬於進行中的團）該團的售價。
+      security: []
+      parameters:
+        - name: productId
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Id' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ── campaign ────────────────────────────────────────────────────────────
+  /v1/campaigns:
+    get:
+      tags: [campaign]
+      summary: 開團列表
+      security: []
+      parameters:
+        - name: status
+          in: query
+          description: 不給的話只回 `Open`
+          schema: { $ref: '#/components/schemas/CampaignStatus' }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/CampaignListItem' }
+                  nextCursor: { type: [string, 'null'] }
+
+  /v1/campaigns/{campaignId}:
+    get:
+      tags: [campaign]
+      summary: 開團詳情
+      security: []
+      parameters:
+        - name: campaignId
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Id' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CampaignDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ── cart ────────────────────────────────────────────────────────────────
+  /v1/cart:
+    get:
+      tags: [cart]
+      summary: 取得購物車
+      description: |
+        未登入也可以有購物車（以 cookie 綁匿名 cart）。結帳時才要求登入。
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+
+  /v1/cart/lines:
+    post:
+      tags: [cart]
+      summary: 加入購物車
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [skuId, mode, quantity]
+              properties:
+                skuId: { $ref: '#/components/schemas/Id' }
+                mode: { $ref: '#/components/schemas/FulfillmentMode' }
+                campaignOfferId:
+                  description: '`mode = Preorder` 時必填。'
+                  oneOf:
+                    - { $ref: '#/components/schemas/Id' }
+                    - { type: 'null' }
+                quantity: { type: integer, minimum: 1, maximum: 999 }
+      responses:
+        '200':
+          description: 已加入，回傳整個購物車
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '422':
+          description: |
+            `catalog.sku-not-found` · `catalog.sku-archived` ·
+            `campaign.not-accepting-orders` · `inventory.insufficient-stock`
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
+
+  /v1/cart/lines/{lineId}:
+    parameters:
+      - name: lineId
+        in: path
+        required: true
+        schema: { $ref: '#/components/schemas/Id' }
+    patch:
+      tags: [cart]
+      summary: 改數量
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quantity]
+              properties:
+                quantity: { type: integer, minimum: 1, maximum: 999 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+    delete:
+      tags: [cart]
+      summary: 移除品項
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/cart/quote:
+    post:
+      tags: [cart]
+      summary: 詢價
+      description: |
+        **純函式語意：不寫入任何東西**，同樣輸入永遠同樣輸出（給定同一個 ACTIVE 規則集）。
+        客人切換配送方式時就呼叫，用來顯示「購物袋含運總額」。
+
+        M1a 費率是一口價（超商 60／宅配 120／自取 0），
+        但 `explain` 仍然完整回傳——客服要能直接回答「為什麼收這麼多」。
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deliveryMethod]
+              properties:
+                deliveryMethod: { $ref: '#/components/schemas/DeliveryMethod' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QuoteResult' }
+        '422':
+          description: '`checkout.cart-empty` · `pricing.no-active-rule-set`'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
+
+  /v1/cart/checkout:
+    post:
+      tags: [cart]
+      summary: 結帳
+      description: |
+        建立訂單。**這裡會再詢價一次並把報價凍結成不可變快照**——
+        之後改運費規則不影響已成立的訂單。
+
+        混合訂單（同時有現貨與預購 line）必須指定 `shippingPolicy`：
+        現貨先出會付兩次運費，等回國一起出省一次。**這是客人下單時就要選的，不是出貨時才問。**
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deliveryMethod, shippingPolicy]
+              properties:
+                deliveryMethod: { $ref: '#/components/schemas/DeliveryMethod' }
+                shippingPolicy: { $ref: '#/components/schemas/ShippingPolicy' }
+                shippingAddressId:
+                  description: '`deliveryMethod = HomeDelivery` 時必填。'
+                  oneOf:
+                    - { $ref: '#/components/schemas/Id' }
+                    - { type: 'null' }
+                convenienceStoreCode:
+                  description: '`deliveryMethod = ConvenienceStore` 時必填，綠界電子地圖回傳的門市代號。'
+                  type: [string, 'null']
+                buyerNote: { type: [string, 'null'], maxLength: 200 }
+      responses:
+        '201':
+          description: 訂單已建立，狀態 `AwaitingPayment`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422':
+          description: |
+            `checkout.cart-empty` · `checkout.address-required` ·
+            `checkout.store-code-required` · `campaign.not-accepting-orders` ·
+            `inventory.insufficient-stock` · `payment.provider-does-not-support-delivery-method`
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
+
+  # ── order ───────────────────────────────────────────────────────────────
+  /v1/orders:
+    get:
+      tags: [order]
+      summary: 我的訂單
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/OrderStatus' }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/OrderListItem' }
+                  nextCursor: { type: [string, 'null'] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/orders/{orderId}:
+    get:
+      tags: [order]
+      summary: 訂單詳情
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Id' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: |
+            不存在，**或存在但不屬於這個客戶**。刻意不區分——區分了會洩漏訂單編號的存在性。
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
+
+  /v1/orders/{orderId}/cancel:
+    post:
+      tags: [order]
+      summary: 自助取消訂單
+      description: |
+        **只有 `AwaitingPayment` 的訂單可以自助取消。** 已付款的取消要走客服，
+        因為牽涉退款去向（原路 vs 儲值金）與已發生的成本。
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Id' }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: [string, 'null'], maxLength: 200 }
+      responses:
+        '200':
+          description: 已取消
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422':
+          description: '`ordering.cannot-self-cancel-after-payment`'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
+
+  # ── payment ─────────────────────────────────────────────────────────────
+  /v1/orders/{orderId}/payment:
+    post:
+      tags: [payment]
+      summary: 取得付款導轉參數
+      description: |
+        回傳一組要 POST 到綠界的表單參數。**前端不自己組簽章**——
+        `checkMacValue` 由後端算好，前端只負責把 `fields` 原封不動送出去。
+
+        M1a 只有綠界（ADR-011）。
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Id' }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentInitiation' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`ordering.order-already-paid` · `ordering.order-cancelled`'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
+
+  /v1/webhooks/ecpay:
+    post:
+      tags: [payment]
+      summary: 綠界回呼
+      description: |
+        **不是給前端的端點。** 列在這裡是因為它屬於 Storefront 行程的路由表。
+
+        三件事缺一不可：驗簽（`CheckMacValue`）、時戳容忍窗、`MerchantTradeNo` 去重。
+        綠界會重送，所以這個端點必須冪等——去重走 `platform.idempotency_key`。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: |
+            綠界要求回應純文字 `1|OK`。**不是 JSON。**
+          content:
+            text/plain:
+              schema: { type: string, example: "1|OK" }
+
+  # ── fulfillment（M1b）───────────────────────────────────────────────────
+  /v1/orders/{orderId}/shipments:
+    get:
+      tags: [fulfillment]
+      summary: 訂單的出貨紀錄
+      description: |
+        **M1b。** 一張訂單可拆多個包裹；一個包裹也可含同一客人的多張訂單（合併出貨省運費）。
+        所以這裡回的是陣列，不是單一物件——這是日常，不是邊緣案例。
+
+        M1a 期間這個端點回空陣列，前端要能正常顯示「尚未出貨」。
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Id' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Shipment' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ── procurement（M1b）───────────────────────────────────────────────────
+  /v1/inquiries/{inquiryId}/reply:
+    post:
+      tags: [procurement]
+      summary: 回覆現場漲價詢問
+      description: |
+        **M1b。** LINE 的 postback 經這裡打進 `Procurement.IInquiryReplyReceiver`，
+        **不經由 Notification 回傳事件**（ADR-012）。
+
+        冪等：同一個 inquiry 重複回覆，以第一次為準，第二次回 200 但不改變結果。
+
+        逾時未回覆的話系統會**視為照買**——所以這個端點不是阻塞路徑，晚回也不會卡住整團。
+      security: []
+      parameters:
+        - name: inquiryId
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Id' }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accepted]
+              properties:
+                accepted: { type: boolean }
+                replyText: { type: [string, 'null'], maxLength: 200 }
+      responses:
+        '200':
+          description: 已記錄
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [inquiryId, outcome]
+                properties:
+                  inquiryId: { $ref: '#/components/schemas/Id' }
+                  outcome: { $ref: '#/components/schemas/InquiryOutcome' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: gg_session
+      description: |
+        BFF 自己保管 session，**access token 永遠不進瀏覽器**。
+        前端拿不到也不需要 token。
+
+  headers:
+    SessionCookie:
+      description: 'gg_session=<opaque>; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000'
+      schema: { type: string }
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        同一個使用者動作用同一把 key，重試時不變。詳見 `docs/05-API契約.md` §4。
+      schema: { type: string, minLength: 1, maxLength: 255 }
+    Cursor:
+      name: cursor
+      in: query
+      description: 上一頁回傳的 `nextCursor`。第一頁不帶。
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    Unauthorized:
+      description: 未登入或 session 過期
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+    NotFound:
+      description: 不存在，或存在但不屬於這個使用者
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+    Conflict:
+      description: 狀態衝突
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+    UnprocessableEntity:
+      description: 欄位驗證失敗或業務規則不允許
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+    TooManyRequests:
+      description: 觸發速率限制
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ProblemDetails' }
+
+  schemas:
+    # ── 基礎型別 ────────────────────────────────────────────────────────
+    Id:
+      type: string
+      description: UUIDv7，32 字元十六進位，**無連字號**。
+      pattern: '^[0-9a-f]{32}$'
+      example: '0198c3d4e5f607189abc0123456789ab'
+
+    Currency:
+      type: string
+      description: |
+        ISO 4217 代碼。最小單位的位數各幣別不同——JPY 與 KRW 沒有小數位。
+      enum: [TWD, JPY, USD, KRW, EUR, HKD, CNY, THB, GBP, SGD]
+
+    Money:
+      type: object
+      description: |
+        **`amountMinor` 是最小單位**：TWD 的最小單位是分，`NT$180` = `18000`。
+        前端只顯示不運算——加總、分攤、含運總額全部由後端回傳。
+      required: [amountMinor, currency]
+      properties:
+        amountMinor:
+          type: integer
+          format: int64
+          example: 18000
+        currency: { $ref: '#/components/schemas/Currency' }
+
+    ProblemDetails:
+      type: object
+      description: RFC 9457。**機器讀 `code`，不要讀 `title`。**
+      required: [type, title, status, code]
+      properties:
+        type: { type: string, format: uri, example: 'https://greygray.tw/errors/checkout.cart-empty' }
+        title: { type: string, description: 繁體中文，客服可直接照念。, example: 購物車是空的 }
+        status: { type: integer }
+        detail: { type: [string, 'null'] }
+        instance: { type: [string, 'null'] }
+        code:
+          type: string
+          description: '對應 `Error.Code`。格式 `{模組}.{kebab-case}`，一經上線不可改名。'
+          example: checkout.cart-empty
+        traceId: { type: [string, 'null'], description: W3C traceparent。客服拿這個查整條鏈。 }
+        errors:
+          type: [object, 'null']
+          description: 只有欄位驗證失敗（422）才有。
+          additionalProperties:
+            type: array
+            items: { type: string }
+
+    # ── 列舉 ────────────────────────────────────────────────────────────
+    MemberTier:
+      type: string
+      description: M1a 全部是 `Standard`；分級規則排 M6+。
+      enum: [Standard, Silver, Gold]
+
+    FulfillmentMode:
+      type: string
+      description: |
+        雙模式唯一的分岔點：**存貨從哪來、成本何時確定**。帳務科目兩者完全相同。
+        - `Stock` 現貨：台灣本地批發，賣之前已進貨。下單即扣可用量，狀態機短路。
+        - `Preorder` 預購：出國現場採購，賣之後才去買。下單只登記需求，走完整 Saga。
+      enum: [Stock, Preorder]
+
+    ShippingPolicy:
+      type: string
+      description: |
+        混合訂單的出貨策略。**客人下單時就要選，不是出貨時才問。**
+        - `ShipSeparately` 現貨先出，早點收到，付兩次運費
+        - `HoldUntilComplete` 等回國一起出，省一次運費
+      enum: [ShipSeparately, HoldUntilComplete]
+
+    DeliveryMethod:
+      type: string
+      description: |
+        **只有國內配送**——貨是親自帶回來的，沒有國際段、沒有集運。
+        M1a 一口價：超商 60、宅配 120、自取 0（ADR-010）。
+      enum: [ConvenienceStore, HomeDelivery, SelfPickup]
+
+    ShippingStrategyKind:
+      type: string
+      description: M1a 只會出現 `Flat`。其餘是 M3。
+      enum: [Flat, WeightBracket, FreeOver]
+
+    CampaignStatus:
+      type: string
+      enum: [Draft, Open, Closed, TripInProgress, Returned, Settled, Cancelled]
+
+    OrderStatus:
+      type: string
+      description: |
+        九個狀態，兩種模式共用同一個狀態機。
+        `PaidAwaitingClose → ReadyToShip` 那條捷徑就是現貨。
+
+        刻意**沒有** `AwaitingCustomerResponse`：現場漲價時「逾時視為照買」，
+        問客人是非阻塞的通知，不會卡住整團。這是設計選擇，不是遺漏。
+      enum:
+        - AwaitingPayment
+        - PaidAwaitingClose
+        - ClosedAwaitingDeparture
+        - Purchasing
+        - GoodsReceived
+        - ReadyToShip
+        - Shipped
+        - Completed
+        - Cancelled
+
+    OrderLineStatus:
+      type: string
+      description: '`Unavailable` = 現場缺貨，該 line 取消並退款，**其餘 line 續行，訂單不整張作廢**。'
+      enum: [Pending, Reserved, Purchased, Unavailable, Shipped, Completed, Cancelled]
+
+    PaymentProvider:
+      type: string
+      description: M1a 只有 `ECPay`。`ExternalSettled` 是 M5 通路訂單用的位置。
+      enum: [ECPay, NewebPay, LinePay, ExternalSettled]
+
+    PaymentStatus:
+      type: string
+      enum: [Pending, Captured, Failed, Refunded, PartiallyRefunded]
+
+    ShipmentStatus:
+      type: string
+      enum: [Draft, Packed, Dispatched, InTransit, ArrivedAtStore, Delivered, Returned, Lost]
+
+    InquiryOutcome:
+      type: string
+      description: '`AutoApprovedOnTimeout` = 逾時視為照買，差額由賣方吸收（團價已定死）。'
+      enum: [ConfirmedByCustomer, DeclinedByCustomer, AutoApprovedOnTimeout]
+
+    # ── 客戶 ────────────────────────────────────────────────────────────
+    RegisterRequest:
+      type: object
+      description: |
+        **欄位暫定。** 歷史會員是否從租用平台遷移尚未決定（`docs/00-decisions.md` 末段），
+        匯出檔的實際欄位會反過來決定這裡的設計。
+
+        前端請把這份表單的欄位集中在一個 schema 檔裡，不要散在多個元件——
+        那題有答案之後這裡會變。
+      required: [phoneNumber, password, displayName]
+      properties:
+        phoneNumber:
+          type: string
+          description: 台灣手機號碼。**這是登入帳號**，一經註冊不可自行修改。
+          pattern: '^09[0-9]{8}$'
+          example: '0912345678'
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+        displayName: { type: string, maxLength: 50 }
+        email: { type: [string, 'null'], format: email }
+        referralCode: { type: [string, 'null'], maxLength: 32 }
+
+    Me:
+      type: object
+      description: |
+        **刻意不含個資明文。** 身分證字號、地址、電話、生日在 `iam` schema 內
+        以 AES-256-GCM 應用層加密，每次存取都寫 audit。
+      required: [id, displayName, tier, isActive]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        displayName: { type: string }
+        tier: { $ref: '#/components/schemas/MemberTier' }
+        isActive: { type: boolean }
+        email: { type: [string, 'null'] }
+        phoneNumberMasked:
+          type: [string, 'null']
+          description: 遮罩後的手機，例如 `0912***678`。明文不出現在 API 上。
+          example: '0912***678'
+        lineLinked: { type: boolean, description: 是否已綁定 LINE。M1a 恆為 false。 }
+
+    ShippingAddressInput:
+      type: object
+      required: [recipientName, phoneNumber, postalCode, city, district, streetAddress]
+      properties:
+        recipientName: { type: string, maxLength: 50 }
+        phoneNumber: { type: string, maxLength: 20 }
+        postalCode: { type: string, maxLength: 6 }
+        city: { type: string, maxLength: 20 }
+        district: { type: string, maxLength: 20 }
+        streetAddress: { type: string, maxLength: 200 }
+        isDefault: { type: boolean, default: false }
+
+    ShippingAddress:
+      allOf:
+        - type: object
+          required: [id]
+          properties:
+            id: { $ref: '#/components/schemas/Id' }
+        - $ref: '#/components/schemas/ShippingAddressInput'
+
+    # ── 商品 ────────────────────────────────────────────────────────────
+    Category:
+      type: object
+      required: [id, name]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        name: { type: string }
+        imageUrl: { type: [string, 'null'], description: 圓形分類標的圖。1:1 裁切。 }
+
+    ProductListItem:
+      type: object
+      required: [id, name, imageUrl, priceFrom, badges, isFavorited]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        name: { type: string }
+        shortDescription:
+          type: [string, 'null']
+          description: 每個商品配 1–2 句描述（前台 UX 規則）。
+        imageUrl: { type: [string, 'null'], description: 統一 1:1 裁切。 }
+        priceFrom:
+          description: 該商品所有 SKU 的最低售價。無可售 SKU 時為 null。
+          oneOf:
+            - { $ref: '#/components/schemas/Money' }
+            - { type: 'null' }
+        unitPriceLabel:
+          type: [string, 'null']
+          description: '單位價格顯示字串，例如「NT$780／32 顆」。前台 UX 規則 #4。'
+          example: 'NT$780／32 顆'
+        badges:
+          type: array
+          description: '前台卡片上的標籤。已知值：`New` · `Popular` · `LastCall`。前端要容忍未知值。'
+          items: { type: string }
+        isFavorited: { type: boolean, description: 未登入時恆為 false。 }
+        mode: { $ref: '#/components/schemas/FulfillmentMode' }
+        campaignId:
+          description: '`mode = Preorder` 時指向所屬的團。'
+          oneOf:
+            - { $ref: '#/components/schemas/Id' }
+            - { type: 'null' }
+
+    Sku:
+      type: object
+      required: [id, name, weightGram, size, isActive, available]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        name: { type: string }
+        variantName: { type: [string, 'null'] }
+        weightGram: { type: integer }
+        size:
+          type: object
+          description: 包裹尺寸，公分。M1a 不拿來算運費（一口價），但建檔時就要填。
+          required: [lengthCm, widthCm, heightCm]
+          properties:
+            lengthCm: { type: integer }
+            widthCm: { type: integer }
+            heightCm: { type: integer }
+        unitOfMeasure: { type: [string, 'null'], example: '顆' }
+        unitCount: { type: [integer, 'null'], example: 32 }
+        isActive: { type: boolean }
+        available:
+          type: integer
+          description: |
+            可用量 ＝ 總量 − 保留 − 通路配額（第三項 M5 前恆為 0）。
+            `mode = Preorder` 的 SKU 這個值恆為 `0`，**但仍然可以下單**——
+            預購是訂單驅動，下單只登記需求，不扣庫存。前端不要拿這個值擋預購。
+        price:
+          description: 售價。現貨是標價，預購是該團的定價。
+          oneOf:
+            - { $ref: '#/components/schemas/Money' }
+            - { type: 'null' }
+        campaignOfferId:
+          oneOf:
+            - { $ref: '#/components/schemas/Id' }
+            - { type: 'null' }
+
+    ProductDetail:
+      type: object
+      required: [id, name, images, skus, mode]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        shortDescription: { type: [string, 'null'] }
+        images:
+          type: array
+          items: { type: string }
+        categoryId:
+          oneOf:
+            - { $ref: '#/components/schemas/Id' }
+            - { type: 'null' }
+        mode: { $ref: '#/components/schemas/FulfillmentMode' }
+        campaign:
+          description: '`mode = Preorder` 時附上團的摘要，前端要顯示截團倒數。'
+          oneOf:
+            - { $ref: '#/components/schemas/CampaignListItem' }
+            - { type: 'null' }
+        skus:
+          type: array
+          items: { $ref: '#/components/schemas/Sku' }
+        isFavorited: { type: boolean }
+
+    # ── 開團 ────────────────────────────────────────────────────────────
+    CampaignListItem:
+      type: object
+      description: |
+        開團 ＝ 一趟採購旅程，**1:1**。
+        **沒有成團門檻、沒有名額上限**——下單只登記需求。
+      required: [id, title, destination, departAt, returnAt, closesAt, status, isAcceptingOrders]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        title: { type: string }
+        destination: { type: string, example: 首爾 }
+        departAt: { type: string, format: date }
+        returnAt: { type: string, format: date }
+        closesAt: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/CampaignStatus' }
+        isAcceptingOrders:
+          type: boolean
+          description: |
+            **前端要用這個判斷能不能下單，不要自己拿 `closesAt` 跟現在時間比。**
+            截團是後端的 Saga Timer 說了算，客戶端時鐘不可信。
+        coverImageUrl: { type: [string, 'null'] }
+
+    CampaignDetail:
+      allOf:
+        - $ref: '#/components/schemas/CampaignListItem'
+        - type: object
+          required: [offers]
+          properties:
+            description: { type: [string, 'null'] }
+            offers:
+              type: array
+              items: { $ref: '#/components/schemas/CampaignOffer' }
+
+    CampaignOffer:
+      type: object
+      required: [id, skuId, productId, name, sellingPrice, isActive]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        skuId: { $ref: '#/components/schemas/Id' }
+        productId: { $ref: '#/components/schemas/Id' }
+        name: { type: string }
+        variantName: { type: [string, 'null'] }
+        imageUrl: { type: [string, 'null'] }
+        sellingPrice:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: |
+            **開團時定死。** 現場買貴買便宜都不影響已成立的訂單——
+            差額由賣方吸收，這是「逾時視為照買」成立的前提。
+        unitPriceLabel: { type: [string, 'null'] }
+        isActive: { type: boolean }
+
+    # ── 購物車 ──────────────────────────────────────────────────────────
+    CartLine:
+      type: object
+      required: [id, skuId, productId, name, mode, quantity, unitPrice, lineTotal]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        skuId: { $ref: '#/components/schemas/Id' }
+        productId: { $ref: '#/components/schemas/Id' }
+        name: { type: string }
+        variantName: { type: [string, 'null'] }
+        imageUrl: { type: [string, 'null'] }
+        mode: { $ref: '#/components/schemas/FulfillmentMode' }
+        campaignId:
+          oneOf:
+            - { $ref: '#/components/schemas/Id' }
+            - { type: 'null' }
+        campaignOfferId:
+          oneOf:
+            - { $ref: '#/components/schemas/Id' }
+            - { type: 'null' }
+        quantity: { type: integer }
+        unitPrice: { $ref: '#/components/schemas/Money' }
+        lineTotal:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: 後端算好的。**前端不要自己乘。**
+        availabilityWarning:
+          type: [string, 'null']
+          description: 例如「庫存只剩 2 件」或「這個團已截止收單」。有值時前端要擋結帳。
+
+    Cart:
+      type: object
+      required: [id, lines, goodsTotal, hasMixedModes]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/CartLine' }
+        goodsTotal: { $ref: '#/components/schemas/Money' }
+        hasMixedModes:
+          type: boolean
+          description: |
+            同時含現貨與預購。為 true 時結帳必須讓客人選 `shippingPolicy`，
+            並說明「現貨先出會付兩次運費」。
+        quote:
+          description: 客人選過配送方式之後才有值。含運總額看 `quote.grandTotal`。
+          oneOf:
+            - { $ref: '#/components/schemas/QuoteResult' }
+            - { type: 'null' }
+
+    QuoteResult:
+      type: object
+      description: |
+        報價快照。M1a 費率雖然寫死一口價，這份快照仍然完整記錄——
+        否則 M3 導入規則引擎時無法回溯比對。
+      required: [deliveryMethod, shippingFee, goodsTotal, grandTotal, appliedStrategy, explain]
+      properties:
+        deliveryMethod: { $ref: '#/components/schemas/DeliveryMethod' }
+        goodsTotal: { $ref: '#/components/schemas/Money' }
+        shippingFee: { $ref: '#/components/schemas/Money' }
+        grandTotal:
+          allOf: [{ $ref: '#/components/schemas/Money' }]
+          description: 購物袋顯示的**含運總額**（前台 UX 規則）。
+        actualWeightGram: { type: integer }
+        volumetricWeightGram: { type: integer }
+        billableWeightGram: { type: integer }
+        appliedStrategy: { $ref: '#/components/schemas/ShippingStrategyKind' }
+        explain:
+          type: array
+          description: |
+            人看的計價說明，例如「超商取貨一口價 NT$60」。
+            **客服要能直接回答「為什麼收這麼多」，不用去翻程式碼。**
+          items: { type: string }
+
+    # ── 訂單 ────────────────────────────────────────────────────────────
+    OrderListItem:
+      type: object
+      required: [id, orderNumber, status, grandTotal, placedAt, lineCount, thumbnailUrl]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        orderNumber:
+          type: string
+          description: 給客人看與客服查的單號。**不是主鍵**，主鍵是 `id`。
+          example: 'GG26082800123'
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        grandTotal: { $ref: '#/components/schemas/Money' }
+        placedAt: { type: string, format: date-time }
+        lineCount: { type: integer }
+        thumbnailUrl: { type: [string, 'null'] }
+
+    OrderLine:
+      type: object
+      required: [id, skuId, productId, name, mode, status, quantity, unitPrice, lineTotal]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        skuId: { $ref: '#/components/schemas/Id' }
+        productId: { $ref: '#/components/schemas/Id' }
+        name: { type: string }
+        variantName: { type: [string, 'null'] }
+        imageUrl: { type: [string, 'null'] }
+        mode: { $ref: '#/components/schemas/FulfillmentMode' }
+        status: { $ref: '#/components/schemas/OrderLineStatus' }
+        quantity: { type: integer }
+        unitPrice: { $ref: '#/components/schemas/Money' }
+        lineTotal: { $ref: '#/components/schemas/Money' }
+        campaignId:
+          oneOf:
+            - { $ref: '#/components/schemas/Id' }
+            - { type: 'null' }
+        refundedAmount:
+          description: 該 line 已退款的金額。缺貨退款後有值。
+          oneOf:
+            - { $ref: '#/components/schemas/Money' }
+            - { type: 'null' }
+
+    Order:
+      type: object
+      required:
+        [id, orderNumber, status, shippingPolicy, deliveryMethod,
+         goodsTotal, shippingFee, grandTotal, lines, placedAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        orderNumber: { type: string }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        shippingPolicy: { $ref: '#/components/schemas/ShippingPolicy' }
+        deliveryMethod: { $ref: '#/components/schemas/DeliveryMethod' }
+        goodsTotal: { $ref: '#/components/schemas/Money' }
+        shippingFee: { $ref: '#/components/schemas/Money' }
+        grandTotal: { $ref: '#/components/schemas/Money' }
+        paidAmount:
+          oneOf:
+            - { $ref: '#/components/schemas/Money' }
+            - { type: 'null' }
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/OrderLine' }
+        shippingAddress:
+          oneOf:
+            - { $ref: '#/components/schemas/ShippingAddress' }
+            - { type: 'null' }
+        convenienceStoreName: { type: [string, 'null'] }
+        placedAt: { type: string, format: date-time }
+        paymentDueAt:
+          type: [string, 'null']
+          format: date-time
+          description: |
+            逾期未付會自動取消（Saga Timer）。前端顯示倒數用這個，
+            **不要自己算**——時限是後端的規則。
+        quoteExplain:
+          type: array
+          description: 下單當時凍結的計價說明。運費規則之後改了也不影響這裡。
+          items: { type: string }
+
+    PaymentInitiation:
+      type: object
+      description: |
+        綠界導轉參數。前端建一個 hidden form，把 `fields` 原封不動 POST 到 `action`。
+        **不要自己組簽章、不要改任何欄位的值。**
+      required: [provider, method, action, fields, expiresAt]
+      properties:
+        provider: { $ref: '#/components/schemas/PaymentProvider' }
+        method: { type: string, enum: [POST] }
+        action: { type: string, format: uri }
+        fields:
+          type: object
+          additionalProperties: { type: string }
+        expiresAt: { type: string, format: date-time }
+
+    Shipment:
+      type: object
+      description: M1b。
+      required: [id, method, status, orderIds]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        method: { $ref: '#/components/schemas/DeliveryMethod' }
+        status: { $ref: '#/components/schemas/ShipmentStatus' }
+        trackingNumber: { type: [string, 'null'] }
+        trackingUrl: { type: [string, 'null'], format: uri }
+        orderIds:
+          type: array
+          description: 合併出貨時會有多張訂單。
+          items: { $ref: '#/components/schemas/Id' }
+        dispatchedAt: { type: [string, 'null'], format: date-time }
+        deliveredAt: { type: [string, 'null'], format: date-time }
