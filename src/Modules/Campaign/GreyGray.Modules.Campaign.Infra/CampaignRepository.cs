@@ -14,6 +14,7 @@ internal sealed class CampaignRepository(CampaignDbContext dbContext) : ICampaig
         CancellationToken cancellationToken) =>
         dbContext.Campaigns
             .Include(campaign => campaign.Offers)
+            .Include(campaign => campaign.TripCosts)
             .SingleOrDefaultAsync(
                 campaign => campaign.Id == id && campaign.TenantId == tenantId,
                 cancellationToken);
@@ -37,6 +38,7 @@ internal sealed class CampaignRepository(CampaignDbContext dbContext) : ICampaig
     {
         var query = dbContext.Campaigns
             .AsNoTracking()
+            .Include(campaign => campaign.TripCosts)
             .Where(campaign => campaign.TenantId == tenantId);
         if (status is { } selectedStatus)
         {

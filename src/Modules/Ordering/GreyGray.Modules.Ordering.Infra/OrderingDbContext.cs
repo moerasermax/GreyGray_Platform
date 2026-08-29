@@ -275,6 +275,9 @@ internal sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> opti
             .HasColumnName("refunded_currency")
             .HasConversion<string>()
             .HasMaxLength(3);
+        entity.Property(line => line.GoodsReceivedAt)
+            .HasColumnName("goods_received_at")
+            .HasColumnType("timestamp with time zone");
         entity.Ignore(line => line.UnitPrice);
 
         entity.HasIndex(line => new { line.TenantId, line.OrderId })

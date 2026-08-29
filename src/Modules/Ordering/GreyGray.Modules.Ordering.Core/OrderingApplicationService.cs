@@ -14,7 +14,8 @@ internal sealed class OrderingApplicationService(
     IEventPublisher eventPublisher,
     IPricingQuotation pricing,
     IClock clock,
-    ICorrelationContext correlationContext) : IOrderingApplication, IOrderQuery
+    ICorrelationContext correlationContext)
+    : IOrderingApplication, IOrderingGoodsReceipt, IOrderQuery
 {
     public async Task<Result<OrderView>> CreateFromCheckoutAsync(
         CheckoutCompleted checkout,
@@ -392,6 +393,48 @@ internal sealed class OrderingApplicationService(
             await unitOfWork.SaveChangesAsync(cancellationToken);
         }
 
+        return Result.Success();
+    }
+
+    public async Task<Result> RecordGoodsReceivedAsync(
+        OrderLineId orderLineId,
+        CancellationToken cancellationToken)
+    {
+        var order = await orders.GetByLineAsync(
+            correlationContext.TenantId,
+            orderLineId,
+            cancellationToken);
+        if (order is null)
+        {
+            return Result.Failure("ordering.order-line-not-found", "找不到訂單品項。");
+        }
+
+        var occurredAt = clock.UtcNow;
+        var result = order.RecordGoodsReceived(orderLineId, occurredAt);
+        if (result.IsFailure)
+        {
+            return Result.Failure(result.Error);
+        }
+
+        if (result.Value == GoodsReceivedTransition.AlreadyRecorded)
+        {
+            return Result.Success();
+        }
+
+        if (result.Value == GoodsReceivedTransition.ReadyToShip)
+        {
+            await eventPublisher.PublishAsync(
+                new OrderReadyToShip(
+                    Guid.CreateVersion7(),
+                    occurredAt,
+                    order.TenantId,
+                    order.Id,
+                    order.DeliveryMethod,
+                    order.ShippingAddressId),
+                cancellationToken);
+        }
+
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return Result.Success();
     }
 

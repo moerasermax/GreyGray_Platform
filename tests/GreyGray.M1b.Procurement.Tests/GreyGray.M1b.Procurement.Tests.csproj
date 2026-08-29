@@ -13,10 +13,14 @@
     <PackageReference Include="Shouldly" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Modules\Procurement\GreyGray.Modules.Procurement.Infra\GreyGray.Modules.Procurement.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Campaign\GreyGray.Modules.Campaign.Infra\GreyGray.Modules.Campaign.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ordering\GreyGray.Modules.Ordering.Infra\GreyGray.Modules.Ordering.Infra.csproj" />
   </ItemGroup>
 
 </Project>

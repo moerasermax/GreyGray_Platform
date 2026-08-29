@@ -118,6 +118,15 @@ public interface IProcurementApplication
         CancellationToken cancellationToken);
 }
 
+/// <summary>帶回 command 的最小 input port。</summary>
+public interface IProcurementGoodsReceipt
+{
+    /// <summary>記錄已買到的採購品項完成帶回；重送不會重複發出 GoodsReceived。</summary>
+    Task<Result<PurchaseItem>> MarkReceivedAsync(
+        PurchaseItemId id,
+        CancellationToken cancellationToken);
+}
+
 /// <summary>
 /// 客人對漲價詢問的回覆入口。
 /// <b>LINE 的 postback 直接打到這裡</b>（經 Storefront BFF），

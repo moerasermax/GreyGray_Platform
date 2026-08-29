@@ -72,6 +72,8 @@ internal sealed class CampaignModule : IModuleRegistration
             serviceProvider.GetRequiredService<CampaignService>());
         services.AddScoped<ICampaignAdministration>(serviceProvider =>
             serviceProvider.GetRequiredService<CampaignService>());
+        services.AddScoped<ICampaignTripCostAdministration>(serviceProvider =>
+            serviceProvider.GetRequiredService<CampaignService>());
 
         return services;
     }

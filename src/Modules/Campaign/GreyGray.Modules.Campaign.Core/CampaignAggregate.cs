@@ -7,6 +7,7 @@ namespace GreyGray.Modules.Campaign.Core;
 internal sealed class CampaignAggregate
 {
     private readonly List<CampaignOfferEntity> _offers = [];
+    private readonly List<TripCostEntity> _tripCosts = [];
 
     private CampaignAggregate()
     {
@@ -50,6 +51,25 @@ internal sealed class CampaignAggregate
     public DateTimeOffset UpdatedAt { get; private set; }
 
     public IReadOnlyCollection<CampaignOfferEntity> Offers => _offers;
+
+    public IReadOnlyCollection<TripCostEntity> TripCosts => _tripCosts;
+
+    public Money TripCostTotal
+    {
+        get
+        {
+            if (_tripCosts.Count == 0)
+            {
+                return Money.Zero(Currency.TWD);
+            }
+
+            var currency = _tripCosts[0].Currency;
+            var total = _tripCosts.Aggregate(
+                0L,
+                (current, cost) => checked(current + cost.AmountMinor));
+            return new Money(total, currency);
+        }
+    }
 
     public static Result<CampaignAggregate> CreateDraft(
         CampaignId id,
@@ -265,13 +285,80 @@ internal sealed class CampaignAggregate
         return Result.Success();
     }
 
+    public Result<TripCostTransition> RecordTripCost(
+        TripCostInput input,
+        DateTimeOffset recordedAt)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+
+        if (input.Id.Value == Guid.Empty)
+        {
+            return Result<TripCostTransition>.Failure(
+                "campaign.trip-cost-id-required",
+                "旅程成本識別碼不可為空。");
+        }
+
+        if (!Enum.IsDefined(input.Kind))
+        {
+            return Result<TripCostTransition>.Failure(
+                "campaign.trip-cost-kind-invalid",
+                "旅程成本科目不正確。");
+        }
+
+        if (input.Amount.IsNegative || !Enum.IsDefined(input.Amount.Currency))
+        {
+            return Result<TripCostTransition>.Failure(
+                "campaign.trip-cost-amount-invalid",
+                "旅程成本不得為負數，且必須使用已知幣別。");
+        }
+
+        var memo = string.IsNullOrWhiteSpace(input.Memo) ? string.Empty : input.Memo.Trim();
+        if (memo.Length > 200)
+        {
+            return Result<TripCostTransition>.Failure(
+                "campaign.trip-cost-memo-too-long",
+                "旅程成本備註不得超過 200 個字元。");
+        }
+
+        var existing = _tripCosts.SingleOrDefault(cost => cost.Id == input.Id);
+        if (existing is not null)
+        {
+            return existing.Kind == input.Kind
+                && existing.Amount == input.Amount
+                && StringComparer.Ordinal.Equals(existing.Memo, memo)
+                    ? TripCostTransition.AlreadyRecorded
+                    : Result<TripCostTransition>.Failure(
+                        "campaign.trip-cost-already-recorded",
+                        "這筆旅程成本已用不同內容登錄。");
+        }
+
+        if (_tripCosts.FirstOrDefault() is { } first
+            && first.Currency != input.Amount.Currency)
+        {
+            return Result<TripCostTransition>.Failure(
+                "campaign.trip-cost-currency-mismatch",
+                "同一個開團的旅程成本必須使用相同幣別。");
+        }
+
+        _tripCosts.Add(TripCostEntity.Create(
+            input.Id,
+            TenantId,
+            Id,
+            input.Kind,
+            input.Amount,
+            memo,
+            recordedAt));
+        UpdatedAt = recordedAt;
+        return TripCostTransition.Recorded;
+    }
+
     public bool IsAcceptingOrders(DateTimeOffset now) =>
         Status == CampaignStatus.Open && now < ClosesAt;
 
     public CampaignSummary ToSummary() =>
         new(Id, Title, Destination, DepartAt, ReturnAt, ClosesAt, Status)
         {
-            TripCostTotal = Money.Zero(Currency.TWD),
+            TripCostTotal = TripCostTotal,
         };
 
     private static Result ValidateDraft(CampaignDraftInput input)
@@ -328,6 +415,66 @@ internal sealed class CampaignAggregate
         CoverImageUrl = input.CoverImageUrl;
         UpdatedAt = now;
     }
+}
+
+internal enum TripCostTransition
+{
+    AlreadyRecorded = 0,
+    Recorded = 1,
+}
+
+internal sealed class TripCostEntity
+{
+    private TripCostEntity()
+    {
+    }
+
+    private TripCostEntity(
+        TripCostId id,
+        TenantId tenantId,
+        CampaignId campaignId,
+        TripCostKind kind,
+        Money amount,
+        string memo,
+        DateTimeOffset recordedAt)
+    {
+        Id = id;
+        TenantId = tenantId;
+        CampaignId = campaignId;
+        Kind = kind;
+        AmountMinor = amount.AmountMinor;
+        Currency = amount.Currency;
+        Memo = memo;
+        RecordedAt = recordedAt;
+    }
+
+    public TripCostId Id { get; private set; }
+
+    public TenantId TenantId { get; private set; }
+
+    public CampaignId CampaignId { get; private set; }
+
+    public TripCostKind Kind { get; private set; }
+
+    public long AmountMinor { get; private set; }
+
+    public Currency Currency { get; private set; }
+
+    public string Memo { get; private set; } = string.Empty;
+
+    public DateTimeOffset RecordedAt { get; private set; }
+
+    public Money Amount => new(AmountMinor, Currency);
+
+    public static TripCostEntity Create(
+        TripCostId id,
+        TenantId tenantId,
+        CampaignId campaignId,
+        TripCostKind kind,
+        Money amount,
+        string memo,
+        DateTimeOffset recordedAt) =>
+        new(id, tenantId, campaignId, kind, amount, memo, recordedAt);
 }
 
 internal sealed class CampaignOfferEntity

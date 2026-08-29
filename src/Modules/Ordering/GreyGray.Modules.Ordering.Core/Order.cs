@@ -355,6 +355,62 @@ internal sealed class Order
         return PurchaseLineTransition.Recorded;
     }
 
+    public Result<GoodsReceivedTransition> RecordGoodsReceived(
+        OrderLineId orderLineId,
+        DateTimeOffset receivedAt)
+    {
+        var line = _lines.SingleOrDefault(candidate => candidate.Id == orderLineId);
+        if (line is null)
+        {
+            return Result<GoodsReceivedTransition>.Failure(
+                "ordering.order-line-not-found",
+                "找不到訂單品項。");
+        }
+
+        if (line.GoodsReceivedAt is not null)
+        {
+            return GoodsReceivedTransition.AlreadyRecorded;
+        }
+
+        if (line.Mode != FulfillmentMode.Preorder)
+        {
+            return Result<GoodsReceivedTransition>.Failure(
+                "ordering.stock-line-does-not-receive-goods",
+                "現貨品項不經由預購帶回流程收貨。");
+        }
+
+        if (line.Status != OrderLineStatus.Purchased)
+        {
+            return Result<GoodsReceivedTransition>.Failure(
+                "ordering.order-line-not-purchased",
+                "只有已買到的預購品項可以記錄收貨。");
+        }
+
+        if (Status is OrderStatus.AwaitingPayment or OrderStatus.Cancelled)
+        {
+            return Result<GoodsReceivedTransition>.Failure(
+                "ordering.order-not-in-procurement",
+                "訂單尚未付款或已取消，不能記錄收貨。");
+        }
+
+        line.MarkGoodsReceived(receivedAt);
+        var allReady = _lines.All(candidate =>
+            candidate.Mode == FulfillmentMode.Stock
+            || candidate.Status is OrderLineStatus.Unavailable
+                or OrderLineStatus.Cancelled
+                or OrderLineStatus.Shipped
+                or OrderLineStatus.Completed
+            || candidate.Status == OrderLineStatus.Purchased
+                && candidate.GoodsReceivedAt is not null);
+        if (!allReady)
+        {
+            return GoodsReceivedTransition.Recorded;
+        }
+
+        Status = OrderStatus.ReadyToShip;
+        return GoodsReceivedTransition.ReadyToShip;
+    }
+
     public OrderView ToView() =>
         new(
             Id,
@@ -434,6 +490,13 @@ internal enum PurchaseLineTransition
     Recorded = 1,
 }
 
+internal enum GoodsReceivedTransition
+{
+    AlreadyRecorded = 0,
+    Recorded = 1,
+    ReadyToShip = 2,
+}
+
 internal sealed class OrderLine
 {
     private OrderLine()
@@ -487,6 +550,8 @@ internal sealed class OrderLine
 
     public Currency? RefundedCurrency { get; private set; }
 
+    public DateTimeOffset? GoodsReceivedAt { get; private set; }
+
     public Money UnitPrice => new(UnitPriceAmountMinor, UnitPriceCurrency);
 
     public Money LineTotal => UnitPrice.MultiplyByQuantity(Quantity);
@@ -513,6 +578,8 @@ internal sealed class OrderLine
     }
 
     public void MarkPurchased() => Status = OrderLineStatus.Purchased;
+
+    public void MarkGoodsReceived(DateTimeOffset receivedAt) => GoodsReceivedAt = receivedAt;
 
     public OrderLineView ToView() =>
         new(Id, SkuId, Mode, Status, Quantity, UnitPrice, CampaignId, ConsumedLotId)

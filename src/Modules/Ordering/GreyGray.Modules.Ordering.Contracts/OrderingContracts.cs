@@ -246,6 +246,15 @@ public interface IOrderingApplication
         CancellationToken cancellationToken);
 }
 
+/// <summary>預購收貨 command 的最小 input port。</summary>
+public interface IOrderingGoodsReceipt
+{
+    /// <summary>Procurement 帶回後記錄預購品項已收貨；最後一條完成時訂單進入待出貨。</summary>
+    Task<Result> RecordGoodsReceivedAsync(
+        OrderLineId orderLineId,
+        CancellationToken cancellationToken);
+}
+
 // ── 對外事件 ─────────────────────────────────────────────────────────────
 
 public sealed record OrderPlaced(

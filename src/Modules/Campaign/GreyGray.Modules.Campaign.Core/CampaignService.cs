@@ -40,7 +40,7 @@ internal sealed class CampaignService(
     ICampaignOrderQuery orderQuery,
     IClock clock,
     ICorrelationContext correlationContext)
-    : ICampaignQuery, ICampaignStorefront, ICampaignAdministration
+    : ICampaignQuery, ICampaignStorefront, ICampaignAdministration, ICampaignTripCostAdministration
 {
     public async Task<Result<CampaignSummary>> GetAsync(
         CampaignId id,
@@ -385,6 +385,44 @@ internal sealed class CampaignService(
         return Result.Success();
     }
 
+    public async Task<Result<AdminCampaignView>> RecordTripCostAsync(
+        CampaignId campaignId,
+        TripCostInput input,
+        CancellationToken cancellationToken)
+    {
+        var campaignResult = await FindAsync(campaignId, cancellationToken);
+        if (campaignResult.IsFailure)
+        {
+            return Result<AdminCampaignView>.Failure(campaignResult.Error);
+        }
+
+        var campaign = campaignResult.Value;
+        var recorded = campaign.RecordTripCost(input, clock.UtcNow);
+        if (recorded.IsFailure)
+        {
+            return Result<AdminCampaignView>.Failure(recorded.Error);
+        }
+
+        if (recorded.Value == TripCostTransition.Recorded)
+        {
+            var tripCost = campaign.TripCosts.Single(cost => cost.Id == input.Id);
+            await eventPublisher.PublishAsync(
+                new TripCostRecorded(
+                    Guid.CreateVersion7(),
+                    tripCost.RecordedAt,
+                    campaign.TenantId,
+                    campaign.Id,
+                    tripCost.Id,
+                    tripCost.Kind,
+                    tripCost.Amount,
+                    tripCost.Memo),
+                cancellationToken);
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        return await ToAdminViewAsync(campaign, cancellationToken);
+    }
+
     private async Task<Result<AdminCampaignView>> TransitionAsync<TEvent>(
         CampaignId id,
         Func<CampaignAggregate, Result<TEvent>> transition,
@@ -513,7 +551,7 @@ internal sealed class CampaignService(
             campaign.ClosesAt,
             campaign.Status,
             orderCount,
-            Money.Zero(Currency.TWD),
+            campaign.TripCostTotal,
             campaign.Description,
             campaign.CoverImageUrl);
 }

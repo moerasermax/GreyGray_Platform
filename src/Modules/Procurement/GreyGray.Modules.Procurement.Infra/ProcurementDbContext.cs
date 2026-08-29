@@ -121,6 +121,9 @@ internal sealed class ProcurementDbContext(DbContextOptions<ProcurementDbContext
         entity.Property(item => item.DecidedAt)
             .HasColumnName("decided_at")
             .HasColumnType("timestamp with time zone");
+        entity.Property(item => item.ReceivedAt)
+            .HasColumnName("received_at")
+            .HasColumnType("timestamp with time zone");
 
         entity.Ignore(item => item.TargetPrice);
         entity.Ignore(item => item.ActualPaid);

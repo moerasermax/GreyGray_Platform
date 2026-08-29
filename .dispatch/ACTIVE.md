@@ -44,7 +44,7 @@ GG_PACKAGE=BE-9 codex
 
 ---
 
-（**BE-12 已啟用**，2026-08-29。BE-10 已通過驗收（2c05c99）；BE-9 在寫碼前正確停工——派工缺三個上游接縫，改由 BE-12 先補，見 docs/13。）
+（目前沒有生效中的派工。BE-12 已於 2026-08-29 通過驗收。BE-9 現在可以派。BE-10 已通過驗收（2c05c99）；BE-9 在寫碼前正確停工——派工缺三個上游接縫，改由 BE-12 先補，見 docs/13。）
 
 <!--
 派工 BE-9：M1b-3 帶回入庫與旅程成本　·　docs/13-後端第五波派工書.md
@@ -53,7 +53,7 @@ package: BE-9
 doc: docs/13-後端第五波派工書.md
 allow: src/Modules/Inventory/
 allow: src/Modules/Ledger/
-allow: db/migrations/0008_
+allow: db/migrations/0010_
 allow: src/Hosts/GreyGray.Api.Admin/M1bInventoryEndpoints.cs
 allow: tests/
 -->
@@ -67,6 +67,7 @@ allow: ops/
 allow: .github/workflows/
 -->
 
+<!--
 派工 BE-12：M1b-3 的三個上游接縫（BE-9 的前置）　·　docs/13-後端第五波派工書.md
 
 package: BE-12
@@ -74,8 +75,9 @@ doc: docs/13-後端第五波派工書.md
 allow: src/Modules/Procurement/
 allow: src/Modules/Campaign/
 allow: src/Modules/Ordering/
-allow: db/migrations/0008_
+allow: db/migrations/0009_
 allow: tests/
+-->
 
 
 <!--
@@ -86,7 +88,7 @@ package: BE-11
 doc: docs/13-後端第五波派工書.md
 allow: src/Modules/Procurement/
 allow: src/Modules/Notification/
-allow: db/migrations/0009_
+allow: db/migrations/0011_
 allow: src/Hosts/GreyGray.Api.Admin/M1bCompensationEndpoints.cs
 allow: tests/
 -->

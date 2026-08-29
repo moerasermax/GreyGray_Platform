@@ -68,6 +68,8 @@ internal sealed class ProcurementModule : IModuleRegistration
         });
         services.AddScoped<IProcurementApplication>(serviceProvider =>
             serviceProvider.GetRequiredService<ProcurementApplicationService>());
+        services.AddScoped<IProcurementGoodsReceipt>(serviceProvider =>
+            serviceProvider.GetRequiredService<ProcurementApplicationService>());
         services.AddScoped<IProcurementQuery>(serviceProvider =>
             serviceProvider.GetRequiredService<ProcurementApplicationService>());
 

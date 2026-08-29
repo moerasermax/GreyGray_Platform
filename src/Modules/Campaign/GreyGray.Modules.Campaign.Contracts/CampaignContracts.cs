@@ -159,6 +159,13 @@ public sealed record CampaignOfferInput(
     Money SellingPrice,
     Money? TargetPurchasePrice);
 
+/// <summary>登錄旅程成本的內部 command；TripCostId 是重送去重鍵。</summary>
+public sealed record TripCostInput(
+    TripCostId Id,
+    TripCostKind Kind,
+    Money Amount,
+    string? Memo);
+
 /// <summary>以 opaque cursor 讀取開團清單。</summary>
 public sealed record CampaignPageRequest(
     CampaignStatus? Status = null,
@@ -260,6 +267,16 @@ public interface ICampaignAdministration
     Task<Result> RemoveOfferAsync(
         CampaignId campaignId,
         CampaignOfferId offerId,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>旅程成本 command 的最小 input port。</summary>
+public interface ICampaignTripCostAdministration
+{
+    /// <summary>登錄一筆直接屬於本團的旅程成本；不做跨團攤分。</summary>
+    Task<Result<AdminCampaignView>> RecordTripCostAsync(
+        CampaignId campaignId,
+        TripCostInput input,
         CancellationToken cancellationToken);
 }
 

@@ -68,6 +68,8 @@ internal sealed class PurchaseItemAggregate
 
     public DateTimeOffset? DecidedAt { get; private set; }
 
+    public DateTimeOffset? ReceivedAt { get; private set; }
+
     public Money? TargetPrice => TargetPriceAmountMinor is { } amount
         && TargetPriceCurrency is { } currency
             ? new Money(amount, currency)
@@ -184,6 +186,31 @@ internal sealed class PurchaseItemAggregate
         return PurchaseTransition.Recorded;
     }
 
+    public Result<ReceiptTransition> MarkReceived(DateTimeOffset receivedAt)
+    {
+        if (ReceivedAt is not null)
+        {
+            return ReceiptTransition.AlreadyRecorded;
+        }
+
+        if (Status != PurchaseItemStatus.Purchased)
+        {
+            return Result<ReceiptTransition>.Failure(
+                "procurement.purchase-item-not-purchased",
+                "只有已買到的採購品項可以標記為帶回入庫。");
+        }
+
+        if (ActualPaid is null)
+        {
+            return Result<ReceiptTransition>.Failure(
+                "procurement.actual-paid-required",
+                "採購品項缺少實付成本，不能標記為帶回入庫。");
+        }
+
+        ReceivedAt = receivedAt;
+        return ReceiptTransition.Recorded;
+    }
+
     public PurchaseItem ToContract() =>
         new(
             Id,
@@ -199,6 +226,12 @@ internal sealed class PurchaseItemAggregate
 }
 
 internal enum PurchaseTransition
+{
+    AlreadyRecorded = 0,
+    Recorded = 1,
+}
+
+internal enum ReceiptTransition
 {
     AlreadyRecorded = 0,
     Recorded = 1,

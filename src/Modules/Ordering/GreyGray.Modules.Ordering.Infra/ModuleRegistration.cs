@@ -70,6 +70,8 @@ internal sealed class OrderingModule : IModuleRegistration
         });
         services.AddScoped<IOrderingApplication>(serviceProvider =>
             serviceProvider.GetRequiredService<OrderingApplicationService>());
+        services.AddScoped<IOrderingGoodsReceipt>(serviceProvider =>
+            serviceProvider.GetRequiredService<OrderingApplicationService>());
         services.AddScoped<IOrderQuery>(serviceProvider =>
             serviceProvider.GetRequiredService<OrderingApplicationService>());
         services.AddScoped<ICampaignOrderQuery, CampaignOrderQueryAdapter>();

@@ -1,5 +1,6 @@
 using GreyGray.Modules.Campaign.Contracts;
 using GreyGray.Modules.Catalog.Contracts;
+using GreyGray.Modules.Inventory.Contracts;
 using GreyGray.Modules.Ordering.Contracts;
 using GreyGray.Modules.Procurement.Contracts;
 using GreyGray.Platform.Abstractions.Messaging;
@@ -14,7 +15,8 @@ internal sealed class ProcurementApplicationService(
     IOrderQuery orders,
     ICampaignQuery campaigns,
     IClock clock,
-    ICorrelationContext correlationContext) : IProcurementApplication, IProcurementQuery
+    ICorrelationContext correlationContext)
+    : IProcurementApplication, IProcurementGoodsReceipt, IProcurementQuery
 {
     public async Task<Result<int>> BuildCampaignListAsync(
         CampaignClosed campaignClosed,
@@ -141,6 +143,55 @@ internal sealed class ProcurementApplicationService(
                 item.OrderLineId,
                 item.QuantityPurchased,
                 actualPaid),
+            cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return item.ToContract();
+    }
+
+    public async Task<Result<PurchaseItem>> MarkReceivedAsync(
+        PurchaseItemId id,
+        CancellationToken cancellationToken)
+    {
+        var item = await purchaseItems.GetAsync(
+            correlationContext.TenantId,
+            id,
+            cancellationToken);
+        if (item is null)
+        {
+            return Result<PurchaseItem>.Failure(
+                "procurement.purchase-item-not-found",
+                "找不到指定的採購品項。");
+        }
+
+        var transitioned = item.MarkReceived(clock.UtcNow);
+        if (transitioned.IsFailure)
+        {
+            return Result<PurchaseItem>.Failure(transitioned.Error);
+        }
+
+        if (transitioned.Value == ReceiptTransition.AlreadyRecorded)
+        {
+            return item.ToContract();
+        }
+
+        var actualPaid = item.ActualPaid;
+        if (actualPaid is null)
+        {
+            return Result<PurchaseItem>.Failure(
+                "procurement.actual-paid-required",
+                "採購品項缺少實付成本，不能標記為帶回入庫。");
+        }
+
+        await eventPublisher.PublishAsync(
+            new GoodsReceived(
+                Guid.CreateVersion7(),
+                item.ReceivedAt!.Value,
+                item.TenantId,
+                item.CampaignId,
+                item.SkuId,
+                item.QuantityPurchased,
+                actualPaid.Booking,
+                LotSource.OverseasPurchase),
             cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return item.ToContract();
