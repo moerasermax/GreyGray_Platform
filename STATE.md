@@ -1,6 +1,6 @@
 # 現況
 
-**最後更新**：2026-08-28（M1b-1 截團採購清單交付候選，自驗完成、待獨立驗收）
+**最後更新**：2026-08-29（OpenAPI components 補漏已合併回主線；M1b-1 待獨立驗收）
 
 ## 一句話
 
@@ -373,6 +373,36 @@ M1a 真正缺的只有 /v1/orders/{orderId}/lines/{lineId}/cancel 一條
 
 完整波次、排除項與可重跑驗收見 `docs/10-M1b工作包.md`。
 
+---
+
+## OpenAPI components 補漏（2026-08-29，ai-cli sonnet 交付，Claude 驗證後合併 `c9ab058`）
+
+M1a 的端點行為本來就對，但**產出的 OpenAPI 文件裡完全沒有 `Idempotency-Key` 的宣告**。
+根因：那個 header 是從 `HttpContext.Request.Headers` 讀的、不是繫結參數，
+`AddOpenApi` 的 source generator 看不到它。`cursor`／`limit` 則是會產生行內 schema，
+而契約要的是 `$ref` 指到 `components/parameters`。
+
+用 `IOpenApiDocumentTransformer` 補宣告，**一行邏輯都沒動**：
+
+| 區塊 | 內容 | 範圍 |
+|---|---|---|
+| `components/parameters` | `IdempotencyKey` · `Cursor` · `Limit` | 兩個 Host |
+| `components/headers` | `SessionCookie` | 只有 storefront（後台走 Cloudflare Access，沒有 session cookie） |
+
+端點清單與凍結契約逐條比對過（storefront 14 條、admin 20 條），
+並正確排除 M1b 的 `/v1/inquiries/{inquiryId}/reply`。
+
+**驗證**（Claude 自己在 fix worktree 跑，不採信 agent 自述——它 exit 時其實還沒看到
+自己的測試結果）：`build 0/0`、`ops/test.ps1` 108 條全綠、gate 的第一個差異從
+`$/components/parameters` 移到 `$/components/responses`、產出 JSON 實測三個 parameter
+與 SessionCookie 都在。
+
+**還缺兩塊**：契約的 `components` 有五個區塊，這次補了兩個，
+還缺 `responses`（Conflict／NotFound／TooManyRequests／Forbidden）與 `securitySchemes`。
+**那是派工單沒查全，不是執行的問題。**
+
+合併後主線 `c9ab058`：`build 0/0`、`ops/test.ps1` **11 個專案 125 條全綠**。
+
 ## 未完成
 
 **後端**：BE-1～BE-5、BE-7 與 BE-6 的本機程式／永久 E2E 已完成；BE-8 的五服務工具與
@@ -423,6 +453,24 @@ strict live OpenAPI 要等 M1a frozen endpoints 實作後才能歸零。詳見 `
 
 ### `Microsoft.OpenApi` pin 在 2.12.2，不要跳 3.x
 `Microsoft.AspNetCore.OpenApi` 的 source generator 產的碼依賴 2.x 的 API 形狀。
+
+### 突然一堆 `MSB3021 檔案被使用中` —— 先查有沒有 Host 行程沒收乾淨
+
+`ops/test.ps1` 或 `ops/check-openapi.ps1` 中途被打斷時，**會漏掉它啟動的 Host 行程**。
+那個行程繼續抓著 `bin/Debug/net10.0/*.dll`，之後**每一次建置都失敗**。
+
+2026-08-29 實測：一個 `GreyGray.Api.Admin`（PID 16992）從早上 11:20 活到中午，
+聽在隨機高 port 15331，讓 `dotnet build` 報 **62 個錯誤**——
+而且 62 個全是 `MSB3027`／`MSB3021`，訊息只說「檔案被另一個處理程序使用」，
+**完全不指向真正原因**。它擋的不只是一個人，是所有在這棵樹上建置的人。
+
+```powershell
+Get-Process | Where-Object { $_.ProcessName -match '^GreyGray' }
+Stop-Process -Id <pid> -Force
+```
+
+判準：正式服務聽 5000／5001，gate 用 15000／15001。
+**聽在其他隨機 port 的 GreyGray 行程一律是殘留，可以直接砍。**
 
 ### 即時 OpenAPI gate 現在仍必定紅
 `ops/check-openapi.ps1` 會啟動剛建好的 Storefront／Admin Host 並抓 `/openapi/v1.json`。
