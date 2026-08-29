@@ -56,6 +56,22 @@ check_out_of_scope
 # 這條是使用者明講的要求：「派工書建立完要給我他們的啟動 prompt」。
 # 不擋的話症狀是——派工書寫得很完整、ACTIVE.md 也啟用了，
 # 但使用者還要自己回去讀派工書、自己拼一段 prompt 出來才開得了工。
+# ★ 派工書邏輯稽核。使用者的要求：「檢查到完全沒有邏輯漏洞」。
+#
+# 手審抓得到一次，抓不到每一次——第六波派工書寫錯三個前提，
+# 第七波第一版又把事件 handler 的註冊檔劃給了錯的包，BE-18 會直接做不完。
+# 那幾個錯的共同點是都可以機械查出來。所以讓機器查，不要靠我記得。
+if [ -f "$GG_ROOT/.dispatch/audit-dispatch.sh" ]; then
+  audit_out="$(bash "$GG_ROOT/.dispatch/audit-dispatch.sh" 2>&1)"
+  audit_rc=$?
+  if [ "$audit_rc" -ne 0 ]; then
+    fails="$(printf '%s' "$audit_out" | grep -F '✗' | sed 's/^ *//' | gg_join '；')"
+    emit_block \
+      "派工書邏輯稽核未通過：${fails} —— 每一條都會讓子代理做不完或做錯（allow 路徑不存在、migration 撞號、兩包搶同一個檔、引用了不存在的檔或行號、有包沒有啟動 prompt）。跑 bash .dispatch/audit-dispatch.sh 看完整輸出，修好再收工。不要因為「應該沒差」就放過——第六波與第七波各發生過一次，都是這一類。" \
+      "派工書邏輯稽核未通過，已擋下收工"
+  fi
+fi
+
 missing="$(gg_prompts_missing)"
 if [ -n "$missing" ]; then
   emit_block \

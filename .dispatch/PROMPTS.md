@@ -42,7 +42,9 @@ GG_ROLE=leader
 ```
 先派，產出會決定後面      FE-12
 接著可以同時派            BE-17   BE-18   BE-19   FE-16
-三包後端通過後才派        BE-20（目前在 ACTIVE.md 裡是註解掉的）
+BE-18 ＋ BE-19 都過之後   BE-21（帶回→待出貨接線）
+再往後                    BE-20（部分買到）
+                          （BE-20／BE-21 目前在 ACTIVE.md 裡都是註解掉的）
 ```
 
 ---
@@ -122,13 +124,15 @@ GG_PACKAGE=BE-18
     ★ 一張訂單可能對應多個出貨單（N:M），全部簽收之後才起算鑑賞期，
       不是第一個簽收就起算。這條容易做錯。
 
-★ BE-19 也會碰 Ordering，但只碰 Infra 的 ModuleRegistration.cs 與一個新 handler 檔。
-你擁有 Ordering.Core 與 OrderingDbContext.cs，兩邊不准動對方的檔。
+★ Ordering 整個模組都是你的，BE-19 完全不碰。ShipmentDelivered 的 handler 與
+saga scheduler 都註冊在 Ordering.Infra/ModuleRegistration.cs（比照
+Procurement.Infra/ModuleRegistration.cs:67），那個檔是你的，而且你不必動 Worker——
+Worker 只掛通用的 dispatcher。
 
 你的 migration 編號是 0013_。自驗照 §5，然後停下來等整合驗收。
 ```
 
-### BE-19　契約與事件形狀異動 ＋ 帶回→待出貨接線
+### BE-19　契約與事件形狀異動
 
 ```
 GG_PACKAGE=BE-19
@@ -137,7 +141,7 @@ GG_PACKAGE=BE-19
 §1 §2 §3 全部要看，然後照 §5 的 BE-19 那一節做。
 再讀 docs/00-decisions.md 的 ADR-027。
 
-三個契約異動 ＋ 一個接線，一起做因為共用同一次 codegen：
+三個契約異動，一起做因為共用同一次 codegen：
 
 一、GoodsReceived.v1 加 OrderLineId。第六波驗收發現「帶回入庫後訂單轉待出貨」
     這條線是斷的——事件只帶 CampaignId+SkuId+Quantity+UnitCost+Source，
@@ -149,14 +153,14 @@ GG_PACKAGE=BE-19
     出貨單超過 100 張之後點詳情會白頁而且不報錯。
 三、AdminCampaignInput 加漲價詢問逾時欄位（ADR-027，每團可設）。
     沒填保留 2 小時當預設，但要在契約 description 寫明那是預設值。
-四、接線：Ordering.Infra 加一個 IIntegrationEventHandler<GoodsReceived>，
-    呼叫既有的 IOrderingGoodsReceipt。不要改 Ordering.Core——那是 BE-18 的。
+★ 接線不是你的。你只負責讓 GoodsReceived 帶出 OrderLineId；
+真正訂閱它的 handler 是另一包（BE-21），等你和 BE-18 都落地才開。
+你完全不碰 Ordering。
 
-★ BE-18 擁有 Ordering.Core 與 OrderingDbContext.cs，你只碰 Infra 的
-ModuleRegistration.cs 與新的 handler 檔。兩邊不准動對方的檔。
-
-你的 migration 編號是 0014_。接線要用真 PostgreSQL 做端對端測試，
-而且要有「兩條預購 line 只帶回一條時不轉待出貨」的測試。
+你的 migration 編號是 0014_。GET /v1/shipments/{id} 用既有的
+IFulfillmentQuery.GetAsync（已確認存在），你不需要改 Fulfillment 模組。
+自驗要用真 PostgreSQL 跑一次帶回，把 outbox 那則事件的 payload 撈出來，
+證明 OrderLineId 真的帶出去了。
 自驗照 §5，然後停下來等整合驗收。
 ```
 

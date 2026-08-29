@@ -57,15 +57,17 @@ Leader 要明講。
 |---|---|---|
 | BE-17 | 綠界原路退款 API（ADR-024 前半）🔴 最擋 M1b | `docs/17` |
 | BE-18 | Ordering：StoredValue 擋 ＋ 鑑賞期 Saga Timer（ADR-024 後半／ADR-025） | `docs/17` |
-| BE-19 | 契約與事件形狀異動 ＋ 帶回→待出貨接線（ADR-027） | `docs/17` |
+| BE-19 | 契約與事件形狀異動（ADR-027 ＋ 兩個契約缺口） | `docs/17` |
 
 **啟動 prompt 在 `.dispatch/PROMPTS.md`**，Leader 用 ai-cli fan out。
 
 > ⚠️ **三包都會跑 `ops/test.ps1`，要排開不要同時跑。**
 >
-> ⚠️ **BE-18 與 BE-19 都碰 Ordering，但檔案分開**：BE-18 是 `Ordering.Core` ＋
-> `OrderingDbContext.cs`，BE-19 是 `Ordering.Infra` 的 `ModuleRegistration.cs` 與新 handler 檔。
-> 兩邊都不准動對方的檔，詳見 `docs/17` §3。
+> ⚠️ **Ordering 整個模組是 BE-18 的，BE-19 完全不碰。**
+> 第一版把 `Ordering.Infra/ModuleRegistration.cs` 給了 BE-19，那會讓 BE-18 做不完——
+> 它要訂閱 `ShipmentDelivered` 才排得了鑑賞期 timer，而 handler 與 saga scheduler
+> 都註冊在模組自己的 `ModuleRegistration.cs`。已修正，見 `docs/17` §3。
+> 代價是「帶回→待出貨接線」要獨立成 **BE-21**，等 BE-18 與 BE-19 都通過再開。
 
 ---
 
@@ -80,25 +82,32 @@ allow: tests/
 
 package: BE-18
 doc: docs/17-後端第七波派工書.md
-allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Core/
-allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Infra/OrderingDbContext.cs
-allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Infra/OrderCompletionSaga
+allow: src/Modules/Ordering/
 allow: db/migrations/0013_
 allow: tests/
 
-派工 BE-19：契約與事件形狀異動 ＋ 帶回接線　·　docs/17-後端第七波派工書.md
+派工 BE-19：契約與事件形狀異動　·　docs/17-後端第七波派工書.md
 
 package: BE-19
 doc: docs/17-後端第七波派工書.md
 allow: docs/api/
 allow: src/Modules/Procurement/
 allow: src/Modules/Campaign/
-allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Infra/ModuleRegistration.cs
-allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Infra/GoodsReceivedOrderingHandler.cs
 allow: db/migrations/0014_
 allow: tests/
 
 ---
+
+<!--
+派工 BE-21：帶回→待出貨接線　·　docs/17-後端第七波派工書.md
+⏸ 等 BE-18（Ordering.Infra 的所有權）與 BE-19（GoodsReceived 的 OrderLineId）都通過。
+兩個上游都到齊才寫得完，硬要平行會 build 不過。
+
+package: BE-21
+doc: docs/17-後端第七波派工書.md
+allow: src/Modules/Ordering/
+allow: tests/
+-->
 
 <!--
 派工 BE-20：部分買到（ADR-026）　·　docs/17-後端第七波派工書.md

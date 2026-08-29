@@ -52,6 +52,20 @@ fi
 check_out_of_scope
 
 # 派工書寫完就要給得出啟動 prompt（使用者明講的要求）。
+# ★ 派工書邏輯稽核。使用者的要求：「檢查到完全沒有邏輯漏洞」。
+#
+# 手審抓得到一次，抓不到每一次——第六波派工書寫錯三個前提，
+# 第七波第一版又把事件 handler 的註冊檔劃給了錯的包，BE-18 會直接做不完。
+# 那幾個錯的共同點是都可以機械查出來。所以讓機器查，不要靠我記得。
+if [ -f "$GG_ROOT/.dispatch/audit-dispatch.sh" ]; then
+  audit_out="$(bash "$GG_ROOT/.dispatch/audit-dispatch.sh" 2>&1)"
+  audit_rc=$?
+  if [ "$audit_rc" -ne 0 ]; then
+    fails="$(printf '%s' "$audit_out" | grep -F '✗' | sed 's/^ *//' | gg_join '；')"
+    deny "派工書邏輯稽核未通過：${fails} —— 每一條都會讓子代理做不完或做錯（allow 路徑不存在、migration 撞號、兩包搶同一個檔、引用了不存在的檔或行號、有包沒有啟動 prompt）。跑 bash .dispatch/audit-dispatch.sh 看完整輸出，修好再收工。不要因為「應該沒差」就放過——第六波與第七波各發生過一次，都是這一類。"
+  fi
+fi
+
 missing="$(gg_prompts_missing)"
 if [ -n "$missing" ]; then
   deny "這幾包在 .dispatch/ACTIVE.md 生效了，但 .dispatch/PROMPTS.md 裡沒有它們的啟動 prompt：${missing}。派工書寫完就要給得出可以直接複製貼上的 prompt，不能讓使用者自己回去讀派工書拼一段出來。每包一段，內容要有：GG_PACKAGE=<包名> 那一行（ai-cli fan out 靠它綁 session_id）、要讀哪份派工書的哪一節、一句話講清楚這包在做什麼、以及「自驗完就停，不可自己宣告通過」。SessionStart 會自動注入授權路徑，所以 prompt 不必重複那些。"
