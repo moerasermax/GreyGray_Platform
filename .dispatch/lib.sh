@@ -153,6 +153,43 @@ gg_remember_package() {
   printf '%s' "$pkg" > "$GG_ROOT/.dispatch/.session/$sid"
 }
 
+# 把角色綁到某個 session（目前只有 leader 一種）
+gg_remember_role() {
+  local sid="$1" role="$2"
+  [ -n "$sid" ] && [ -n "$role" ] || return 1
+  mkdir -p "$GG_ROOT/.dispatch/.session" 2>/dev/null || return 1
+  printf '%s' "$role" > "$GG_ROOT/.dispatch/.session/$sid.role"
+}
+
+# 決定這個 session 是什麼角色。環境變數優先，其次才是 session 標記。
+gg_resolve_role() {
+  [ -z "${GG_ROLE:-}" ] || return 0
+  local sid f
+  sid="$(gg_session_id "${1:-}")"
+  [ -n "$sid" ] || return 0
+  f="$GG_ROOT/.dispatch/.session/$sid.role"
+  if [ -f "$f" ]; then
+    GG_ROLE="$(cat "$f")"
+    export GG_ROLE
+  fi
+  return 0
+}
+
+# Leader＝那個唯一的 terminal：不自己寫原始碼，用 ai-cli fan out 子代理，
+# 並且負責維護閘門本身（ACTIVE.md、PROMPTS.md）與 GreyGray_PM。
+#
+# 「有沒有綁包別」不足以認出 Leader：實作者忘記宣告時看起來一模一樣。
+# 所以 Leader 要明講（GG_ROLE=leader，環境變數或 prompt 裡那一行），
+# 沒講的一律當成「身分不明」擋下——fail-closed。
+gg_is_leader() {
+  [ "${GG_ROLE:-}" = "leader" ] && [ -z "${GG_PACKAGE:-}" ]
+}
+
+# 身分不明：有派工生效，卻既沒綁包別也沒宣告 Leader。
+gg_role_unknown() {
+  ! gg_is_leader && [ -z "${GG_PACKAGE:-}" ] && gg_has_dispatch
+}
+
 # 決定這個 session 受哪一包管。環境變數優先，其次才是 session 標記。
 gg_resolve_package() {
   [ -z "${GG_PACKAGE:-}" ] || return 0
@@ -192,7 +229,7 @@ gg_path_allowed() {
   for prefix in $GG_ALWAYS_ALLOW; do
     case "$rel" in "$prefix"*) return 0 ;; esac
   done
-  # 閘門自己的檔案：只有「沒有綁定包別」的 session 才放行。
+  # 閘門自己的檔案：只有 Leader 放行（或什麼都還沒派的空窗期）。
   #
   # 原本這裡寫的是 `! gg_has_dispatch`（＝完全沒有派工生效時才放行），
   # 但那把兩件不同的事混在一起了：整合者需要維護閘門的時機，
@@ -204,10 +241,9 @@ gg_path_allowed() {
   # claim-package.sh 會把它綁到 session_id），所以實作者仍然改不了閘門，
   # 自我擴權那條路還是堵死的。
   #
-  # 殘留風險誠實寫著：實作者若「完全沒宣告包別」就能寫閘門檔。
-  # 那個狀態本身已經是降級狀態（gg_scope_is_loose），SessionStart 會明講，
-  # 而且子代理的 prompt 一律帶 GG_PACKAGE=，實務上不會落到那裡。
-  if [ -z "${GG_PACKAGE:-}" ]; then
+  # 上一版用「沒綁包別」當判準，殘留一個洞：實作者忘記宣告就能寫閘門檔。
+  # 現在 Leader 要明講 GG_ROLE=leader，身分不明的一律擋下，那個洞就補起來了。
+  if gg_is_leader || ! gg_has_dispatch; then
     for prefix in $GG_GATE_PATHS; do
       case "$rel" in "$prefix"*) return 0 ;; esac
     done

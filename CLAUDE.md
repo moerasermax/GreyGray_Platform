@@ -69,7 +69,7 @@ pnpm api:generate     # 契約改了要重跑
 
 | Hook | 做什麼 |
 |---|---|
-| `UserPromptSubmit` → `claim-package.sh` | 認出 prompt 裡的 `GG_PACKAGE=<包名>`，把包別綁到這個 session_id（給 ai-cli fan out 的子 agent 用） |
+| `UserPromptSubmit` → `claim-package.sh` | 認出 prompt 裡的 `GG_PACKAGE=<包名>` 或 `GG_ROLE=leader`，綁到這個 session_id（給 ai-cli fan out 的子 agent 用） |
 | `SessionStart` → `session-brief.sh` | 一開場就把「你這一包能動哪些路徑」送進 context |
 | `PreToolUse`（Write／Edit）→ `dispatch-guard.sh` | 即時擋下派工範圍外的寫入 |
 | `Stop` → `stop-gate.sh` | 實作者：用 `git diff` 再查一次越界——**這一層不能省**，因為用 Bash（`sed -i`、heredoc、重導向）寫的檔案繞得過 `PreToolUse`，但繞不過 git。整合者：越界 ＋ **每個生效中的包都要有啟動 prompt** ＋ `GreyGray_PM` 同步 |
@@ -79,12 +79,24 @@ pnpm api:generate     # 契約改了要重跑
 閘門自己的檔案（`.dispatch/`、`.claude/`、`.codex/`）只有整合者模式能寫——
 實作者能改 `ACTIVE.md` 的話，他就能自我擴權，那閘門只是建議。
 
-**每個實作者 session 要宣告自己是哪一包**，兩條路擇一：
-自己開 terminal 就 `GG_PACKAGE=BE-9 codex`；
-lead 用 ai-cli fan out 子 agent 時，在子 agent 的 prompt 裡寫一行 `GG_PACKAGE=BE-9`，
-`UserPromptSubmit` 會把包別綁到那個 session_id 上（ai-cli 的 `run` 沒有 env 參數，
-子行程繼承的是 MCP server 自己的環境，所以只能走 session_id）。
-不宣告的話 `allow` 會變成聯集——擋得住整波之外，擋不住 BE-9 去寫 BE-11 的檔案。
+**只開一個 terminal 當 Leader。** Leader 用 ai-cli fan out 子代理，一包一個，
+不必一包一個 terminal。Leader 的啟動 prompt 與每包的原文都在 `.dispatch/PROMPTS.md`。
+
+**每個 session 都要宣告身分**，閘門分三種：
+
+| 身分 | 怎麼宣告 | 寫得了什麼 |
+|---|---|---|
+| **Leader** | prompt 開頭 `GG_ROLE=leader`（或 `GG_ROLE=leader <cli>`） | 閘門檔、`docs/`、`GreyGray_PM`。**不寫原始碼** |
+| **實作者** | prompt 開頭 `GG_PACKAGE=<包名>`（或 `GG_PACKAGE=<包名> <cli>`） | 只有該包 `allow:` 的路徑 |
+| **身分不明** | 沒宣告 | 有派工生效時**什麼都寫不了** |
+
+第三列是刻意的 fail-closed：**「忘記宣告的實作者」與「Leader」從外面看一模一樣**，
+不能用「沒綁包別」推定是 Leader，否則忘記宣告的人就擁有改閘門的權力。
+
+子代理只能靠 prompt 帶包別——ai-cli 的 `run` 沒有 env 參數，
+子行程繼承的是 MCP server 自己的環境，一個 server 行程 spawn 所有子代理，
+行程層級的環境變數本質上帶不了「每個子代理不同」的值，所以綁定走 session_id。
+**包別優先於角色**：子代理的 prompt 就算混進 `GG_ROLE=leader` 也升不了級（已實測）。
 包名拼錯一律擋下（fail-closed）。
 
 **Codex 也受同一套閘門管。** 它不讀 `.claude/`，讀的是 `.codex/hooks.json` 與 `AGENTS.md`，

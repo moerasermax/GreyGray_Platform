@@ -15,6 +15,7 @@ if [ -z "$payload" ] && [ ! -t 0 ]; then
   payload="$(cat)"
 fi
 gg_resolve_package "$payload"
+gg_resolve_role "$payload"
 
 # Codex 已經因為這個 hook 重跑過一輪，不要無限循環
 case "$payload" in
@@ -40,7 +41,14 @@ if [ -n "${GG_PACKAGE:-}" ]; then
   exit 0
 fi
 
-# ── 以下是整合者 ─────────────────────────────────────────────────
+# ── 身分不明：有派工生效卻沒宣告是誰 ──────────────────────────────
+if gg_role_unknown; then
+  offenders="$(gg_out_of_scope_files | gg_join ' ')"
+  [ -n "$offenders" ] || exit 0
+  deny "這個 session 沒有宣告身分，卻動了這些檔案 — ${offenders}。有派工生效時（現在是 $(gg_active_packages | gg_join '、')），閘門分不出「忘記宣告的實作者」與「Leader」，所以一律 fail-closed。要做事請擇一宣告：實作者在 prompt 開頭寫 GG_PACKAGE=<包名>，Leader 寫 GG_ROLE=leader。"
+fi
+
+# ── 以下是 Leader（或什麼都還沒派的空窗期）────────────────────────
 check_out_of_scope
 
 # 派工書寫完就要給得出啟動 prompt（使用者明講的要求）。

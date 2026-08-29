@@ -14,6 +14,7 @@ set -u
 
 payload="$(cat)"
 gg_resolve_package "$payload"
+gg_resolve_role "$payload"
 case "$payload" in
   *'"stop_hook_active"'*'true'*) exit 0 ;;
 esac
@@ -39,7 +40,16 @@ if [ -n "${GG_PACKAGE:-}" ]; then
   exit 0
 fi
 
-# ── 以下是整合者 ─────────────────────────────────────────────────
+# ── 身分不明：有派工生效卻沒宣告是誰 ──────────────────────────────
+# 沒改到東西就放行（純粹沒宣告不該變成收工的阻礙），
+# 但只要動了範圍外的檔案就擋，並且告訴他該怎麼宣告。
+if gg_role_unknown; then
+  offenders="$(gg_out_of_scope_files | gg_join ' ')"
+  [ -n "$offenders" ] || exit 0
+  emit_block     "這個 session 沒有宣告身分，卻動了這些檔案 — ${offenders}。有派工生效時（現在是 $(gg_active_packages | gg_join '、')），閘門分不出「忘記宣告的實作者」與「Leader」，所以一律 fail-closed。要做事請擇一宣告：實作者在 prompt 開頭寫 GG_PACKAGE=<包名>，Leader 寫 GG_ROLE=leader。把這些變更還原，或宣告身分後重做。"     "身分未宣告且有範圍外的變更，已擋下收工"
+fi
+
+# ── 以下是 Leader（或什麼都還沒派的空窗期）────────────────────────
 check_out_of_scope
 
 # 派工書寫完就要給得出啟動 prompt。
