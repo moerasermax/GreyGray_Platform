@@ -101,7 +101,7 @@ pnpm api:generate     # 契約改了要重跑
 | `UserPromptSubmit` → `claim-package.sh` | 認出 prompt 裡的 `GG_PACKAGE=<包名>` 或 `GG_ROLE=leader`，綁到這個 session_id（給 ai-cli fan out 的子 agent 用） |
 | `SessionStart` → `session-brief.sh` | 一開場就把「你這一包能動哪些路徑」送進 context |
 | `PreToolUse`（Write／Edit）→ `dispatch-guard.sh` | 即時擋下派工範圍外的寫入 |
-| `Stop` → `stop-gate.sh` | 實作者：用 `git diff` 再查一次越界——**這一層不能省**，因為用 Bash（`sed -i`、heredoc、重導向）寫的檔案繞得過 `PreToolUse`，但繞不過 git。整合者：越界 ＋ **每個生效中的包都要有啟動 prompt** ＋ `GreyGray_PM` 同步 |
+| `Stop` → `stop-gate.sh` | 實作者：用 `git diff` 再查一次越界——**這一層不能省**，因為用 Bash（`sed -i`、heredoc、重導向）寫的檔案繞得過 `PreToolUse`，但繞不過 git。Leader：越界 ＋ **`audit-dispatch.sh` 派工書邏輯稽核** ＋ 每包都要有啟動 prompt ＋ `GreyGray_PM` 同步 |
 
 **派工書寫完就要給得出啟動 prompt。** 放在 `.dispatch/PROMPTS.md`，一包一段，
 可以直接複製貼上，不要讓人自己回去讀派工書再拼一段出來。
@@ -112,6 +112,18 @@ pnpm api:generate     # 契約改了要重跑
 判準不是「有沒有派工生效」——那會讓閘門在派工期間變成沒人能維護，
 而那正是要加派工、改 prompt、驗收後撤包的時機。實作者一定綁了包別
 （prompt 都帶 `GG_PACKAGE=`），所以自我擴權那條路仍然堵死。
+
+**派工書要通過 `bash .dispatch/audit-dispatch.sh` 才准收工。** 它查六件機械查得出來的事：
+`allow` 路徑存在、migration 編號沒被佔用、**兩包的 allow 不互相涵蓋**、
+派工書引用的檔案真的存在（簡寫要能唯一對到一個檔）、行號沒超出檔案長度、每包都有啟動 prompt。
+
+為什麼要有它：第六波的派工書寫錯三個前提，第七波第一版又把事件 handler 的註冊檔
+劃給了錯的包——BE-18 要註冊 `ShipmentDelivered` handler，而那個檔被劃給 BE-19，
+它會直接做不完。**那幾個錯全都可以機械查出來，只是我沒查。**
+手審抓得到一次，抓不到每一次。
+
+跨樹或還不存在的引用，在**同一行**寫上「新檔」「另一棵樹」「後端 worktree」之類的字就會豁免——
+刻意要求同一行，因為順手加一個詞就能關掉的檢查遲早會被關光。
 
 `docs/`、`.claude/`、`management/`、`STATE.md`、`CLAUDE.md` 不受限——那是整合與 PM 的工作，不是「開工」。
 `ACTIVE.md` 沒有任何 `package:` 時是**整合者模式**：原始碼一律不准寫。

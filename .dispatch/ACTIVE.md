@@ -86,6 +86,7 @@ allow: frontend/apps/admin/app/(dash)/page.tsx
 allow: frontend/apps/admin/app/(dash)/_lib/dashboardMock.ts
 allow: frontend/apps/admin/app/(dash)/campaigns/new/
 allow: frontend/apps/admin/app/(dash)/shipments/_lib/api.ts
+allow: frontend/apps/admin/app/(dash)/shipments/[shipmentId]/
 
 ---
 
