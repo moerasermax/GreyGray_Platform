@@ -154,7 +154,7 @@ public sealed class PaymentLedgerMigrationTests : IAsyncLifetime
     public async Task Ef_retries_after_expired_pending_without_hitting_active_unique()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var connectionString = await CreateMigratedDatabaseAsync(5, cancellationToken);
+        var connectionString = await CreateMigratedDatabaseAsync(8, cancellationToken);
         var now = new DateTimeOffset(2026, 8, 28, 8, 0, 0, TimeSpan.Zero);
         var orderId = OrderId.New();
         await using (var seed = CreatePaymentDbContext(connectionString))

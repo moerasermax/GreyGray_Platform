@@ -216,6 +216,14 @@ public interface IOrderingApplication
         RefundDestination refundTo,
         CancellationToken cancellationToken);
 
+    /// <summary>現場缺貨時取消整條訂單品項；其餘品項與訂單狀態不變。</summary>
+    Task<Result<OrderView>> CancelLineAsync(
+        OrderId orderId,
+        OrderLineId lineId,
+        string reason,
+        RefundDestination refundTo,
+        CancellationToken cancellationToken);
+
     Task<Result> RecordPaymentCapturedAsync(
         OrderId orderId,
         Money amount,

@@ -245,6 +245,41 @@ internal sealed class Order
         return Cancel(reason, cancelledAt);
     }
 
+    public Result<Money> CancelLineByAdmin(OrderLineId orderLineId)
+    {
+        if (Status is OrderStatus.Cancelled or OrderStatus.Completed)
+        {
+            return Result<Money>.Failure(
+                "ordering.order-line-cannot-be-cancelled",
+                "訂單已取消或完成，不能再取消品項。");
+        }
+
+        var line = _lines.SingleOrDefault(candidate => candidate.Id == orderLineId);
+        if (line is null)
+        {
+            return Result<Money>.Failure(
+                "ordering.order-line-not-found",
+                "找不到訂單品項。");
+        }
+
+        if (line.Status is OrderLineStatus.Unavailable
+            or OrderLineStatus.Cancelled
+            or OrderLineStatus.Purchased
+            or OrderLineStatus.Shipped
+            or OrderLineStatus.Completed)
+        {
+            return Result<Money>.Failure(
+                "ordering.order-line-cannot-be-cancelled",
+                "目前的訂單品項狀態不能標記為缺貨取消。");
+        }
+
+        var refundAmount = line.LineTotal;
+        line.MarkUnavailable(refundAmount);
+        GoodsTotalAmountMinor = checked(GoodsTotalAmountMinor - refundAmount.AmountMinor);
+        GrandTotalAmountMinor = checked(GrandTotalAmountMinor - refundAmount.AmountMinor);
+        return refundAmount;
+    }
+
     public Result RecordRefund(Money amount)
     {
         if (amount.IsNegative || PaidAmount is null || amount.Currency != PaidAmount.Value.Currency)
@@ -355,7 +390,7 @@ internal sealed class Order
             line.Cancel();
         }
 
-        return PaidAmount ?? Money.Zero(GrandTotal.Currency);
+        return PaidAmount is null ? Money.Zero(GrandTotal.Currency) : GrandTotal;
     }
 
     private IReadOnlyList<string> DeserializeExplain()
@@ -454,6 +489,8 @@ internal sealed class OrderLine
 
     public Money UnitPrice => new(UnitPriceAmountMinor, UnitPriceCurrency);
 
+    public Money LineTotal => UnitPrice.MultiplyByQuantity(Quantity);
+
     public static OrderLine Create(
         OrderLineId id,
         OrderId orderId,
@@ -462,6 +499,18 @@ internal sealed class OrderLine
         new(id, orderId, tenantId, source);
 
     public void Cancel() => Status = OrderLineStatus.Cancelled;
+
+    public void MarkUnavailable(Money refundAmount)
+    {
+        if (refundAmount != LineTotal)
+        {
+            throw new InvalidOperationException("單一品項缺貨必須整條退款。");
+        }
+
+        Status = OrderLineStatus.Unavailable;
+        RefundedAmountMinor = refundAmount.AmountMinor;
+        RefundedCurrency = refundAmount.Currency;
+    }
 
     public void MarkPurchased() => Status = OrderLineStatus.Purchased;
 

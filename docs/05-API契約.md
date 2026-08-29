@@ -272,50 +272,51 @@ GET /v1/orders?cursor=0198c3d4e5f607189abc0123456789ab&limit=20
 ### Admin（:5001）
 
 一行一個端點，**與 `openapi.admin.yaml` 逐條對應**（合併寫法會讓兩邊對不起來，
-也沒辦法用腳本檢查）。`角色` 是該端點要求的最低角色。
+也沒辦法用腳本檢查）。`角色` 是該端點要求的最低角色；`里程碑` 是 live OpenAPI
+coverage gate 的唯一過濾來源，不再從 description 猜。
 
-| 方法 | 路徑 | 角色 | 說明 |
-|---|---|---|---|
-| `POST` | `/v1/auth/login` | — | 團隊成員登入 |
-| `POST` | `/v1/auth/logout` | — | 登出 |
-| `GET` | `/v1/me` | — | 目前登入的團隊成員 |
-| `GET` | `/v1/categories` | ReadOnly | 分類清單 |
-| `POST` | `/v1/categories` | Operator | 新增分類 |
-| `PATCH` | `/v1/categories/{categoryId}` | Operator | 修改分類 |
-| `GET` | `/v1/products` | ReadOnly | 商品列表 |
-| `POST` | `/v1/products` | Operator | 建立商品 |
-| `GET` | `/v1/products/{productId}` | ReadOnly | 商品詳情 |
-| `PATCH` | `/v1/products/{productId}` | Operator | 修改商品 |
-| `PATCH` | `/v1/skus/{skuId}` | Operator | 修改 SKU |
-| `GET` | `/v1/campaigns` | ReadOnly | 開團列表 |
-| `POST` | `/v1/campaigns` | Operator | 建立開團（草稿） |
-| `GET` | `/v1/campaigns/{campaignId}` | ReadOnly | 開團詳情 |
-| `PATCH` | `/v1/campaigns/{campaignId}` | Operator | 修改開團 |
-| `POST` | `/v1/campaigns/{campaignId}/publish` | Operator | 發布開團（Draft → Open） |
-| `POST` | `/v1/campaigns/{campaignId}/close` | Operator | 提前截團（Open → Closed） |
-| `POST` | `/v1/campaigns/{campaignId}/cancel` | Owner | 取消開團 |
-| `POST` | `/v1/campaigns/{campaignId}/settle` | Accountant | 結團 |
-| `GET` | `/v1/campaigns/{campaignId}/offers` | ReadOnly | 開團商品清單 |
-| `POST` | `/v1/campaigns/{campaignId}/offers` | Operator | 加入開團商品 |
-| `DELETE` | `/v1/campaigns/{campaignId}/offers/{offerId}` | Operator | 移除開團商品（有訂單就擋） |
-| `POST` | `/v1/campaigns/{campaignId}/trip-costs` | Accountant | 登錄旅程成本（M1b） |
-| `GET` | `/v1/orders` | ReadOnly | 訂單列表（可搜尋、依狀態與團篩選） |
-| `GET` | `/v1/orders/{orderId}` | ReadOnly | 訂單詳情 |
-| `POST` | `/v1/orders/{orderId}/cancel` | Operator | 取消整張訂單並退款 |
-| `POST` | `/v1/orders/{orderId}/lines/{lineId}/cancel` | Operator | 取消單一品項並退款 |
-| `GET` | `/v1/campaigns/{campaignId}/purchase-items` | Operator | 該團的採購清單（M1b） |
-| `POST` | `/v1/purchase-items/{purchaseItemId}/purchased` | Operator | 標記買到（M1b） |
-| `POST` | `/v1/purchase-items/{purchaseItemId}/unavailable` | Operator | 標記缺貨（M1b） |
-| `POST` | `/v1/purchase-items/{purchaseItemId}/price-changed` | Operator | 回報現場漲價（M1b） |
-| `GET` | `/v1/shipments` | Operator | 出貨單列表（M1b） |
-| `POST` | `/v1/shipments` | Operator | 建立出貨單（M1b） |
-| `POST` | `/v1/shipments/{shipmentId}/dispatch` | Operator | 交運（M1b） |
-| `POST` | `/v1/shipments/{shipmentId}/deliver` | Operator | 標記已送達（M1b） |
-| `GET` | `/v1/lots` | ReadOnly | 批號列表（M2） |
-| `POST` | `/v1/lots` | Operator | 批發進貨（M2） |
-| `GET` | `/v1/ledger/entries` | Accountant | 分錄查詢 |
-| `GET` | `/v1/ledger/campaign-margin/{campaignId}` | Accountant | 每團真實毛利 |
-| `GET` | `/v1/ledger/liability-vs-cash` | Accountant | 負債與現金對照 |
+| 方法 | 路徑 | 角色 | 里程碑 | 說明 |
+|---|---|---|---|---|
+| `POST` | `/v1/auth/login` | — | M1a | 團隊成員登入 |
+| `POST` | `/v1/auth/logout` | — | M1a | 登出 |
+| `GET` | `/v1/me` | — | M1a | 目前登入的團隊成員 |
+| `GET` | `/v1/categories` | ReadOnly | M1a | 分類清單 |
+| `POST` | `/v1/categories` | Operator | M1a | 新增分類 |
+| `PATCH` | `/v1/categories/{categoryId}` | Operator | M1a | 修改分類 |
+| `GET` | `/v1/products` | ReadOnly | M1a | 商品列表 |
+| `POST` | `/v1/products` | Operator | M1a | 建立商品 |
+| `GET` | `/v1/products/{productId}` | ReadOnly | M1a | 商品詳情 |
+| `PATCH` | `/v1/products/{productId}` | Operator | M1a | 修改商品 |
+| `PATCH` | `/v1/skus/{skuId}` | Operator | M1a | 修改 SKU |
+| `GET` | `/v1/campaigns` | ReadOnly | M1a | 開團列表 |
+| `POST` | `/v1/campaigns` | Operator | M1a | 建立開團（草稿） |
+| `GET` | `/v1/campaigns/{campaignId}` | ReadOnly | M1a | 開團詳情 |
+| `PATCH` | `/v1/campaigns/{campaignId}` | Operator | M1a | 修改開團 |
+| `POST` | `/v1/campaigns/{campaignId}/publish` | Operator | M1a | 發布開團（Draft → Open） |
+| `POST` | `/v1/campaigns/{campaignId}/close` | Operator | M1a | 提前截團（Open → Closed） |
+| `POST` | `/v1/campaigns/{campaignId}/cancel` | Owner | M1a | 取消開團 |
+| `POST` | `/v1/campaigns/{campaignId}/settle` | Accountant | M1a | 結團 |
+| `GET` | `/v1/campaigns/{campaignId}/offers` | ReadOnly | M1a | 開團商品清單 |
+| `POST` | `/v1/campaigns/{campaignId}/offers` | Operator | M1a | 加入開團商品 |
+| `DELETE` | `/v1/campaigns/{campaignId}/offers/{offerId}` | Operator | M1a | 移除開團商品（有訂單就擋） |
+| `POST` | `/v1/campaigns/{campaignId}/trip-costs` | Accountant | M1b | 登錄旅程成本 |
+| `GET` | `/v1/orders` | ReadOnly | M1a | 訂單列表（可搜尋、依狀態與團篩選） |
+| `GET` | `/v1/orders/{orderId}` | ReadOnly | M1a | 訂單詳情 |
+| `POST` | `/v1/orders/{orderId}/cancel` | Operator | M1a | 取消整張訂單並退款 |
+| `POST` | `/v1/orders/{orderId}/lines/{lineId}/cancel` | Operator | M1a | 取消單一品項並退款 |
+| `GET` | `/v1/campaigns/{campaignId}/purchase-items` | Operator | M1b | 該團的採購清單 |
+| `POST` | `/v1/purchase-items/{purchaseItemId}/purchased` | Operator | M1b | 標記買到 |
+| `POST` | `/v1/purchase-items/{purchaseItemId}/unavailable` | Operator | M1b | 標記缺貨 |
+| `POST` | `/v1/purchase-items/{purchaseItemId}/price-changed` | Operator | M1b | 回報現場漲價 |
+| `GET` | `/v1/shipments` | Operator | M1b | 出貨單列表 |
+| `POST` | `/v1/shipments` | Operator | M1b | 建立出貨單 |
+| `POST` | `/v1/shipments/{shipmentId}/dispatch` | Operator | M1b | 交運 |
+| `POST` | `/v1/shipments/{shipmentId}/deliver` | Operator | M1b | 標記已送達 |
+| `GET` | `/v1/lots` | ReadOnly | M2 | 批號列表 |
+| `POST` | `/v1/lots` | Operator | M2 | 批發進貨 |
+| `GET` | `/v1/ledger/entries` | Accountant | M1a | 分錄查詢 |
+| `GET` | `/v1/ledger/campaign-margin/{campaignId}` | Accountant | M1a | 每團真實毛利 |
+| `GET` | `/v1/ledger/liability-vs-cash` | Accountant | M1a | 負債與現金對照 |
 
 ### M3 的端點：**形狀尚未定義**
 

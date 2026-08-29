@@ -136,6 +136,61 @@ public sealed class AccountingInvariantTests
             line.Amount == Money.OfMajor(60, Currency.TWD));
     }
 
+    [Fact(DisplayName = "單一品項退款只沖預收貨款，且品項額大於調整後訂單總額時仍借貸相等")]
+    public void Line_refund_is_balanced_against_the_refund_destination()
+    {
+        var tenant = TenantId.Default;
+        var orderId = OrderId.New();
+        var lineId = OrderLineId.New();
+        var amount = Money.OfMajor(100, Currency.TWD);
+        var refunded = new PaymentRefunded(
+            Guid.CreateVersion7(),
+            DateTimeOffset.UnixEpoch,
+            tenant,
+            RefundId.New(),
+            GreyGray.Modules.Payment.Contracts.PaymentId.New(),
+            orderId,
+            lineId,
+            PaymentProvider.ECPay,
+            amount,
+            RefundDestination.StoredValue);
+        var order = new OrderView(
+            orderId,
+            GreyGray.Modules.Identity.Contracts.CustomerId.New(),
+            SourceChannel.Own,
+            OrderStatus.PaidAwaitingClose,
+            GreyGray.Modules.Checkout.Contracts.ShippingPolicy.HoldUntilComplete,
+            GreyGray.Modules.Pricing.Contracts.PricingSnapshotId.New(),
+            Money.OfMajor(40, Currency.TWD),
+            Money.OfMajor(20, Currency.TWD),
+            Money.OfMajor(60, Currency.TWD),
+            [
+                new OrderLineView(
+                    lineId,
+                    GreyGray.Modules.Catalog.Contracts.SkuId.New(),
+                    GreyGray.Modules.Catalog.Contracts.FulfillmentMode.Preorder,
+                    OrderLineStatus.Unavailable,
+                    1,
+                    amount,
+                    GreyGray.Modules.Campaign.Contracts.CampaignId.New(),
+                    null),
+            ],
+            DateTimeOffset.UnixEpoch);
+
+        var lines = PaymentRefundedLedgerHandler.LiabilityLinesFor(refunded, order).ToList();
+        lines.Add(new PostingLine(
+            AccountCodes.CustomerStoredValue,
+            Direction.Credit,
+            amount));
+
+        lines.ShouldContain(line =>
+            line.AccountCode == AccountCodes.DeferredGoodsRevenue &&
+            line.Direction == Direction.Debit &&
+            line.Amount == amount);
+        lines.Where(line => line.Direction == Direction.Debit).Sum(line => line.Amount.AmountMinor)
+            .ShouldBe(lines.Where(line => line.Direction == Direction.Credit).Sum(line => line.Amount.AmountMinor));
+    }
+
     [Fact(DisplayName = "Ledger EF model 對齊 schema、同租戶複合外鍵與 outbox")]
     public void Ledger_model_contains_business_invariants_and_platform_outbox()
     {

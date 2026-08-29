@@ -51,11 +51,15 @@ internal sealed class Payment
 
     public Money? Fee => FeeAmountMinor is null ? null : new Money(FeeAmountMinor.Value, Currency.TWD);
 
+    public Money RefundedAmount => new(RefundedAmountMinor, Currency.TWD);
+
     public long GoodsAmountMinor { get; private set; }
 
     public long ShippingAmountMinor { get; private set; }
 
     public long? FeeAmountMinor { get; private set; }
+
+    public long RefundedAmountMinor { get; private set; }
 
     public string MerchantTradeNo { get; private set; } = string.Empty;
 
@@ -150,7 +154,9 @@ internal sealed class Payment
             throw new InvalidOperationException("綠界手續費必須是非負的新台幣金額。");
         }
 
-        if (Status == PaymentStatus.Captured)
+        if (Status is PaymentStatus.Captured
+            or PaymentStatus.PartiallyRefunded
+            or PaymentStatus.Refunded)
         {
             if (!StringComparer.Ordinal.Equals(ProviderTransactionId, providerTransactionId))
             {
@@ -216,11 +222,11 @@ internal sealed class Payment
         return true;
     }
 
-    public bool RefundFully(Money amount)
+    public bool Refund(Money amount)
     {
-        if (amount != Amount)
+        if (amount.Currency != Currency.TWD || amount.IsNegative || amount.IsZero)
         {
-            throw new InvalidOperationException("M1a 退款必須等於原付款總額；部分退款尚未實作。");
+            throw new InvalidOperationException("退款金額必須是大於零的新台幣。");
         }
 
         if (Status == PaymentStatus.Refunded)
@@ -228,12 +234,21 @@ internal sealed class Payment
             return false;
         }
 
-        if (Status != PaymentStatus.Captured)
+        if (Status is not PaymentStatus.Captured and not PaymentStatus.PartiallyRefunded)
         {
             throw new InvalidOperationException($"付款狀態 {Status} 不可執行退款。");
         }
 
-        Status = PaymentStatus.Refunded;
+        var next = checked(RefundedAmountMinor + amount.AmountMinor);
+        if (next > Amount.AmountMinor)
+        {
+            throw new InvalidOperationException("累計退款金額不可超過原付款總額。");
+        }
+
+        RefundedAmountMinor = next;
+        Status = next == Amount.AmountMinor
+            ? PaymentStatus.Refunded
+            : PaymentStatus.PartiallyRefunded;
         return true;
     }
 

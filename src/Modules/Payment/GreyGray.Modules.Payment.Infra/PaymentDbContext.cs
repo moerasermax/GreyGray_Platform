@@ -51,10 +51,15 @@ internal sealed class PaymentDbContext(DbContextOptions<PaymentDbContext> option
             .IsRequired();
         payment.Property(value => value.FeeAmountMinor)
             .HasColumnName("fee_amount_minor");
+        payment.Property(value => value.RefundedAmountMinor)
+            .HasColumnName("refunded_amount_minor")
+            .HasDefaultValue(0L)
+            .IsRequired();
         payment.Ignore(value => value.Amount);
         payment.Ignore(value => value.GoodsAmount);
         payment.Ignore(value => value.ShippingAmount);
         payment.Ignore(value => value.Fee);
+        payment.Ignore(value => value.RefundedAmount);
         payment.Property(value => value.MerchantTradeNo)
             .HasColumnName("merchant_trade_no")
             .HasMaxLength(20)

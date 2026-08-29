@@ -55,6 +55,7 @@ internal sealed class PaymentRepository(PaymentDbContext dbContext) : IPaymentRe
             .Where(payment => payment.TenantId == tenantId &&
                               payment.OrderId == orderId &&
                               (payment.Status == PaymentStatus.Captured ||
+                               payment.Status == PaymentStatus.PartiallyRefunded ||
                                payment.Status == PaymentStatus.Refunded))
             .OrderByDescending(payment => payment.CapturedAt)
             .FirstOrDefaultAsync(cancellationToken);

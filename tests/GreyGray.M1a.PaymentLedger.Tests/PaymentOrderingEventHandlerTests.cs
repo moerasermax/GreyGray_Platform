@@ -62,6 +62,48 @@ public sealed class PaymentOrderingEventHandlerTests
         refunded.Amount.ShouldBe(payment.Amount);
     }
 
+    [Fact(DisplayName = "單一品項退款先轉 PartiallyRefunded，累計到原付款總額才轉 Refunded")]
+    public async Task Line_refunds_accumulate_until_payment_is_fully_refunded()
+    {
+        var payment = CapturedPayment();
+        var publisher = new RecordingPublisher();
+        var handler = new RefundRequestedHandler(
+            new StubPaymentRepository(payment),
+            publisher,
+            new StubClock(Now));
+        var firstLine = OrderLineId.New();
+        var first = new RefundRequested(
+            Guid.CreateVersion7(),
+            Now,
+            payment.TenantId,
+            payment.OrderId,
+            firstLine,
+            Money.OfMajor(40, Currency.TWD),
+            RefundDestination.StoredValue,
+            "第一項缺貨");
+
+        await handler.HandleAsync(first, CancellationToken.None);
+
+        payment.Status.ShouldBe(PaymentStatus.PartiallyRefunded);
+        payment.RefundedAmount.ShouldBe(Money.OfMajor(40, Currency.TWD));
+        publisher.Events.Single().ShouldBeOfType<PaymentRefunded>().LineId.ShouldBe(firstLine);
+
+        var second = new RefundRequested(
+            Guid.CreateVersion7(),
+            Now,
+            payment.TenantId,
+            payment.OrderId,
+            OrderLineId.New(),
+            Money.OfMajor(120, Currency.TWD),
+            RefundDestination.StoredValue,
+            "第二項缺貨");
+        await handler.HandleAsync(second, CancellationToken.None);
+
+        payment.Status.ShouldBe(PaymentStatus.Refunded);
+        payment.RefundedAmount.ShouldBe(payment.Amount);
+        publisher.Events.Count.ShouldBe(2);
+    }
+
     [Fact(DisplayName = "沒有 provider API 時原路退款明確失敗且不可改成已退款")]
     public async Task Original_method_refund_fails_closed()
     {
@@ -165,6 +207,8 @@ public sealed class PaymentOrderingEventHandlerTests
             Task.FromResult(Items.FirstOrDefault(payment =>
                 payment.TenantId == tenantId &&
                 payment.OrderId == orderId &&
-                payment.Status is PaymentStatus.Captured or PaymentStatus.Refunded));
+                payment.Status is PaymentStatus.Captured
+                    or PaymentStatus.PartiallyRefunded
+                    or PaymentStatus.Refunded));
     }
 }

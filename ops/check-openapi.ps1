@@ -1,6 +1,6 @@
 ﻿<#
-    啟動兩個 Host，抓 AddOpenApi() 的實際產物，與 docs/api 的 v1.0 凍結契約做語意比對。
-    現階段 Host 只有 /health 時會明確 FAIL-FAST；不提供 skip/continue-on-error 開關。
+    啟動兩個 Host，抓 AddOpenApi() 的實際產物，並依 docs/05 的里程碑索引檢查
+    到期 operation coverage。Host 只有 /health 時會明確 FAIL-FAST；不提供 skip 開關。
 #>
 [CmdletBinding()]
 param(
@@ -13,6 +13,8 @@ param(
     [int]$AdminPort = 15001,
     [ValidateRange(5, 180)]
     [int]$StartupTimeoutSeconds = 45,
+    [ValidatePattern('^M[0-9]+[a-z]?$')]
+    [string]$Milestone = 'M1a',
     [string]$OutputDirectory
 )
 
@@ -119,10 +121,13 @@ Get-OpenApiDocument -HostName 'admin' -ProjectName 'GreyGray.Api.Admin' -Port $A
 
 $toolProject = "$PSScriptRoot\OpenApiContractGate\GreyGray.OpenApiContractGate.csproj"
 $tool = "$PSScriptRoot\OpenApiContractGate\bin\$Configuration\net10.0\GreyGray.OpenApiContractGate.exe"
-if (-not (Test-Path -LiteralPath $tool -PathType Leaf)) {
+if (-not $NoBuild) {
     Invoke-NativeCommand -FilePath 'dotnet' `
         -ArgumentList @('build', $toolProject, '-c', $Configuration, '--nologo') `
         -WorkingDirectory $repo -EchoOutput | Out-Null
+}
+elseif (-not (Test-Path -LiteralPath $tool -PathType Leaf)) {
+    throw "找不到已建置 OpenAPI gate：$tool。拿掉 -NoBuild 或先建置工具。"
 }
 $comparisons = @(
     @{ Name = 'storefront'; Expected = "$repo\docs\api\openapi.storefront.yaml"; Actual = $storefrontActual },
@@ -132,7 +137,12 @@ $comparisons = @(
 $failed = @()
 foreach ($comparison in $comparisons) {
     $result = Invoke-NativeCommand -FilePath $tool `
-        -ArgumentList @('--expected', $comparison.Expected, '--actual', $comparison.Actual, '--name', $comparison.Name) `
+        -ArgumentList @(
+            '--expected', $comparison.Expected,
+            '--actual', $comparison.Actual,
+            '--name', $comparison.Name,
+            '--milestone', $Milestone,
+            '--catalog', "$repo\docs\05-API契約.md") `
         -WorkingDirectory $repo -AllowNonZeroExit -EchoOutput
     if ($result.ExitCode -ne 0) { $failed += $comparison.Name }
 }
@@ -141,4 +151,4 @@ if ($failed.Count -gt 0) {
     throw "OpenAPI 契約 gate 失敗：$($failed -join ', ')。實際產物保留在 $OutputDirectory"
 }
 
-Write-Host "✓ AddOpenApi 產物與兩份凍結契約一致"
+Write-Host "✓ AddOpenApi live 產物已覆蓋兩份凍結契約的 $Milestone operations（未宣稱完整 schema 語意一致）"

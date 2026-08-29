@@ -371,3 +371,28 @@ System.Text.Json 預設會寫成帶連字號的形式。放著不管的話同一
 
 ---
 
+## ADR-020　單一品項缺貨使用 Unavailable，退款金額進入兩側訂單投影
+**狀態**：已採納（2026-08-29，M1a-6 契約補漏）
+
+`POST /v1/orders/{orderId}/lines/{lineId}/cancel` 的 frozen description 明寫
+「現場缺貨時用」，所以該 line 轉 `Unavailable`；整張訂單取消時才把尚未完成的
+line 轉 `Cancelled`。兩者不靠自由文字 `reason` 判斷。
+
+Admin 的 `AdminOrderLine` 新增可空 `refundedAmount`，與 Storefront 對稱。
+缺貨補償不做部分數量：整條 line 的退款額固定為 `lineTotal`；其餘 line 與訂單狀態不變，
+`GoodsTotal`／`GrandTotal` 扣掉該 line，`ShippingFee` 保留。Payment 累計退款額並以
+`PartiallyRefunded`／`Refunded` 區分；Ledger 只在 `PaymentRefunded` 事實成立後開平衡分錄。
+
+原路退款 provider 尚未接妥時，已付款訂單一律在 BFF 擋下，不得先改狀態或先記帳。
+
+---
+
+## ADR-021　Admin 瀏覽器跨 origin 只開明確白名單
+**狀態**：已採納（2026-08-29，M1a-6 串接補漏）
+
+Admin 前端在 mock 關閉後會從 `:5003` 直接呼叫 Admin BFF，因此 BFF 必須處理瀏覽器
+preflight。Development 僅預設允許 `http://localhost:5003` 與 `http://127.0.0.1:5003`，
+並允許 credentials；Production 沒有預設來源，必須用 `Cors:AllowedOrigins` 明確設定。
+不得使用 `AllowAnyOrigin`，也不得把 credentials 與萬用來源混用。
+
+---

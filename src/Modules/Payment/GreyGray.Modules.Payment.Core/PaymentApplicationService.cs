@@ -61,7 +61,9 @@ internal sealed class PaymentApplicationService(
             correlationContext.TenantId,
             request.OrderId,
             cancellationToken);
-        if (existing?.Status is PaymentStatus.Captured or PaymentStatus.PartiallyRefunded)
+        if (existing?.Status is PaymentStatus.Captured
+            or PaymentStatus.PartiallyRefunded
+            or PaymentStatus.Refunded)
         {
             return Result<PaymentInitiation>.Failure(
                 "ordering.order-already-paid",
@@ -155,7 +157,9 @@ internal sealed class PaymentApplicationService(
             return Result.Failure("payment.payment-not-found", "找不到綠界回呼對應的付款。");
         }
 
-        if (payment.Status == PaymentStatus.Captured &&
+        if ((payment.Status is PaymentStatus.Captured
+                or PaymentStatus.PartiallyRefunded
+                or PaymentStatus.Refunded) &&
             StringComparer.Ordinal.Equals(payment.ProviderTransactionId, tradeNo))
         {
             return Result.Success();

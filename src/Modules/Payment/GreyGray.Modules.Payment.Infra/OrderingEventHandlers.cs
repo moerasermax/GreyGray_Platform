@@ -48,12 +48,7 @@ internal sealed class RefundRequestedHandler(
             throw new InvalidOperationException($"不支援的退款去向：{@event.Destination}。");
         }
 
-        if (@event.LineId is not null)
-        {
-            throw new NotSupportedException("M1a 尚未支援單一品項部分退款。");
-        }
-
-        if (!payment.RefundFully(@event.Amount))
+        if (!payment.Refund(@event.Amount))
         {
             return;
         }

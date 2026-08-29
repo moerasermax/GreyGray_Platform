@@ -94,9 +94,9 @@ internal sealed class PaymentRefundedLedgerHandler(
         PaymentRefunded @event,
         OrderView order)
     {
-        if (@event.Amount.IsNegative || @event.Amount.IsZero || @event.Amount > order.GrandTotal)
+        if (@event.Amount.IsNegative || @event.Amount.IsZero)
         {
-            throw new InvalidOperationException("退款金額必須大於零且不得超過訂單總額。");
+            throw new InvalidOperationException("退款金額必須大於零。");
         }
 
         if (@event.LineId is { } lineId)
@@ -109,6 +109,11 @@ internal sealed class PaymentRefundedLedgerHandler(
             }
 
             return [new(AccountCodes.DeferredGoodsRevenue, Direction.Debit, @event.Amount)];
+        }
+
+        if (@event.Amount > order.GrandTotal)
+        {
+            throw new InvalidOperationException("退款金額不得超過訂單總額。");
         }
 
         if (@event.Amount != order.GrandTotal)

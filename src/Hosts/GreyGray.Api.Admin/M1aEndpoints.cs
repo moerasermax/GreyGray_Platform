@@ -226,6 +226,92 @@ internal static class M1aEndpoints
                 StatusCodes.Status200OK,
                 cancellationToken);
         }).AddEndpointFilter(new StaffRoleFilter(StaffRole.Operator));
+
+        api.MapPost("/orders/{orderId}/lines/{lineId}/cancel", async (
+            string orderId,
+            string lineId,
+            CancelOrderInput input,
+            HttpContext context,
+            IOrderingApplication ordering,
+            ICustomerDirectory customers,
+            IPaymentQuery payments,
+            ICatalogQuery catalog,
+            IIdempotencyStore idempotency,
+            CancellationToken cancellationToken) =>
+            await CancelOrderLineAsync(
+                orderId,
+                lineId,
+                input,
+                context,
+                ordering,
+                customers,
+                payments,
+                catalog,
+                idempotency,
+                cancellationToken))
+            .AddEndpointFilter(new StaffRoleFilter(StaffRole.Operator));
+    }
+
+    internal static async Task<IResult> CancelOrderLineAsync(
+        string orderId,
+        string lineId,
+        CancelOrderInput input,
+        HttpContext context,
+        IOrderingApplication ordering,
+        ICustomerDirectory customers,
+        IPaymentQuery payments,
+        ICatalogQuery catalog,
+        IIdempotencyStore idempotency,
+        CancellationToken cancellationToken)
+    {
+        if (!TryId(orderId, out var parsedOrder))
+        {
+            return BffHttp.Problem(new Error("ordering.order-not-found", "找不到指定的訂單。"));
+        }
+
+        if (!TryId(lineId, out var parsedLine))
+        {
+            return BffHttp.Problem(new Error("ordering.order-line-not-found", "找不到指定的訂單品項。"));
+        }
+
+        return await BffHttp.ExecuteIdempotentAsync(
+            context,
+            idempotency,
+            Scope(context, $"orders:{orderId}:lines:{lineId}:cancel"),
+            input,
+            async token =>
+            {
+                var existing = await ordering.GetAdminAsync(new OrderId(parsedOrder), token);
+                if (existing.IsFailure)
+                {
+                    return Result<AdminOrderResponse>.Failure(existing.Error);
+                }
+
+                if (input.RefundTo == RefundDestination.OriginalPaymentMethod &&
+                    existing.Value.PaidAmount is { IsZero: false })
+                {
+                    return Result<AdminOrderResponse>.Failure(
+                        "payment.original-refund-not-configured",
+                        "綠界原路退款尚未完成 provider API 設定，訂單品項未取消；可改選退款至儲值金。");
+                }
+
+                var cancelled = await ordering.CancelLineAsync(
+                    new OrderId(parsedOrder),
+                    new OrderLineId(parsedLine),
+                    input.Reason,
+                    input.RefundTo,
+                    token);
+                return cancelled.IsSuccess
+                    ? await ToAdminOrderAsync(
+                        cancelled.Value,
+                        customers,
+                        payments,
+                        catalog,
+                        token)
+                    : Result<AdminOrderResponse>.Failure(cancelled.Error);
+            },
+            StatusCodes.Status200OK,
+            cancellationToken);
     }
 
     private static void MapCatalog(RouteGroupBuilder api)
@@ -899,6 +985,7 @@ internal static class M1aEndpoints
                     line.Quantity,
                     line.UnitPrice,
                     line.LineTotal,
+                    line.RefundedAmount,
                     line.CampaignId,
                     line.ConsumedLot);
             }).ToArray(),
@@ -928,7 +1015,7 @@ internal static class M1aEndpoints
 
     private sealed record CancelCampaignInput(string Reason);
 
-    private sealed record CancelOrderInput(string Reason, RefundDestination RefundTo);
+    internal sealed record CancelOrderInput(string Reason, RefundDestination RefundTo);
 
     private sealed record AdminProductRequest(
         string Name,
@@ -1044,7 +1131,7 @@ internal static class M1aEndpoints
         DateTimeOffset PlacedAt,
         CampaignId? CampaignId);
 
-    private sealed record AdminOrderLineResponse(
+    internal sealed record AdminOrderLineResponse(
         OrderLineId Id,
         SkuId SkuId,
         string Name,
@@ -1054,10 +1141,11 @@ internal static class M1aEndpoints
         int Quantity,
         Money UnitPrice,
         Money LineTotal,
+        Money? RefundedAmount,
         CampaignId? CampaignId,
         LotId? ConsumedLotId);
 
-    private sealed record AdminPaymentSummaryResponse(
+    internal sealed record AdminPaymentSummaryResponse(
         PaymentId Id,
         PaymentProvider Provider,
         PaymentStatus Status,
@@ -1067,7 +1155,7 @@ internal static class M1aEndpoints
         DateTimeOffset? CapturedAt,
         DateTimeOffset? SettledAt);
 
-    private sealed record AdminOrderResponse(
+    internal sealed record AdminOrderResponse(
         OrderId Id,
         string OrderNumber,
         CustomerId CustomerId,

@@ -107,8 +107,51 @@ public sealed class OrderingTests
         cancelledEvent.RefundAmount.ShouldBe(created.Value.GrandTotal);
         cancelledEvent.RefundTo.ShouldBe(RefundDestination.StoredValue);
         var refund = fixture.Publisher.Published.OfType<RefundRequested>().Single();
-        refund.LineId.ShouldBeNull("M1a 只做整單取消，line cancel 留 M1b。");
+        refund.LineId.ShouldBeNull("整單取消的退款事件不可誤掛到單一品項。");
         refund.Amount.ShouldBe(created.Value.GrandTotal);
+    }
+
+    [Fact(DisplayName = "Admin 缺貨取消整條 line，退款 lineTotal 且其餘 line／訂單狀態不變")]
+    public async Task Admin_line_cancel_refunds_only_selected_line()
+    {
+        var fixture = new OrderingFixture(includeSecondLine: true);
+        var created = await fixture.Service.CreateFromCheckoutAsync(
+            fixture.Checkout,
+            TestContext.Current.CancellationToken);
+        await fixture.Service.RecordPaymentCapturedAsync(
+            created.Value.Id,
+            created.Value.GrandTotal,
+            TestContext.Current.CancellationToken);
+        fixture.Publisher.Reset();
+        fixture.UnitOfWork.Reset();
+        var selected = created.Value.Lines[0];
+        var untouched = created.Value.Lines[1];
+
+        var cancelled = await fixture.Service.CancelLineAsync(
+            created.Value.Id,
+            selected.Id,
+            "現場缺貨",
+            RefundDestination.StoredValue,
+            TestContext.Current.CancellationToken);
+
+        cancelled.IsSuccess.ShouldBeTrue();
+        cancelled.Value.Status.ShouldBe(OrderStatus.PaidAwaitingClose);
+        var cancelledLine = cancelled.Value.Lines.Single(line => line.Id == selected.Id);
+        cancelledLine.Status.ShouldBe(OrderLineStatus.Unavailable);
+        cancelledLine.RefundedAmount.ShouldBe(selected.LineTotal);
+        cancelled.Value.Lines.Single(line => line.Id == untouched.Id).Status
+            .ShouldBe(untouched.Status);
+        cancelled.Value.GoodsTotal.ShouldBe(created.Value.GoodsTotal - selected.LineTotal);
+        cancelled.Value.GrandTotal.ShouldBe(created.Value.GrandTotal - selected.LineTotal);
+        cancelled.Value.ShippingFee.ShouldBe(created.Value.ShippingFee);
+        fixture.UnitOfWork.Saves.ShouldBe(1);
+
+        var lineEvent = fixture.Publisher.Published.OfType<OrderLineCancelled>().Single();
+        lineEvent.LineId.ShouldBe(selected.Id);
+        lineEvent.RefundAmount.ShouldBe(selected.LineTotal);
+        var refund = fixture.Publisher.Published.OfType<RefundRequested>().Single();
+        refund.LineId.ShouldBe(selected.Id);
+        refund.Amount.ShouldBe(selected.LineTotal);
     }
 
     [Fact(DisplayName = "M1b ItemPurchased 把對應 line 與訂單推進採購中，事件重送冪等")]
@@ -146,7 +189,7 @@ public sealed class OrderingTests
 
     private sealed class OrderingFixture
     {
-        public OrderingFixture()
+        public OrderingFixture(bool includeSecondLine = false)
         {
             CustomerId = CustomerId.New();
             Clock = new FakeClock(Now);
@@ -164,6 +207,27 @@ public sealed class OrderingTests
                 ["超商一口價 NT$60"],
                 Now);
             Pricing.Seed(snapshot);
+            var lines = new List<CheckoutLine>
+            {
+                new(
+                    SkuId.New(),
+                    FulfillmentMode.Preorder,
+                    CampaignId.New(),
+                    CampaignOfferId.New(),
+                    2,
+                    new Money(10_000, Currency.TWD)),
+            };
+            if (includeSecondLine)
+            {
+                lines.Add(new CheckoutLine(
+                    SkuId.New(),
+                    FulfillmentMode.Preorder,
+                    CampaignId.New(),
+                    CampaignOfferId.New(),
+                    1,
+                    new Money(5_000, Currency.TWD)));
+            }
+
             Checkout = new CheckoutCompleted(
                 Guid.CreateVersion7(),
                 Now,
@@ -174,15 +238,7 @@ public sealed class OrderingTests
                 DeliveryMethod.ConvenienceStore,
                 ShippingPolicy.HoldUntilComplete,
                 snapshot.Id,
-                [
-                    new CheckoutLine(
-                        SkuId.New(),
-                        FulfillmentMode.Preorder,
-                        CampaignId.New(),
-                        CampaignOfferId.New(),
-                        2,
-                        new Money(10_000, Currency.TWD)),
-                ],
+                lines,
                 "checkout-idempotency-1")
             {
                 ConvenienceStoreCode = "991234",

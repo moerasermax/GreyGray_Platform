@@ -205,6 +205,68 @@ internal sealed class OrderingApplicationService(
         return order.ToView();
     }
 
+    public async Task<Result<OrderView>> CancelLineAsync(
+        OrderId orderId,
+        OrderLineId lineId,
+        string reason,
+        RefundDestination refundTo,
+        CancellationToken cancellationToken)
+    {
+        var normalizedReason = reason?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedReason) || normalizedReason.Length > 200)
+        {
+            return Result<OrderView>.Failure(
+                "ordering.cancel-reason-invalid",
+                "取消原因必須是 1 到 200 個字元。");
+        }
+
+        var order = await orders.GetAsync(
+            correlationContext.TenantId,
+            orderId,
+            cancellationToken);
+        if (order is null)
+        {
+            return OrderNotFound<OrderView>();
+        }
+
+        var cancelled = order.CancelLineByAdmin(lineId);
+        if (cancelled.IsFailure)
+        {
+            return Result<OrderView>.Failure(cancelled.Error);
+        }
+
+        var occurredAt = clock.UtcNow;
+        await eventPublisher.PublishAsync(
+            new OrderLineCancelled(
+                Guid.CreateVersion7(),
+                occurredAt,
+                order.TenantId,
+                order.Id,
+                lineId,
+                normalizedReason,
+                cancelled.Value,
+                refundTo),
+            cancellationToken);
+
+        if (order.PaidAmount is not null && !cancelled.Value.IsZero)
+        {
+            await eventPublisher.PublishAsync(
+                new RefundRequested(
+                    Guid.CreateVersion7(),
+                    occurredAt,
+                    order.TenantId,
+                    order.Id,
+                    lineId,
+                    cancelled.Value,
+                    refundTo,
+                    normalizedReason),
+                cancellationToken);
+        }
+
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return order.ToView();
+    }
+
     public async Task<Result> RecordPaymentCapturedAsync(
         OrderId orderId,
         Money amount,

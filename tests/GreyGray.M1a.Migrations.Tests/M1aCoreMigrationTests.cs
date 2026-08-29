@@ -238,6 +238,61 @@ public sealed class M1aCoreMigrationTests : IAsyncLifetime
             """, cancellationToken);
     }
 
+    [Fact(DisplayName = "0008 回填歷史全額退款並約束部分退款累計，不得超過原付款")]
+    public async Task Line_refund_migration_backfills_and_constrains_cumulative_amount()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var migrations = Path.Combine(FindRepositoryRoot(), "db", "migrations");
+        var connectionString = await CreateDatabaseAsync(cancellationToken);
+        await ExecuteMigrationChainAsync(connectionString, migrations, 7, cancellationToken);
+        var historicalRefund = Guid.CreateVersion7();
+
+        await ExecuteSqlAsync(connectionString, $"""
+            INSERT INTO payment.payment (
+                id, tenant_id, provider, order_id, status,
+                goods_amount_minor, shipping_amount_minor,
+                merchant_trade_no, created_at, expires_at)
+            VALUES (
+                '{historicalRefund}'::uuid, '{TenantA}'::uuid, 1, '{Guid.CreateVersion7()}'::uuid, 3,
+                10000, 6000, 'GGHISTORICALREFUND01', now(), now() + interval '30 minutes');
+            """, cancellationToken);
+
+        await ExecuteScriptAsync(
+            connectionString,
+            Path.Combine(migrations, "0008_m1a_line_refund.sql"),
+            cancellationToken);
+        await ExecuteScriptAsync(
+            connectionString,
+            Path.Combine(migrations, "0008_m1a_line_refund.sql"),
+            cancellationToken);
+
+        (await ScalarAsync<long>(connectionString, $"""
+            SELECT refunded_amount_minor
+            FROM payment.payment
+            WHERE id = '{historicalRefund}'::uuid;
+            """, cancellationToken)).ShouldBe(16000);
+
+        await ExecuteSqlAsync(connectionString, $"""
+            INSERT INTO payment.payment (
+                id, tenant_id, provider, order_id, status,
+                goods_amount_minor, shipping_amount_minor, refunded_amount_minor,
+                merchant_trade_no, created_at, expires_at)
+            VALUES (
+                '{Guid.CreateVersion7()}'::uuid, '{TenantA}'::uuid, 1, '{Guid.CreateVersion7()}'::uuid, 4,
+                10000, 6000, 4000, 'GGPARTIALREFUND0001', now(), now() + interval '30 minutes');
+            """, cancellationToken);
+
+        await AssertConstraintFailureAsync(connectionString, $"""
+            INSERT INTO payment.payment (
+                id, tenant_id, provider, order_id, status,
+                goods_amount_minor, shipping_amount_minor, refunded_amount_minor,
+                merchant_trade_no, created_at, expires_at)
+            VALUES (
+                '{Guid.CreateVersion7()}'::uuid, '{TenantA}'::uuid, 1, '{Guid.CreateVersion7()}'::uuid, 4,
+                10000, 6000, 17000, 'GGINVALIDREFUND0001', now(), now() + interval '30 minutes');
+            """, cancellationToken);
+    }
+
     private static async Task AssertTenantAndValueConstraintsAsync(
         string connectionString,
         CancellationToken cancellationToken)

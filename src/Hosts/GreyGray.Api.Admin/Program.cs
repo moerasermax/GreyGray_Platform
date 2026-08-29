@@ -27,8 +27,30 @@ GreyGrayTelemetry.ConfigureW3CActivityIds();
 
 var builder = WebApplication.CreateBuilder(args);
 
+var adminFrontendOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>()
+    ?.Where(origin => !string.IsNullOrWhiteSpace(origin))
+    .Select(origin => origin.Trim().TrimEnd('/'))
+    .Distinct(StringComparer.OrdinalIgnoreCase)
+    .ToArray() ?? [];
+if (adminFrontendOrigins.Length == 0 && builder.Environment.IsDevelopment())
+{
+    adminFrontendOrigins = ["http://localhost:5003", "http://127.0.0.1:5003"];
+}
+
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
+if (adminFrontendOrigins.Length > 0)
+{
+    builder.Services.AddCors(options => options.AddPolicy(
+        "AdminFrontend",
+        policy => policy
+            .WithOrigins(adminFrontendOrigins)
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials()));
+}
 builder.Services.ConfigureHttpJsonOptions(options =>
     BffHttp.ApplyGreyGrayJson(options.SerializerOptions));
 builder.Services.AddGreyGrayRuntimeContext();
@@ -60,6 +82,11 @@ builder.Services
 //              解析失敗一律拒絕，不得 fallback 成匿名。
 
 var app = builder.Build();
+
+if (adminFrontendOrigins.Length > 0)
+{
+    app.UseCors("AdminFrontend");
+}
 
 if (app.Environment.IsDevelopment())
 {

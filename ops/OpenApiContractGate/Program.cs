@@ -17,7 +17,17 @@ internal static class ContractGate
             !options.TryGetValue("actual", out var actualPath) ||
             !options.TryGetValue("name", out var name))
         {
-            Console.Error.WriteLine("用法：--expected <凍結 yaml> --actual <AddOpenApi json> --name <文件名稱>");
+            Console.Error.WriteLine(
+                "用法：--expected <凍結 yaml> --actual <AddOpenApi json> --name <文件名稱> " +
+                "[--milestone M1a --catalog <docs/05-API契約.md>]");
+            return 2;
+        }
+
+        var hasMilestone = options.TryGetValue("milestone", out var milestone);
+        var hasCatalog = options.TryGetValue("catalog", out var catalogPath);
+        if (hasMilestone != hasCatalog)
+        {
+            Console.Error.WriteLine("--milestone 與 --catalog 必須一起提供。");
             return 2;
         }
 
@@ -37,6 +47,16 @@ internal static class ContractGate
             var expected = await LoadAsync(expectedPath);
             var expectedPaths = expected.Paths?.Keys.Order(StringComparer.Ordinal).ToArray() ?? [];
             Console.WriteLine($"[{name}] 凍結 paths={expectedPaths.Length}，AddOpenApi paths={actualPaths.Length}");
+
+            if (hasMilestone)
+            {
+                return CompareMilestoneCoverage(
+                    name,
+                    milestone!,
+                    catalogPath!,
+                    expected,
+                    actual);
+            }
 
             var expectedJson = await expected.SerializeAsJsonAsync(OpenApiSpecVersion.OpenApi3_1);
             var actualJson = await actual.SerializeAsJsonAsync(OpenApiSpecVersion.OpenApi3_1);
@@ -59,6 +79,155 @@ internal static class ContractGate
             Console.Error.WriteLine($"[{name}] 無法完成契約比對：{exception.Message}");
             return 2;
         }
+    }
+
+    private static int CompareMilestoneCoverage(
+        string name,
+        string milestone,
+        string catalogPath,
+        OpenApiDocument expected,
+        OpenApiDocument actual)
+    {
+        var catalog = ReadCatalog(catalogPath, name);
+        var catalogOperations = catalog.Select(entry => entry.Operation).ToHashSet();
+        var milestoneOperations = catalog
+            .Where(entry => StringComparer.OrdinalIgnoreCase.Equals(entry.Milestone, milestone))
+            .Select(entry => entry.Operation)
+            .ToHashSet();
+        if (milestoneOperations.Count == 0)
+        {
+            throw new InvalidDataException(
+                $"{catalogPath} 的 {name} 表沒有任何里程碑 {milestone} operation。");
+        }
+
+        var frozenOperations = OperationsOf(expected);
+        var actualOperations = OperationsOf(actual);
+        var catalogMissingFromFrozen = catalogOperations.Except(frozenOperations).Order().ToArray();
+        var frozenMissingFromCatalog = frozenOperations
+            .Where(operation => operation.Path.StartsWith("/v1/", StringComparison.Ordinal))
+            .Except(catalogOperations)
+            .Order()
+            .ToArray();
+        var actualMissingFromCatalog = actualOperations
+            .Where(operation => operation.Path.StartsWith("/v1/", StringComparison.Ordinal))
+            .Except(catalogOperations)
+            .Order()
+            .ToArray();
+        var missingMilestone = milestoneOperations.Except(actualOperations).Order().ToArray();
+
+        Console.WriteLine(
+            $"[{name}] {milestone} catalog operations={milestoneOperations.Count}，" +
+            $"live covered={milestoneOperations.Count - missingMilestone.Length}");
+        var failed = false;
+        failed |= PrintOperationDifference("索引有、凍結契約沒有", catalogMissingFromFrozen);
+        failed |= PrintOperationDifference("凍結契約有、索引未分類", frozenMissingFromCatalog);
+        failed |= PrintOperationDifference("live 有、索引未分類", actualMissingFromCatalog);
+        failed |= PrintOperationDifference($"live 缺少 {milestone}", missingMilestone);
+        if (failed)
+        {
+            Console.Error.WriteLine(
+                $"[{name}] FAIL：{milestone} operation coverage 不完整；本模式未執行完整 schema 語意比對。");
+            return 1;
+        }
+
+        Console.WriteLine(
+            $"[{name}] PASS：{milestone} operation coverage 完整；本模式未執行完整 schema 語意比對。");
+        return 0;
+    }
+
+    private static IReadOnlyList<CatalogEntry> ReadCatalog(string path, string name)
+    {
+        if (!File.Exists(path))
+        {
+            throw new FileNotFoundException("找不到端點里程碑索引。", path);
+        }
+
+        var targetHeading = name.Equals("storefront", StringComparison.OrdinalIgnoreCase)
+            ? "### Storefront"
+            : name.Equals("admin", StringComparison.OrdinalIgnoreCase)
+                ? "### Admin"
+                : throw new InvalidDataException(
+                    $"里程碑索引只支援 storefront/admin，收到 name={name}。");
+        var inTarget = false;
+        var result = new List<CatalogEntry>();
+        foreach (var raw in File.ReadLines(path))
+        {
+            var line = raw.Trim();
+            if (line.StartsWith("### ", StringComparison.Ordinal))
+            {
+                inTarget = line.StartsWith(targetHeading, StringComparison.OrdinalIgnoreCase);
+                continue;
+            }
+
+            if (!inTarget || !line.StartsWith("| `", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var columns = line.Split('|')
+                .Skip(1)
+                .SkipLast(1)
+                .Select(column => column.Trim().Trim('`'))
+                .ToArray();
+            var milestoneIndex = name.Equals("admin", StringComparison.OrdinalIgnoreCase) ? 3 : 2;
+            if (columns.Length <= milestoneIndex)
+            {
+                throw new InvalidDataException($"{path} 的 {name} 端點列欄位不足：{line}");
+            }
+
+            result.Add(new CatalogEntry(
+                new ApiOperation(columns[0].ToUpperInvariant(), columns[1]),
+                columns[milestoneIndex]));
+        }
+
+        if (result.Count == 0)
+        {
+            throw new InvalidDataException($"{path} 找不到 {targetHeading} 端點列。");
+        }
+
+        var duplicate = result.GroupBy(entry => entry.Operation)
+            .FirstOrDefault(group => group.Count() > 1);
+        if (duplicate is not null)
+        {
+            throw new InvalidDataException($"{path} 重複列出 operation：{duplicate.Key}。");
+        }
+
+        return result;
+    }
+
+    private static HashSet<ApiOperation> OperationsOf(OpenApiDocument document)
+    {
+        var result = new HashSet<ApiOperation>();
+        if (document.Paths is null)
+        {
+            return result;
+        }
+
+        foreach (var (path, item) in document.Paths)
+        {
+            if (item?.Operations is not { } operations)
+            {
+                continue;
+            }
+
+            foreach (var method in operations.Keys)
+            {
+                result.Add(new ApiOperation(method.ToString().ToUpperInvariant(), path));
+            }
+        }
+
+        return result;
+    }
+
+    private static bool PrintOperationDifference(string label, IReadOnlyCollection<ApiOperation> operations)
+    {
+        if (operations.Count == 0)
+        {
+            return false;
+        }
+
+        Console.Error.WriteLine($"  {label}（前 20）：{string.Join(", ", operations.Take(20))}");
+        return true;
     }
 
     private static Dictionary<string, string> ParseArguments(string[] args)
@@ -181,4 +350,17 @@ internal static class ContractGate
         var text = value.ToJsonString();
         return text.Length <= 500 ? text : text[..500] + "...";
     }
+
+    private readonly record struct ApiOperation(string Method, string Path) : IComparable<ApiOperation>
+    {
+        public int CompareTo(ApiOperation other)
+        {
+            var path = StringComparer.Ordinal.Compare(Path, other.Path);
+            return path != 0 ? path : StringComparer.Ordinal.Compare(Method, other.Method);
+        }
+
+        public override string ToString() => $"{Method} {Path}";
+    }
+
+    private sealed record CatalogEntry(ApiOperation Operation, string Milestone);
 }

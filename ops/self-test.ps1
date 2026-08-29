@@ -139,11 +139,9 @@ try {
 
     $toolProject = "$PSScriptRoot\OpenApiContractGate\GreyGray.OpenApiContractGate.csproj"
     $tool = "$PSScriptRoot\OpenApiContractGate\bin\$Configuration\net10.0\GreyGray.OpenApiContractGate.exe"
-    if (-not (Test-Path -LiteralPath $tool -PathType Leaf)) {
-        Invoke-NativeCommand -FilePath 'dotnet' `
-            -ArgumentList @('build', $toolProject, '-c', $Configuration, '--nologo') `
-            -WorkingDirectory $repo -EchoOutput | Out-Null
-    }
+    Invoke-NativeCommand -FilePath 'dotnet' `
+        -ArgumentList @('build', $toolProject, '-c', $Configuration, '--nologo') `
+        -WorkingDirectory $repo -EchoOutput | Out-Null
     $frozen = Join-Path $tempRoot 'valid.yaml'
     $validFixture = @'
 openapi: 3.1.0
@@ -153,6 +151,11 @@ info:
 paths:
   /v1/example:
     get:
+      responses:
+        '204':
+          description: No content
+  /v1/future:
+    post:
       responses:
         '204':
           description: No content
@@ -171,6 +174,50 @@ paths:
         -WorkingDirectory $repo -AllowNonZeroExit
     if ($different.ExitCode -eq 0) { throw 'OpenAPI gate 沒有抓到注入的 version drift。' }
     Write-Host 'PASS OpenAPI gate：同檔通過；注入 version drift 後確實紅燈'
+
+    $catalog = Join-Path $tempRoot 'catalog.md'
+    $catalogFixture = @'
+### Storefront（:5000）
+
+| 方法 | 路徑 | 里程碑 | 說明 |
+|---|---|---|---|
+| `GET` | `/v1/example` | M1a | current |
+| `POST` | `/v1/future` | M1b | future |
+
+### Admin（:5001）
+'@
+    [System.IO.File]::WriteAllText($catalog, $catalogFixture, (New-Object System.Text.UTF8Encoding($false)))
+    $m1aActual = Join-Path $tempRoot 'm1a-actual.yaml'
+    $m1aFixture = @'
+openapi: 3.1.0
+info:
+  title: Self Test Actual
+  version: "1.0.0"
+paths:
+  /v1/example:
+    get:
+      responses:
+        '204':
+          description: No content
+'@
+    [System.IO.File]::WriteAllText($m1aActual, $m1aFixture, (New-Object System.Text.UTF8Encoding($false)))
+    $coverage = Invoke-NativeCommand -FilePath $tool `
+        -ArgumentList @(
+            '--expected', $frozen, '--actual', $m1aActual, '--name', 'storefront',
+            '--milestone', 'M1a', '--catalog', $catalog) `
+        -WorkingDirectory $repo -AllowNonZeroExit -EchoOutput
+    if ($coverage.ExitCode -ne 0) { throw 'M1a coverage 不應被尚未實作的 M1b operation 擋住。' }
+
+    $missingM1a = Join-Path $tempRoot 'missing-m1a.yaml'
+    $missingFixture = $m1aFixture.Replace('/v1/example:', '/v1/future:').Replace('    get:', '    post:')
+    [System.IO.File]::WriteAllText($missingM1a, $missingFixture, (New-Object System.Text.UTF8Encoding($false)))
+    $missingCoverage = Invoke-NativeCommand -FilePath $tool `
+        -ArgumentList @(
+            '--expected', $frozen, '--actual', $missingM1a, '--name', 'storefront',
+            '--milestone', 'M1a', '--catalog', $catalog) `
+        -WorkingDirectory $repo -AllowNonZeroExit
+    if ($missingCoverage.ExitCode -eq 0) { throw 'M1a coverage gate 沒有抓到缺少的 M1a operation。' }
+    Write-Host 'PASS OpenAPI milestone gate：忽略未到期 M1b；缺少 M1a operation 時紅燈'
 }
 finally {
     if (Test-Path -LiteralPath $tempRoot) {
