@@ -10,6 +10,7 @@ set -u
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.dispatch/lib.sh"
 
 payload="$(cat)"
+gg_resolve_package "$payload"
 case "$payload" in
   *'"stop_hook_active"'*'true'*) exit 0 ;;
 esac

@@ -17,6 +17,7 @@ payload="${1:-}"
 if [ -z "$payload" ]; then
   payload="$(cat)"
 fi
+gg_resolve_package "$payload"
 [ -n "$payload" ] || exit 0
 
 case "$payload" in

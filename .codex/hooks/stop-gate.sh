@@ -11,6 +11,7 @@ payload="${1:-}"
 if [ -z "$payload" ] && [ ! -t 0 ]; then
   payload="$(cat)"
 fi
+gg_resolve_package "$payload"
 
 # Codex 已經因為這個 hook 重跑過一輪，不要無限循環
 case "$payload" in

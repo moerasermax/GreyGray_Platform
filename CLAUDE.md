@@ -74,10 +74,11 @@ pnpm api:generate     # 契約改了要重跑
 ## 只能照派工書開工
 
 **沒有派工書就不准寫原始碼。** 生效中的派工寫在 `.dispatch/ACTIVE.md`，
-由整合者維護，格式與範例都在那個檔案裡。三個 hook 一起守這條規則：
+由整合者維護，格式與範例都在那個檔案裡。四個 hook 一起守這條規則：
 
 | Hook | 做什麼 |
 |---|---|
+| `UserPromptSubmit` → `claim-package.sh` | 認出 prompt 裡的 `GG_PACKAGE=<包名>`，把包別綁到這個 session_id（給 ai-cli fan out 的子 agent 用） |
 | `SessionStart` → `session-brief.sh` | 一開場就把「你這一包能動哪些路徑」送進 context |
 | `PreToolUse`（Write／Edit）→ `dispatch-guard.sh` | 即時擋下派工範圍外的寫入 |
 | `Stop` → `stop-gate.sh` | 收工前用 `git diff` 再查一次越界——**這一層不能省**，因為用 Bash（`sed -i`、heredoc、重導向）寫的檔案繞得過 `PreToolUse`，但繞不過 git |
@@ -86,10 +87,13 @@ pnpm api:generate     # 契約改了要重跑
 `ACTIVE.md` 沒有任何 `package:` 時是**整合者模式**：原始碼一律不准寫。
 整合者自己要動原始碼，也要先在 `ACTIVE.md` 開一筆 `package:` 留下軌跡。
 
-**每個實作者 session 都要帶 `GG_PACKAGE`**：`GG_PACKAGE=FE-9 claude`。
-不帶的話，同時派多包時 `allow` 會變成聯集——擋得住整波之外，
-擋不住 FE-9 去寫 FE-10 的檔案，而那正是所有權表要防的事。
-包名拼錯一律擋下（fail-closed），不會退化成什麼都能寫。
+**每個實作者 session 要宣告自己是哪一包**，兩條路擇一：
+自己開 terminal 就 `GG_PACKAGE=FE-9 claude`；
+lead 用 ai-cli fan out 子 agent 時，在子 agent 的 prompt 裡寫一行 `GG_PACKAGE=FE-9`，
+`UserPromptSubmit` 會把包別綁到那個 session_id 上（ai-cli 的 `run` 沒有 env 參數，
+子行程繼承的是 MCP server 自己的環境，所以只能走 session_id）。
+不宣告的話 `allow` 會變成聯集——擋得住整波之外，擋不住 FE-9 去寫 FE-10 的檔案。
+包名拼錯一律擋下（fail-closed）。
 
 **Codex 也受同一套閘門管。** 它不讀 `.claude/`，讀的是 `.codex/hooks.json` 與 `AGENTS.md`，
 但判斷邏輯共用 `.dispatch/lib.sh`、狀態共用 `.dispatch/ACTIVE.md`——**派工狀態只有一份**。

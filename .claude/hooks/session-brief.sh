@@ -3,6 +3,10 @@
 set -u
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.dispatch/lib.sh"
 
+payload="${1:-}"
+if [ -z "$payload" ] && [ ! -t 0 ]; then payload="$(cat)"; fi
+gg_resolve_package "$payload"
+
 if ! gg_has_dispatch; then
   msg="目前沒有生效中的派工（.dispatch/ACTIVE.md 沒有任何 package）。這代表現在是整合者模式：原始碼一律不准寫，只能動 docs/、management/、閘門自己的檔案與 PM 資料夾。要動原始碼就先在 ACTIVE.md 開一筆 package，留下軌跡。"
 elif ! gg_package_valid; then
