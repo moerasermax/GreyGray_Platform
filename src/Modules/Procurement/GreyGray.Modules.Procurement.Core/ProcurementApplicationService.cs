@@ -4,20 +4,36 @@ using GreyGray.Modules.Inventory.Contracts;
 using GreyGray.Modules.Ordering.Contracts;
 using GreyGray.Modules.Procurement.Contracts;
 using GreyGray.Platform.Abstractions.Messaging;
+using GreyGray.Platform.Abstractions.Saga;
 using GreyGray.Shared.Kernel;
 
 namespace GreyGray.Modules.Procurement.Core;
 
 internal sealed class ProcurementApplicationService(
     IProcurementRepository purchaseItems,
+    IInquiryRepository inquiries,
     IUnitOfWork unitOfWork,
     IEventPublisher eventPublisher,
+    ISagaTimerScheduler timerScheduler,
     IOrderQuery orders,
     ICampaignQuery campaigns,
     IClock clock,
     ICorrelationContext correlationContext)
-    : IProcurementApplication, IProcurementGoodsReceipt, IProcurementQuery
+    : IProcurementApplication,
+        IProcurementGoodsReceipt,
+        IProcurementCompensation,
+        IInquiryReplyReceiver,
+        IProcurementQuery
 {
+    /// <summary>
+    /// 現場漲價詢問的逾時期限。<b>業務沒有訂出具體時數</b>
+    /// （docs/02「逾期未付款 Saga Timer」的 N 小時同樣沒訂過），
+    /// 這是技術預設值，需要人拍板正式數字，不是已決定的業務規則。
+    /// </summary>
+    private static readonly TimeSpan PriceInquiryTimeout = TimeSpan.FromHours(2);
+
+    internal const string PriceInquirySagaType = "procurement.price-inquiry";
+
     public async Task<Result<int>> BuildCampaignListAsync(
         CampaignClosed campaignClosed,
         CancellationToken cancellationToken)
@@ -129,7 +145,7 @@ internal sealed class ProcurementApplicationService(
 
         if (transitioned.Value == PurchaseTransition.AlreadyRecorded)
         {
-            return item.ToContract();
+            return await ToContractAsync(item, cancellationToken);
         }
 
         await eventPublisher.PublishAsync(
@@ -145,7 +161,7 @@ internal sealed class ProcurementApplicationService(
                 actualPaid),
             cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
-        return item.ToContract();
+        return await ToContractAsync(item, cancellationToken);
     }
 
     public async Task<Result<PurchaseItem>> MarkReceivedAsync(
@@ -171,7 +187,7 @@ internal sealed class ProcurementApplicationService(
 
         if (transitioned.Value == ReceiptTransition.AlreadyRecorded)
         {
-            return item.ToContract();
+            return await ToContractAsync(item, cancellationToken);
         }
 
         var actualPaid = item.ActualPaid;
@@ -194,7 +210,209 @@ internal sealed class ProcurementApplicationService(
                 LotSource.OverseasPurchase),
             cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
-        return item.ToContract();
+        return await ToContractAsync(item, cancellationToken);
+    }
+
+    public async Task<Result<PurchaseItem>> MarkUnavailableAsync(
+        PurchaseItemId id,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        var normalizedReason = reason?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedReason) || normalizedReason.Length > 200)
+        {
+            return Result<PurchaseItem>.Failure(
+                "procurement.unavailable-reason-invalid",
+                "缺貨原因必須是 1 到 200 個字元。");
+        }
+
+        var item = await purchaseItems.GetAsync(
+            correlationContext.TenantId,
+            id,
+            cancellationToken);
+        if (item is null)
+        {
+            return Result<PurchaseItem>.Failure(
+                "procurement.purchase-item-not-found",
+                "找不到指定的採購品項。");
+        }
+
+        var transitioned = item.MarkUnavailable(clock.UtcNow);
+        if (transitioned.IsFailure)
+        {
+            return Result<PurchaseItem>.Failure(transitioned.Error);
+        }
+
+        if (transitioned.Value == UnavailableTransition.AlreadyRecorded)
+        {
+            return await ToContractAsync(item, cancellationToken);
+        }
+
+        await eventPublisher.PublishAsync(
+            new ItemUnavailable(
+                Guid.CreateVersion7(),
+                item.DecidedAt!.Value,
+                item.TenantId,
+                item.Id,
+                item.CampaignId,
+                item.OrderLineId,
+                normalizedReason),
+            cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return await ToContractAsync(item, cancellationToken);
+    }
+
+    public async Task<Result<Inquiry>> ReportPriceChangedAsync(
+        PurchaseItemId id,
+        Money newPrice,
+        CancellationToken cancellationToken)
+    {
+        if (newPrice.IsNegative || !Enum.IsDefined(newPrice.Currency))
+        {
+            return Result<Inquiry>.Failure(
+                "procurement.invalid-new-price",
+                "回報的新價格不得為負數，且必須使用已知幣別。");
+        }
+
+        var item = await purchaseItems.GetAsync(
+            correlationContext.TenantId,
+            id,
+            cancellationToken);
+        if (item is null)
+        {
+            return Result<Inquiry>.Failure(
+                "procurement.purchase-item-not-found",
+                "找不到指定的採購品項。");
+        }
+
+        if (item.TargetPrice is not { } originalPrice)
+        {
+            return Result<Inquiry>.Failure(
+                "procurement.target-price-required",
+                "沒有登記目標採購價的品項無法回報現場漲價。");
+        }
+
+        if (newPrice.Currency != originalPrice.Currency)
+        {
+            return Result<Inquiry>.Failure(
+                "procurement.price-currency-mismatch",
+                "回報的新價格幣別必須與目標採購價一致。");
+        }
+
+        var started = item.ReportPriceChanged();
+        if (started.IsFailure)
+        {
+            return Result<Inquiry>.Failure(started.Error);
+        }
+
+        var occurredAt = clock.UtcNow;
+        var timeoutAt = occurredAt + PriceInquiryTimeout;
+        var inquiry = InquiryAggregate.Open(
+            InquiryId.New(),
+            item.TenantId,
+            item.Id,
+            originalPrice,
+            newPrice,
+            occurredAt,
+            timeoutAt);
+        inquiries.Add(inquiry);
+
+        await timerScheduler.ScheduleAsync(
+            PriceInquirySagaType,
+            inquiry.Id.ToString(),
+            timeoutAt,
+            "{}",
+            item.TenantId,
+            cancellationToken);
+
+        await eventPublisher.PublishAsync(
+            new ItemPriceChanged(
+                Guid.CreateVersion7(),
+                occurredAt,
+                item.TenantId,
+                item.Id,
+                inquiry.Id,
+                item.CampaignId,
+                item.OrderLineId,
+                item.SkuId,
+                originalPrice,
+                newPrice,
+                timeoutAt),
+            cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return inquiry.ToContract();
+    }
+
+    public async Task<Result> ReplyAsync(
+        InquiryId inquiryId,
+        bool accepted,
+        string? replyText,
+        CancellationToken cancellationToken)
+    {
+        var normalizedReplyText = string.IsNullOrWhiteSpace(replyText) ? null : replyText.Trim();
+        if (normalizedReplyText is { Length: > 200 })
+        {
+            return Result.Failure(
+                "procurement.inquiry-reply-text-invalid",
+                "回覆內容不得超過 200 個字元。");
+        }
+
+        var inquiry = await inquiries.GetAsync(correlationContext.TenantId, inquiryId, cancellationToken);
+        if (inquiry is null)
+        {
+            return Result.Failure("procurement.inquiry-not-found", "找不到指定的詢價。");
+        }
+
+        var outcome = accepted ? InquiryOutcome.ConfirmedByCustomer : InquiryOutcome.DeclinedByCustomer;
+        var resolved = await ResolveInquiryAsync(inquiry, outcome, normalizedReplyText, cancellationToken);
+        return resolved;
+    }
+
+    /// <summary>Saga timer 到期時呼叫；「逾時視為照買」。</summary>
+    internal async Task ResolveInquiryTimeoutAsync(
+        InquiryId inquiryId,
+        CancellationToken cancellationToken)
+    {
+        var inquiry = await inquiries.GetAsync(correlationContext.TenantId, inquiryId, cancellationToken);
+        if (inquiry is null)
+        {
+            return;
+        }
+
+        await ResolveInquiryAsync(
+            inquiry,
+            InquiryOutcome.AutoApprovedOnTimeout,
+            null,
+            cancellationToken);
+    }
+
+    private async Task<Result> ResolveInquiryAsync(
+        InquiryAggregate inquiry,
+        InquiryOutcome outcome,
+        string? replyText,
+        CancellationToken cancellationToken)
+    {
+        var occurredAt = clock.UtcNow;
+        var resolved = inquiry.Resolve(outcome, replyText, occurredAt);
+        if (resolved == InquiryResolutionTransition.AlreadyResolved)
+        {
+            return Result.Success();
+        }
+
+        var item = await purchaseItems.GetAsync(inquiry.TenantId, inquiry.PurchaseItemId, cancellationToken);
+        item?.ResolvePriceChange();
+
+        await eventPublisher.PublishAsync(
+            new InquiryResolved(
+                Guid.CreateVersion7(),
+                occurredAt,
+                inquiry.TenantId,
+                inquiry.Id,
+                inquiry.PurchaseItemId,
+                outcome),
+            cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return Result.Success();
     }
 
     public async Task<Result<IReadOnlyList<PurchaseItem>>> GetCampaignListAsync(
@@ -206,17 +424,47 @@ internal sealed class ProcurementApplicationService(
             campaignId,
             tracking: false,
             cancellationToken);
-        return items.Select(item => item.ToContract()).ToArray();
+        if (items.Count == 0)
+        {
+            return Array.Empty<PurchaseItem>();
+        }
+
+        var latestInquiries = await inquiries.GetLatestByPurchaseItemsAsync(
+            correlationContext.TenantId,
+            items.Select(item => item.Id).ToArray(),
+            cancellationToken);
+        return items
+            .Select(item => item.ToContract() with
+            {
+                Inquiry = latestInquiries.TryGetValue(item.Id, out var inquiry)
+                    ? inquiry.ToContract()
+                    : null,
+            })
+            .ToArray();
     }
 
-    public Task<Result<Inquiry>> GetInquiryAsync(
+    public async Task<Result<Inquiry>> GetInquiryAsync(
         InquiryId id,
         CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(Result<Inquiry>.Failure(
-            "procurement.inquiry-not-found",
-            "詢價功能將於 M1b-2 啟用。"));
+        var inquiry = await inquiries.GetAsync(correlationContext.TenantId, id, cancellationToken);
+        return inquiry is null
+            ? Result<Inquiry>.Failure("procurement.inquiry-not-found", "找不到指定的詢價。")
+            : inquiry.ToContract();
+    }
+
+    private async Task<PurchaseItem> ToContractAsync(
+        PurchaseItemAggregate item,
+        CancellationToken cancellationToken)
+    {
+        var latest = await inquiries.GetLatestByPurchaseItemsAsync(
+            item.TenantId,
+            [item.Id],
+            cancellationToken);
+        return item.ToContract() with
+        {
+            Inquiry = latest.TryGetValue(item.Id, out var inquiry) ? inquiry.ToContract() : null,
+        };
     }
 
     private static bool IsEligibleOrder(OrderView order) =>

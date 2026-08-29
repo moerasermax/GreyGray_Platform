@@ -211,6 +211,69 @@ internal sealed class PurchaseItemAggregate
         return ReceiptTransition.Recorded;
     }
 
+    /// <summary>
+    /// 現場缺貨。只記錄「這個採購品項買不到」的事實；
+    /// 實際退款去向由客人自選，透過另一個既有的 OrderLine 取消端點處理（ADR-023），
+    /// 這裡不承載也不預設 <c>refundTo</c>。
+    /// </summary>
+    public Result<UnavailableTransition> MarkUnavailable(DateTimeOffset decidedAt)
+    {
+        if (Status == PurchaseItemStatus.Unavailable)
+        {
+            return UnavailableTransition.AlreadyRecorded;
+        }
+
+        if (Status == PurchaseItemStatus.Purchased)
+        {
+            return Result<UnavailableTransition>.Failure(
+                "procurement.purchase-item-already-purchased",
+                "已買到的採購品項不能再標記為缺貨。");
+        }
+
+        Status = PurchaseItemStatus.Unavailable;
+        DecidedAt = decidedAt;
+        return UnavailableTransition.Recorded;
+    }
+
+    /// <summary>
+    /// 現場漲價。開啟一輪詢問，發完就放行——不阻塞現場動作。
+    /// 只有 <see cref="PurchaseItemStatus.Pending"/> 可以開始，
+    /// 同一品項不能同時有兩輪未解決的詢問。
+    /// </summary>
+    public Result<PriceChangeTransition> ReportPriceChanged()
+    {
+        if (Status == PurchaseItemStatus.PriceChangedPendingConfirmation)
+        {
+            return Result<PriceChangeTransition>.Failure(
+                "procurement.price-change-already-pending",
+                "這個採購品項已經有一輪漲價詢問還沒解決。");
+        }
+
+        if (Status != PurchaseItemStatus.Pending)
+        {
+            return Result<PriceChangeTransition>.Failure(
+                "procurement.purchase-item-not-pending",
+                "只有待採購的品項可以回報現場漲價。");
+        }
+
+        Status = PurchaseItemStatus.PriceChangedPendingConfirmation;
+        return PriceChangeTransition.Started;
+    }
+
+    /// <summary>
+    /// 詢問解決（客人回覆或逾時視為照買）後把品項放回待採購——
+    /// 買或不買仍是現場的下一步動作，這裡不代為決定。
+    /// 如果品項已經因為別的路徑離開 <see cref="PurchaseItemStatus.PriceChangedPendingConfirmation"/>
+    /// （例如另外被標記缺貨），這裡是 no-op，不覆蓋別人的決定。
+    /// </summary>
+    public void ResolvePriceChange()
+    {
+        if (Status == PurchaseItemStatus.PriceChangedPendingConfirmation)
+        {
+            Status = PurchaseItemStatus.Pending;
+        }
+    }
+
     public PurchaseItem ToContract() =>
         new(
             Id,
@@ -235,6 +298,17 @@ internal enum ReceiptTransition
 {
     AlreadyRecorded = 0,
     Recorded = 1,
+}
+
+internal enum UnavailableTransition
+{
+    AlreadyRecorded = 0,
+    Recorded = 1,
+}
+
+internal enum PriceChangeTransition
+{
+    Started = 1,
 }
 
 internal interface IProcurementRepository

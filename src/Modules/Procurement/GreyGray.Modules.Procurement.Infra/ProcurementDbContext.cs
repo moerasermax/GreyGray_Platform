@@ -15,11 +15,14 @@ internal sealed class ProcurementDbContext(DbContextOptions<ProcurementDbContext
 {
     public DbSet<PurchaseItemAggregate> PurchaseItems => Set<PurchaseItemAggregate>();
 
+    public DbSet<InquiryAggregate> Inquiries => Set<InquiryAggregate>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
         modelBuilder.HasDefaultSchema("procurement");
         ConfigurePurchaseItem(modelBuilder);
+        ConfigureInquiry(modelBuilder);
         modelBuilder.AddPlatformTables();
     }
 
@@ -133,5 +136,72 @@ internal sealed class ProcurementDbContext(DbContextOptions<ProcurementDbContext
             .HasDatabaseName("ux_purchase_item_tenant_order_line");
         entity.HasIndex(item => new { item.TenantId, item.CampaignId, item.Status })
             .HasDatabaseName("ix_purchase_item_tenant_campaign_status");
+        entity.HasIndex(item => new { item.TenantId, item.Id })
+            .IsUnique()
+            .HasDatabaseName("purchase_item_tenant_id_unique");
+    }
+
+    private static void ConfigureInquiry(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<InquiryAggregate>();
+        entity.ToTable("inquiry", "procurement");
+
+        entity.HasKey(inquiry => inquiry.Id);
+        entity.Property(inquiry => inquiry.Id)
+            .HasColumnName("id")
+            .HasConversion(id => id.Value, value => new InquiryId(value))
+            .ValueGeneratedNever();
+        entity.Property(inquiry => inquiry.TenantId)
+            .HasColumnName("tenant_id")
+            .HasConversion(id => id.Value, value => new TenantId(value))
+            .HasDefaultValue(TenantId.Default)
+            .IsRequired();
+        entity.Property(inquiry => inquiry.PurchaseItemId)
+            .HasColumnName("purchase_item_id")
+            .HasConversion(id => id.Value, value => new PurchaseItemId(value))
+            .IsRequired();
+        entity.Property(inquiry => inquiry.OriginalPriceAmountMinor)
+            .HasColumnName("original_price_amount_minor")
+            .IsRequired();
+        entity.Property(inquiry => inquiry.OriginalPriceCurrency)
+            .HasColumnName("original_price_currency")
+            .HasConversion<string>()
+            .HasMaxLength(3)
+            .IsRequired();
+        entity.Property(inquiry => inquiry.NewPriceAmountMinor)
+            .HasColumnName("new_price_amount_minor")
+            .IsRequired();
+        entity.Property(inquiry => inquiry.NewPriceCurrency)
+            .HasColumnName("new_price_currency")
+            .HasConversion<string>()
+            .HasMaxLength(3)
+            .IsRequired();
+        entity.Property(inquiry => inquiry.AskedAt)
+            .HasColumnName("asked_at")
+            .HasColumnType("timestamp with time zone")
+            .IsRequired();
+        entity.Property(inquiry => inquiry.TimeoutAt)
+            .HasColumnName("timeout_at")
+            .HasColumnType("timestamp with time zone")
+            .IsRequired();
+        entity.Property(inquiry => inquiry.RepliedAt)
+            .HasColumnName("replied_at")
+            .HasColumnType("timestamp with time zone");
+        entity.Property(inquiry => inquiry.Outcome)
+            .HasColumnName("outcome")
+            .HasConversion<short?>();
+        entity.Property(inquiry => inquiry.ReplyText)
+            .HasColumnName("reply_text")
+            .HasMaxLength(200);
+
+        entity.Ignore(inquiry => inquiry.OriginalPrice);
+        entity.Ignore(inquiry => inquiry.NewPrice);
+
+        entity.HasIndex(inquiry => new { inquiry.TenantId, inquiry.PurchaseItemId })
+            .HasDatabaseName("ix_inquiry_tenant_purchase_item");
+        entity.HasIndex(inquiry => inquiry.PurchaseItemId)
+            .IsUnique()
+            .HasDatabaseName("ux_inquiry_purchase_item_open")
+            .HasFilter("replied_at IS NULL");
     }
 }

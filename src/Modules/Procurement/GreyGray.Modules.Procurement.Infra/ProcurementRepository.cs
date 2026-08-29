@@ -39,3 +39,49 @@ internal sealed class ProcurementRepository(ProcurementDbContext dbContext)
 
     public void Add(PurchaseItemAggregate item) => dbContext.PurchaseItems.Add(item);
 }
+
+internal sealed class InquiryRepository(ProcurementDbContext dbContext)
+    : IInquiryRepository
+{
+    public Task<InquiryAggregate?> GetAsync(
+        TenantId tenantId,
+        InquiryId id,
+        CancellationToken cancellationToken) =>
+        dbContext.Inquiries.SingleOrDefaultAsync(
+            inquiry => inquiry.TenantId == tenantId && inquiry.Id == id,
+            cancellationToken);
+
+    public Task<InquiryAggregate?> GetOpenByPurchaseItemAsync(
+        TenantId tenantId,
+        PurchaseItemId purchaseItemId,
+        CancellationToken cancellationToken) =>
+        dbContext.Inquiries.SingleOrDefaultAsync(
+            inquiry => inquiry.TenantId == tenantId
+                && inquiry.PurchaseItemId == purchaseItemId
+                && inquiry.RepliedAt == null,
+            cancellationToken);
+
+    public async Task<IReadOnlyDictionary<PurchaseItemId, InquiryAggregate>> GetLatestByPurchaseItemsAsync(
+        TenantId tenantId,
+        IReadOnlyCollection<PurchaseItemId> purchaseItemIds,
+        CancellationToken cancellationToken)
+    {
+        if (purchaseItemIds.Count == 0)
+        {
+            return new Dictionary<PurchaseItemId, InquiryAggregate>();
+        }
+
+        var candidates = await dbContext.Inquiries
+            .Where(inquiry => inquiry.TenantId == tenantId
+                && purchaseItemIds.Contains(inquiry.PurchaseItemId))
+            .ToArrayAsync(cancellationToken);
+
+        return candidates
+            .GroupBy(inquiry => inquiry.PurchaseItemId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderByDescending(inquiry => inquiry.AskedAt).First());
+    }
+
+    public void Add(InquiryAggregate inquiry) => dbContext.Inquiries.Add(inquiry);
+}

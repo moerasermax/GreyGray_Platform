@@ -37,26 +37,32 @@ $tunnelToken = Read-Host 'Cloudflare Tunnel token' -AsSecureString
 - 預期：三個變數均取得值，不顯示明文。
 - 失敗：取消執行並重新取得；腳本不接受缺少的正式機憑證，也不會猜 tunnel。
 
-### Valkey 的 Windows 限制
+### KV 用 Garnet，不是 Valkey（ADR-022）
 
-Valkey 官方支援清單沒有原生 Windows，官方 repository 的 Windows 支援仍是未完成議題：
+Valkey 官方支援清單沒有原生 Windows，官方 repository 的 Windows 支援仍是未完成議題
+（<https://github.com/valkey-io/valkey/issues/92>）。改用 Microsoft Garnet：RESP 相容、
+有官方 winget 套件（`Microsoft.Garnet.DN8`，只裝 net8.0 那份——net9.0 那份要 .NET 9
+runtime，YC 上沒裝也不打算裝），不需要像 Valkey 當初那樣人工核准來源壓縮檔。
 
-- <https://github.com/valkey-io/valkey>
-- <https://github.com/valkey-io/valkey/issues/92>
+winget 裝好的東西放在 `C:\Program Files\WinGet\Packages\...`，那個目錄的 ACL 只開放
+給安裝者本人、`Administrators`、`SYSTEM`——服務帳號 `GreyGraySvc` 讀不到。
+`install-environment.ps1` 會把套件內容複製一份到 `$InstallRoot\Garnet`，
+讓它繼承 `$InstallRoot` 已經授予 `GreyGraySvc` 的 ACL。**這正是 §10 那個 `sc start`
+錯誤 5 的根因**，Garnet 與 NSSM 本身都踩過同一個坑。
 
-因此腳本**不會偷偷改裝 Redis、Memurai、WSL 或 Docker**。負責人須先核准一份 Windows x64
-artifact，確認授權與來源，且壓縮檔根目錄含 `valkey-server.exe`、`valkey-cli.exe`，再計算：
+準備要提供給安裝腳本的 PostgreSQL 官方 ZIP binaries（見 §8.2，EDB 圖形安裝程式在
+SSH 下裝不起來）：
 
 ```powershell
-$valkeyArchive = 'C:\Installers\valkey-windows-x64.zip'
-$valkeySha256 = (Get-FileHash -LiteralPath $valkeyArchive -Algorithm SHA256).Hash
-$valkeySha256
+$postgresZip = 'C:\Installers\postgresql-17.11-1-windows-x64-binaries.zip'
+$postgresZipSha256 = (Get-FileHash -LiteralPath $postgresZip -Algorithm SHA256).Hash
+$postgresZipSha256   # 應為 6EABDF00D2893713B75DB4336A23C3FDF505F056E217EC6E2E95D901750CFEA3
 ```
 
-- 預期：輸出 64 位十六進位 SHA-256，與核准紀錄完全相同。
+- 預期：輸出 64 位十六進位 SHA-256，與上面的核准值完全相同。
 - 失敗：來源或 hash 不一致就停止；不可使用 `-WhatIf` 假裝已安裝。
 
-## 2. 安裝 .NET、PostgreSQL、Valkey、Node、cloudflared、NSSM
+## 2. 安裝 .NET、PostgreSQL、Garnet、Node、cloudflared、NSSM
 
 先找出 prod-monitor 正式 TOML 的實際路徑；不要猜路徑。然後執行：
 
@@ -67,8 +73,8 @@ Set-Location 'C:\Source\GreyGray_Platform'
   -InstallRoot 'C:\GreyGray' `
   -PostgreSqlDataRoot 'C:\GreyGray\PostgreSQL\data' `
   -PostgreSqlWalRoot 'C:\GreyGray\PostgreSQL\wal' `
-  -ValkeyArchivePath $valkeyArchive `
-  -ValkeyArchiveSha256 $valkeySha256 `
+  -PostgreSqlZipPath $postgresZip `
+  -PostgreSqlZipSha256 $postgresZipSha256 `
   -PostgresSuperuserCredential $postgresCredential `
   -ServiceCredential $serviceCredential `
   -CloudflareTunnelToken $tunnelToken `
@@ -76,13 +82,17 @@ Set-Location 'C:\Source\GreyGray_Platform'
 ```
 
 腳本使用 WinGet 的精確 package ID：.NET SDK/Runtime 10、ASP.NET Core Runtime 10、
-PostgreSQL 17、Node 22、cloudflared、NSSM。它也會：
+Node 22、cloudflared、NSSM、Garnet（`Microsoft.Garnet.DN8`）。PostgreSQL 不走 winget，
+用官方 ZIP binaries 解壓 ＋ 自己 `initdb`（見 §8.2）。它也會：
 
-- 把 PostgreSQL data 與 `pg_wal` 放在 C 槽；若發現來源不唯一會停止，不會猜哪份 WAL 正確。
-- 建立 `GreyGraySvc`，授予 `C:\GreyGray` Modify ACL，並讓服務使用專屬帳號。
+- 把 PostgreSQL data 與 `pg_wal` 放在 C 槽；`pg_wal` 就留在 `data\pg_wal`，
+  不再搬到獨立目錄建 junction（見 §8.3、§10——那個機制本身會壞，且不是必要條件）。
+- 建立 `GreyGraySvc`，**先**授予 `C:\GreyGray` Modify ACL，**再**把任何要給
+  服務帳號執行的東西（`nssm.exe`、Garnet 套件內容）複製進 `C:\GreyGray` 底下，
+  讓它們繼承這個 ACL——順序反過來就會複製到 §10 那個 `sc start` 錯誤 5。
 - 以 NSSM 預先登記五個 GreyGray app service；部署前保持 Disabled，`deploy.ps1` 會換成真 entrypoint 並啟用。
-- 以 NSSM 登記並啟動 `GreyGray-Valkey`。
-- Valkey 綁定 `127.0.0.1:6379`、開啟 protected mode 與 AOF，不暴露到 LAN。
+- 以 NSSM 登記並啟動 `GreyGray-PostgreSQL` 與 `GreyGray-Garnet`。
+- Garnet 綁定 `127.0.0.1:6379`，不暴露到 LAN。
 - 把 PostgreSQL data/WAL 加進 Defender exclusion。
 - 將 Windows Update 設為人工更新，建立每週日 03:00 的人工維護提醒。
 - 安裝一個 cloudflared Windows service，取代六個 ngrok process。
@@ -97,9 +107,9 @@ PASS M-1 安裝完成。仍須依 runbook 人工確認有線網路與 UPS。
 失敗處理：
 
 - `winget` 失敗：執行 `winget logs --open-logs`，保存當次 installer log，再針對錯誤修正。
-- PostgreSQL WAL 拒絕搬動：保持 PostgreSQL 停止，分辨 data cluster 與 WAL 的唯一來源；不要刪任一邊。
-- Valkey hash 不符：丟棄該 artifact，重新向已核准來源取得。
-- NSSM／服務帳號失敗：用 `Get-CimInstance Win32_Service` 查看 `StartName`，不要改回 LocalSystem。
+- PostgreSQL zip SHA-256 不符：丟棄該 artifact，重新向已核准來源取得，不要跳過驗證硬裝。
+- NSSM／服務帳號失敗：用 `Get-CimInstance Win32_Service` 查看 `StartName`，不要改回 LocalSystem；
+  若是 `sc start` 錯誤 5，先看 §10，很可能是服務指到的執行檔對服務帳號沒有讀取權。
 - cloudflared 失敗：用 `Get-Service cloudflared` 與 Windows Event Viewer 檢查；Cloudflare 官方 Windows service 說明：
   <https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/as-a-service/windows/>
 
@@ -165,10 +175,10 @@ managed block；若設定已有同名、但不在 managed block 的 target，腳
 | FAIL | 檢查命令 | 修復方向 |
 |---|---|---|
 | .NET 10 | `dotnet --list-sdks; dotnet --list-runtimes` | 重跑精確 WinGet package 安裝 |
-| PostgreSQL | `Get-Service postgresql-x64-17`; `pg_isready -h 127.0.0.1 -p 5432`; `Get-Item C:\GreyGray\PostgreSQL\data\pg_wal -Force` | 服務帳號、ACL、WAL junction |
-| Valkey | `Get-Service GreyGray-Valkey`; `Get-NetTCPConnection -LocalPort 6379 -State Listen` | artifact、NSSM AppDirectory、ACL |
+| PostgreSQL | `Get-Service GreyGray-PostgreSQL`; `pg_isready -h 127.0.0.1 -p 5432` | 見下面「NSSM 服務」那列；不是 WAL junction 問題（§8.3 已不用這個機制） |
+| Garnet | `Get-Service GreyGray-Garnet`; `Get-NetTCPConnection -LocalPort 6379 -State Listen` | 見下面「NSSM 服務」那列 |
 | cloudflared | `Get-Service cloudflared`; `Get-Process ngrok -ErrorAction SilentlyContinue` | tunnel token、Event Viewer、移除舊 ngrok 啟動項 |
-| NSSM 五服務 | `Get-CimInstance Win32_Service | Where-Object Name -like 'GreyGray-*'` | 執行 `deploy.ps1` 接上真 artifact；不可用 LocalSystem |
+| NSSM 服務（含 `GreyGray-PostgreSQL`／`GreyGray-Garnet`／五個 app service） | `Get-CimInstance Win32_Service \| Where-Object Name -like 'GreyGray-*'`；`sc.exe start <name>` 若回**錯誤 5**，先看 §10——多半是 binPath 指到的 `nssm.exe` 對服務帳號沒有讀取權，不是帳號密碼或權限指派問題 | 執行 `deploy.ps1` 接上真 artifact；不可用 LocalSystem |
 | Defender | `(Get-MpPreference).ExclusionPath` | 重跑安裝腳本或用 `Add-MpPreference` 補 data/WAL |
 | Windows Update | `Get-ItemProperty HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU` | 確認群組原則沒有覆蓋本機設定 |
 | prod-monitor | `Select-String $monitorConfig -Pattern 'GreyGray-Web-'` | 重跑 register 腳本並重新啟動 collector |
@@ -257,14 +267,11 @@ initdb: 錯誤: 無法建立目錄 ".../data/pg_wal/archive_status": Invalid arg
 | `pg_hba.conf` | ✅ 6 條規則全部 `scram-sha-256`，**`trust` 歸零** |
 | `postgresql.conf` | ✅ `listen_addresses = 'localhost'`、`port = 5432` |
 | 服務帳號 `GreyGraySvc` | ✅ 非管理員，SID `...-1010` |
-| NSSM 服務兩個 | ⚠️ 已建立、設為 Automatic、帳號是 `.\GreyGraySvc`，**但啟動失敗** |
+| NSSM 服務兩個 | ✅ **2026-08-30 BE-13 修復**，見 §10——根因不是帳號，是 `nssm.exe` 本身的 ACL |
 | cloudflared | ✅ 本來就 Running／Automatic |
 | node v22.17.0 | ✅ 本來就是正確版本 |
 
-**沒完成的那一項**：`sc start` 回 `錯誤 5：存取被拒`。
-不是 1069（登入失敗），所以不是服務帳號密碼或 `SeServiceLogonRight` 的問題
-（後者已用 LSA API 授予成功）。**待在機器前面用互動 session 啟動一次確認**；
-兩個服務都是 Automatic，重開機也會自動嘗試啟動。
+`sc start` 錯誤 5 的根因與修復過程見 §10。
 
 ### 秘密檔的位置
 
@@ -280,3 +287,73 @@ C:\GreyGray\secrets\greygraysvc.txt          GreyGraySvc 服務帳號密碼
 > winget 的命令列參數上，winget 把整條指令寫進了它的 log。
 > 已刪除該 log 並**更換密碼**，改用 `--optionfile` 讓密碼不進命令列。
 > 記在這裡是因為這種錯很容易重犯：**任何 `--password` 類參數都不要放在命令列上。**
+
+---
+
+## 10. 2026-08-30 BE-13：`sc start` 錯誤 5 的根因與修復
+
+### 先排除的可能性
+
+- **SDDL 沒問題**。`sc.exe sdshow GreyGray-PostgreSQL` 與 `GreyGray-Garnet` 都是
+  Windows 預設值：`SY`（SYSTEM）與 `BA`（Administrators）完整控制、`IU`／`SU`
+  可啟停可讀。沒有任何自訂限制。
+- **不是 SSH session 被 UAC 過濾成受限 token**。`whoami /groups` 確認
+  `BUILTIN\Administrators` 是 `Enabled group`（不是 deny-only），`whoami /priv`
+  裡 `SeDebugPrivilege`／`SeBackupPrivilege`／`SeSecurityPrivilege`／
+  `SeTakeOwnershipPrivilege` 全部 `Enabled`，`IsInRole(Administrator)` 回 `True`，
+  Mandatory Level 是 `High`——這個 SSH session 本來就是完整管理員權限，
+  不是那種「登入進來但沒提權」的情況。
+- **不是 `GreyGraySvc` 密碼或 `SeServiceLogonRight`**。docs/13 §5、docs/16 §1 都已經
+  記過：錯誤 5 是**存取被拒**，不是 1069（登入失敗），`SeServiceLogonRight` 也已經
+  用 LSA API 授予成功。
+
+### 真正的根因
+
+`sc.exe qc GreyGray-PostgreSQL`／`GreyGray-Garnet` 的 `BINARY_PATH_NAME` 都是
+`"C:\Program Files\WinGet\Links\nssm.exe"`——NSSM 服務的執行檔本身就是 `nssm.exe`
+（它讀自己的服務名去查 `HKLM\...\Services\<name>\Parameters` 才知道要跑誰）。
+
+`icacls 'C:\Program Files\WinGet\Links\nssm.exe'` 只列出三個 ACE：
+`YC\moera:(F)`、`BUILTIN\Administrators:(F)`、`NT AUTHORITY\SYSTEM:(F)`。
+**`GreyGraySvc` 完全沒有出現**，連 `BUILTIN\Users` 都沒有——雖然這個檔案所在的
+`WinGet\Links` 目錄本身有 `BUILTIN\Users:(RX)`，但這個 symlink（指向
+`WinGet\Packages\NSSM.NSSM_...\win64\nssm.exe`）在 winget 建立時被寫了一份**不含
+`Users`／`Authenticated Users` 的獨立 ACL**，繼承鏈到這裡被切斷了。
+
+SCM 啟動服務時，是用 `GreyGraySvc` 的 token 去 `CreateProcess` 這個 `nssm.exe`。
+連檔案都開不了，`StartService` 直接同步回 `ERROR_ACCESS_DENIED`（5）——**服務程式
+本身根本沒被啟動過，所以也不可能是 1069 那種登入失敗**。Garnet 的 winget 套件
+（`WinGet\Packages\Microsoft.Garnet.DN8_...`）有一模一樣的 ACL 模式，只是當時
+還沒被拿來當服務的 binPath，所以沒觸發。
+
+`C:\GreyGray\**` 本身（PostgreSQL data、Garnet 安裝目錄）的 ACL 完全沒問題——
+`icacls` 確認 `GreyGraySvc` 在那邊有 `(F)`／`(RX)`，是安裝腳本先前授予
+`C:\GreyGray` 的 Modify ACL 正常繼承下來的。**問題只出在 nssm.exe 這一個檔案**，
+因為它是 winget 裝的，不在 `C:\GreyGray` 的繼承鏈裡。
+
+### 修復
+
+把 `nssm.exe` 複製一份到 `C:\GreyGray\bin\nssm.exe`（繼承 `GreyGraySvc` 已有的
+ACL），再用 `sc.exe config <name> binPath= "C:\GreyGray\bin\nssm.exe"` 把兩個服務
+的 binPath 改過去：
+
+```powershell
+New-Item -ItemType Directory -Force -Path C:\GreyGray\bin | Out-Null
+Copy-Item 'C:\Program Files\WinGet\Links\nssm.exe' 'C:\GreyGray\bin\nssm.exe' -Force
+sc.exe config GreyGray-PostgreSQL binPath= 'C:\GreyGray\bin\nssm.exe'
+sc.exe config GreyGray-Garnet     binPath= 'C:\GreyGray\bin\nssm.exe'
+sc.exe start GreyGray-PostgreSQL
+sc.exe start GreyGray-Garnet
+```
+
+兩個服務立刻變成 `Running`，`pg_isready` 與 Garnet 的 RESP `PING` 都正常回應。
+**沒有改動任何服務帳號設定、沒有降到 LocalSystem**——降低隔離換綠燈正是這個
+專案一直在避免的事（docs/16 §5）。
+
+`ops/install-environment.ps1` 已經把這個修復自動化，而且**擴大到任何要用
+`GreyGraySvc` 執行的 winget 套件**：`Get-StableNssmPath` 把 `nssm.exe` 複製到
+`$InstallRoot\bin`，Garnet 套件內容複製到 `$InstallRoot\Garnet`，兩者都**在
+`service-acl` 那一步授予 `GreyGraySvc` 對 `$InstallRoot` 的 Modify ACL 之後**才
+複製——順序反過來，複製出來的檔案一樣不會繼承到 ACL，等於重演一次這個坑。
+`ops/verify-environment.ps1` 也新增了 `<service> binPath 服務帳號可讀取` 這個
+檢查項，直接驗這個根因，不必等服務啟動失敗才發現。

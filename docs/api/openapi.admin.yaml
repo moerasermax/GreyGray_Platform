@@ -557,7 +557,7 @@ paths:
               required: [reason, refundTo]
               properties:
                 reason: { type: string, maxLength: 200 }
-                refundTo: { $ref: '#/components/schemas/RefundDestination' }
+                refundTo: { description: '客人自己選的退款去向，不是營運代選（ADR-023）。', $ref: '#/components/schemas/RefundDestination' }
       responses:
         '200':
           description: OK
@@ -587,7 +587,7 @@ paths:
               required: [reason, refundTo]
               properties:
                 reason: { type: string, maxLength: 200 }
-                refundTo: { $ref: '#/components/schemas/RefundDestination' }
+                refundTo: { description: '客人自己選的退款去向，不是營運代選（ADR-023）。', $ref: '#/components/schemas/RefundDestination' }
       responses:
         '200':
           description: OK
@@ -1056,7 +1056,9 @@ components:
       enum: [Draft, Packed, Dispatched, InTransit, ArrivedAtStore, Delivered, Returned, Lost]
     RefundDestination:
       type: string
-      description: '`StoredValue` 完全不動金流、零手續費。優先建議客人選這個。'
+      description: |
+        `StoredValue` 完全不動金流、零手續費。優先建議客人選這個。
+        M1b 期間 `StoredValue` 不開放，選了會回可預期的業務失敗（Result，不是例外）；M3 開啟。
       enum: [OriginalPaymentMethod, StoredValue]
     PurchaseItemStatus:
       type: string

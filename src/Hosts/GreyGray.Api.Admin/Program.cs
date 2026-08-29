@@ -3,6 +3,7 @@ using GreyGray.Api.Admin;
 using GreyGray.Modules.Campaign.Infra;
 using GreyGray.Modules.Catalog.Infra;
 using GreyGray.Modules.Checkout.Infra;
+using GreyGray.Modules.Fulfillment.Infra;
 using GreyGray.Modules.Identity.Infra;
 using GreyGray.Modules.Inventory.Infra;
 using GreyGray.Modules.Ledger.Infra;
@@ -75,6 +76,7 @@ builder.Services
     .AddOrderingModule(builder.Configuration)
     .AddProcurementModule(builder.Configuration)
     .AddPaymentModule(builder.Configuration)
+    .AddFulfillmentModule(builder.Configuration)
     .AddLedgerModule(builder.Configuration);
 
 // TODO(M0-5)：Identity／Catalog 樣板驗收後，逐一複製到其餘模組。
@@ -95,6 +97,8 @@ if (app.Environment.IsDevelopment())
 
 app.MapM1aAdminEndpoints();
 app.MapM1bProcurementEndpoints();
+app.MapM1bCompensationEndpoints();
+app.MapM1bFulfillmentEndpoints();
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();

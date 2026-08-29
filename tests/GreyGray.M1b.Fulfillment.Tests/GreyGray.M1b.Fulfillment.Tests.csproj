@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <RootNamespace>GreyGray.M1a.PaymentLedger.Tests</RootNamespace>
+    <RootNamespace>GreyGray.M1b.Fulfillment.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
     <OutputType>Exe</OutputType>
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
@@ -18,8 +18,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Modules\Payment\GreyGray.Modules.Payment.Infra\GreyGray.Modules.Payment.Infra.csproj" />
-    <ProjectReference Include="..\..\src\Modules\Ledger\GreyGray.Modules.Ledger.Infra\GreyGray.Modules.Ledger.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Fulfillment\GreyGray.Modules.Fulfillment.Infra\GreyGray.Modules.Fulfillment.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ordering\GreyGray.Modules.Ordering.Contracts\GreyGray.Modules.Ordering.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

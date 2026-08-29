@@ -11,6 +11,11 @@
     <ProjectReference Include="..\..\..\Platform\GreyGray.Platform.csproj" />
   </ItemGroup>
 
+  <ItemGroup Label="訂閱事件用的下游模組契約（支撐模組可以訂閱業務模組事件，見 docs/01 §3）">
+    <ProjectReference Include="..\..\Procurement\GreyGray.Modules.Procurement.Contracts\GreyGray.Modules.Procurement.Contracts.csproj" />
+    <ProjectReference Include="..\..\Ordering\GreyGray.Modules.Ordering.Contracts\GreyGray.Modules.Ordering.Contracts.csproj" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />

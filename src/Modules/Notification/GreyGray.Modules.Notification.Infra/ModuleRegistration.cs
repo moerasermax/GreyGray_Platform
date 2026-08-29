@@ -1,4 +1,5 @@
 using GreyGray.Modules.Identity.Contracts;
+using GreyGray.Modules.Procurement.Contracts;
 using GreyGray.Platform.Messaging;
 using GreyGray.Platform.Modules;
 using Microsoft.EntityFrameworkCore;
@@ -47,6 +48,11 @@ internal sealed class NotificationModule : IModuleRegistration
         services.AddIdempotentIntegrationEventHandler<
             CustomerRegistered,
             CustomerRegisteredNotificationHandler,
+            NotificationDbContext>();
+
+        services.AddIdempotentIntegrationEventHandler<
+            ItemPriceChanged,
+            ItemPriceChangedNotificationHandler,
             NotificationDbContext>();
 
         return services;

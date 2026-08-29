@@ -346,3 +346,11 @@ coverage gate 的唯一過濾來源，不再從 description 猜。
    出現 `if (order.Status == ...)` 這種判斷就代表邏輯放錯層。
 3. **不吐內部錯誤訊息。** `500` 的 `title` 固定是「系統發生問題，請稍後再試」，
    細節進 log 與 trace，不進回應。
+
+---
+
+## 11. 契約異動紀錄
+
+| 日期 | 異動 | 依據 | 影響 |
+|---|---|---|---|
+| 2026-08-30 | `refundTo` 的語意從「營運在後台代選」改成「客人自己選」；`RefundDestination.StoredValue` 註明 M1b 期間不開放，回可預期的業務失敗，M3 開啟 | ADR-023 | **純語意變更，schema 不動**——`refundTo` 早已 `required`，enum 兩個值早已都在。只改了兩個 cancel 端點（`/v1/orders/{orderId}/cancel`、`/v1/orders/{orderId}/lines/{lineId}/cancel`）的 `refundTo` description，與 `RefundDestination` 的 description。重跑 `pnpm api:generate`：`types.storefront.ts` 逐位元組不變，`types.admin.ts` 差異只有三行新增的 `@description` JSDoc，欄位、型別、`required`、enum 成員一個都沒變 |

@@ -73,7 +73,11 @@ public sealed record PurchaseItem(
     Money? TargetPrice,
     MoneyPair? ActualPaid,
     PurchaseItemStatus Status,
-    DateTimeOffset? DecidedAt);
+    DateTimeOffset? DecidedAt)
+{
+    /// <summary>有回報過漲價才有值；同一品項只留最近一輪。</summary>
+    public Inquiry? Inquiry { get; init; }
+}
 
 /// <summary>
 /// 現場詢價的軌跡。要記的只有三件事：問了、幾點問的、客人有沒有回。
@@ -124,6 +128,32 @@ public interface IProcurementGoodsReceipt
     /// <summary>記錄已買到的採購品項完成帶回；重送不會重複發出 GoodsReceived。</summary>
     Task<Result<PurchaseItem>> MarkReceivedAsync(
         PurchaseItemId id,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// 缺貨補償與現場漲價詢問 command 的最小 input port（M1b-2）。
+/// </summary>
+public interface IProcurementCompensation
+{
+    /// <summary>
+    /// 現場缺貨。只記錄「這個採購品項買不到」的事實並發 <see cref="ItemUnavailable"/>；
+    /// <b>不承載、不預設退款去向</b>——客人選出來之前，退款流程走另一個既有端點
+    /// （<c>POST /v1/orders/{orderId}/lines/{lineId}/cancel</c>，ADR-023）。
+    /// 冪等：同一個 PurchaseItem 重複標記不會發第二次事件。
+    /// </summary>
+    Task<Result<PurchaseItem>> MarkUnavailableAsync(
+        PurchaseItemId id,
+        string reason,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 回報現場漲價。開一輪詢問並發 <see cref="ItemPriceChanged"/>，發完就放行。
+    /// 逾時視為照買由 Saga Timer 負責，這個呼叫本身不等待客人回覆。
+    /// </summary>
+    Task<Result<Inquiry>> ReportPriceChangedAsync(
+        PurchaseItemId id,
+        Money newPrice,
         CancellationToken cancellationToken);
 }
 

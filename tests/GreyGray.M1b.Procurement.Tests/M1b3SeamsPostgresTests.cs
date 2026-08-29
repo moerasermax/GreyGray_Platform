@@ -13,6 +13,7 @@ using GreyGray.Modules.Procurement.Core;
 using GreyGray.Modules.Procurement.Infra;
 using GreyGray.Platform.Messaging;
 using GreyGray.Platform.Outbox;
+using GreyGray.Platform.Saga;
 using GreyGray.Shared.Kernel;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -66,11 +67,13 @@ public sealed class M1b3SeamsPostgresTests : IAsyncLifetime
 
             var service = new ProcurementApplicationService(
                 new ProcurementRepository(dbContext),
+                new InquiryRepository(dbContext),
                 dbContext,
                 new OutboxEventPublisher<ProcurementDbContext>(
                     dbContext,
                     new MutableCorrelation { TenantId = TenantId.Default },
                     EventTypeRegistry.FromAssemblies([typeof(GoodsReceived).Assembly])),
+                new SagaTimerScheduler<ProcurementDbContext>(dbContext, new FixedClock(Now)),
                 null!,
                 null!,
                 new FixedClock(Now),

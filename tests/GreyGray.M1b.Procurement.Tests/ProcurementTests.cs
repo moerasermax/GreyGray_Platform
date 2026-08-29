@@ -9,6 +9,7 @@ using GreyGray.Modules.Procurement.Contracts;
 using GreyGray.Modules.Procurement.Core;
 using GreyGray.Modules.Procurement.Infra;
 using GreyGray.Platform.Abstractions.Messaging;
+using GreyGray.Platform.Abstractions.Saga;
 using GreyGray.Platform.Outbox;
 using GreyGray.Shared.Kernel;
 using Microsoft.EntityFrameworkCore;
@@ -177,6 +178,98 @@ public sealed class ProcurementTests
         hidden.Error.Code.ShouldBe("procurement.purchase-item-not-found");
     }
 
+    [Fact(DisplayName = "標記缺貨：不承載退款去向、冪等，且已買到的品項不能再標")]
+    public async Task Mark_unavailable_does_not_carry_refund_destination_and_is_idempotent()
+    {
+        var fixture = new ProcurementFixture();
+        fixture.AddOrder(OrderStatus.PaidAwaitingClose, FulfillmentMode.Preorder);
+        await fixture.Service.BuildCampaignListAsync(
+            fixture.CampaignClosed,
+            TestContext.Current.CancellationToken);
+        var item = fixture.Repository.Items.Single();
+
+        var first = await fixture.Service.MarkUnavailableAsync(
+            item.Id,
+            "現場缺貨",
+            TestContext.Current.CancellationToken);
+        var replay = await fixture.Service.MarkUnavailableAsync(
+            item.Id,
+            "現場缺貨",
+            TestContext.Current.CancellationToken);
+
+        first.IsSuccess.ShouldBeTrue();
+        first.Value.Status.ShouldBe(PurchaseItemStatus.Unavailable);
+        first.Value.DecidedAt.ShouldBe(Now);
+        replay.IsSuccess.ShouldBeTrue();
+        fixture.Publisher.Events.ShouldHaveSingleItem();
+        var published = fixture.Publisher.Events.Single().ShouldBeOfType<ItemUnavailable>();
+        published.Reason.ShouldBe("現場缺貨");
+
+        var paid = new MoneyPair(
+            Money.OfMajor(500, Currency.JPY),
+            Money.OfMajor(110, Currency.TWD),
+            null);
+        fixture.AddOrder(OrderStatus.PaidAwaitingClose, FulfillmentMode.Preorder);
+        await fixture.Service.BuildCampaignListAsync(
+            fixture.CampaignClosed,
+            TestContext.Current.CancellationToken);
+        var purchased = fixture.Repository.Items.Single(candidate => candidate.Id != item.Id);
+        await fixture.Service.MarkPurchasedAsync(
+            purchased.Id,
+            purchased.QuantityRequested,
+            paid,
+            TestContext.Current.CancellationToken);
+
+        var blocked = await fixture.Service.MarkUnavailableAsync(
+            purchased.Id,
+            "太晚了",
+            TestContext.Current.CancellationToken);
+        blocked.Error.Code.ShouldBe("procurement.purchase-item-already-purchased");
+    }
+
+    [Fact(DisplayName = "現場漲價：開一輪詢問並排 timer，逾時解決後品項回到 Pending 且第二次解決不再發事件")]
+    public async Task Report_price_changed_opens_inquiry_and_resolves_once_on_timeout()
+    {
+        var fixture = new ProcurementFixture();
+        fixture.AddOrder(OrderStatus.PaidAwaitingClose, FulfillmentMode.Preorder);
+        await fixture.Service.BuildCampaignListAsync(
+            fixture.CampaignClosed,
+            TestContext.Current.CancellationToken);
+        var item = fixture.Repository.Items.Single();
+        var newPrice = Money.OfMajor(420, Currency.TWD);
+
+        var reported = await fixture.Service.ReportPriceChangedAsync(
+            item.Id,
+            newPrice,
+            TestContext.Current.CancellationToken);
+
+        reported.IsSuccess.ShouldBeTrue();
+        item.Status.ShouldBe(PurchaseItemStatus.PriceChangedPendingConfirmation);
+        fixture.TimerScheduler.Scheduled.ShouldHaveSingleItem();
+        fixture.Publisher.Events.OfType<ItemPriceChanged>().ShouldHaveSingleItem();
+
+        var duplicate = await fixture.Service.ReportPriceChangedAsync(
+            item.Id,
+            newPrice,
+            TestContext.Current.CancellationToken);
+        duplicate.Error.Code.ShouldBe("procurement.price-change-already-pending");
+
+        await fixture.Service.ResolveInquiryTimeoutAsync(
+            reported.Value.Id,
+            TestContext.Current.CancellationToken);
+        item.Status.ShouldBe(PurchaseItemStatus.Pending);
+        fixture.Publisher.Events.OfType<InquiryResolved>().ShouldHaveSingleItem();
+
+        await fixture.Service.ReplyAsync(
+            reported.Value.Id,
+            accepted: true,
+            "太晚了",
+            TestContext.Current.CancellationToken);
+        fixture.Publisher.Events.OfType<InquiryResolved>().ShouldHaveSingleItem();
+        var stored = fixture.Inquiries.Items.Single();
+        stored.Outcome.ShouldBe(InquiryOutcome.AutoApprovedOnTimeout);
+    }
+
     [Fact(DisplayName = "Procurement EF model 與 Outbox 共用 DbContext")]
     public void Ef_model_contains_procurement_and_platform_tables()
     {
@@ -267,15 +360,19 @@ public sealed class ProcurementTests
                 TenantId.Default,
                 CampaignId);
             Repository = new MemoryProcurementRepository();
+            Inquiries = new MemoryInquiryRepository();
             UnitOfWork = new CountingUnitOfWork();
             Publisher = new RecordingPublisher();
+            TimerScheduler = new RecordingSagaTimerScheduler();
             Orders = new FakeOrderQuery();
             Campaigns = new FakeCampaignQuery(Offer);
             Correlation = new MutableCorrelation { TenantId = TenantId.Default };
             Service = new ProcurementApplicationService(
                 Repository,
+                Inquiries,
                 UnitOfWork,
                 Publisher,
+                TimerScheduler,
                 Orders,
                 Campaigns,
                 new FixedClock(Now),
@@ -290,9 +387,13 @@ public sealed class ProcurementTests
 
         public MemoryProcurementRepository Repository { get; }
 
+        public MemoryInquiryRepository Inquiries { get; }
+
         public CountingUnitOfWork UnitOfWork { get; }
 
         public RecordingPublisher Publisher { get; }
+
+        public RecordingSagaTimerScheduler TimerScheduler { get; }
 
         public FakeOrderQuery Orders { get; }
 
@@ -337,6 +438,65 @@ internal sealed class MemoryProcurementRepository : IProcurementRepository
             item.TenantId == tenantId && item.CampaignId == campaignId).ToArray());
 
     public void Add(PurchaseItemAggregate item) => Items.Add(item);
+}
+
+internal sealed class MemoryInquiryRepository : IInquiryRepository
+{
+    public List<InquiryAggregate> Items { get; } = [];
+
+    public Task<InquiryAggregate?> GetAsync(
+        TenantId tenantId,
+        InquiryId id,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(Items.SingleOrDefault(
+            inquiry => inquiry.TenantId == tenantId && inquiry.Id == id));
+
+    public Task<InquiryAggregate?> GetOpenByPurchaseItemAsync(
+        TenantId tenantId,
+        PurchaseItemId purchaseItemId,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(Items.SingleOrDefault(inquiry =>
+            inquiry.TenantId == tenantId
+            && inquiry.PurchaseItemId == purchaseItemId
+            && inquiry.RepliedAt is null));
+
+    public Task<IReadOnlyDictionary<PurchaseItemId, InquiryAggregate>> GetLatestByPurchaseItemsAsync(
+        TenantId tenantId,
+        IReadOnlyCollection<PurchaseItemId> purchaseItemIds,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyDictionary<PurchaseItemId, InquiryAggregate>>(Items
+            .Where(inquiry => inquiry.TenantId == tenantId
+                && purchaseItemIds.Contains(inquiry.PurchaseItemId))
+            .GroupBy(inquiry => inquiry.PurchaseItemId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderByDescending(inquiry => inquiry.AskedAt).First()));
+
+    public void Add(InquiryAggregate inquiry) => Items.Add(inquiry);
+}
+
+internal sealed class RecordingSagaTimerScheduler : ISagaTimerScheduler
+{
+    public List<(string SagaType, string SagaId, DateTimeOffset FireAt)> Scheduled { get; } = [];
+
+    public Task<Guid> ScheduleAsync(
+        string sagaType,
+        string sagaId,
+        DateTimeOffset fireAt,
+        string payload,
+        TenantId tenantId,
+        CancellationToken cancellationToken)
+    {
+        Scheduled.Add((sagaType, sagaId, fireAt));
+        return Task.FromResult(Guid.CreateVersion7());
+    }
+
+    public Task CancelAsync(Guid timerId, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public Task CancelAllForSagaAsync(
+        string sagaType,
+        string sagaId,
+        CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
 internal sealed class FakeOrderQuery : IOrderQuery

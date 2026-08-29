@@ -3,6 +3,7 @@ using GreyGray.Modules.Ledger.Contracts;
 using GreyGray.Modules.Ledger.Core;
 using GreyGray.Modules.Ordering.Contracts;
 using GreyGray.Modules.Payment.Contracts;
+using GreyGray.Modules.Procurement.Contracts;
 using GreyGray.Platform.Abstractions.Messaging;
 using GreyGray.Shared.Kernel;
 
@@ -219,4 +220,47 @@ internal sealed class OrderCompletedLedgerHandler(
     }
 
     private sealed record CampaignWeight(CampaignId? CampaignId, long Weight);
+}
+
+/// <summary>現場刷卡買入、帶回入庫。DR 存貨 / CR 現金。</summary>
+internal sealed class GoodsReceivedLedgerHandler(LedgerPostingService posting)
+    : IIntegrationEventHandler<GoodsReceived>
+{
+    public async Task HandleAsync(GoodsReceived @event, CancellationToken cancellationToken)
+    {
+        var totalCost = @event.UnitCost.MultiplyByQuantity(@event.Quantity);
+        await posting.PostAsync(
+            @event.TenantId,
+            @event.OccurredAt,
+            "Procurement",
+            @event.EventId.ToString(),
+            $"現場買入帶回入庫，SKU {@event.SkuId}",
+            [
+                new(AccountCodes.Inventory, Direction.Debit, totalCost, @event.CampaignId),
+                new(AccountCodes.Cash, Direction.Credit, totalCost, @event.CampaignId),
+            ],
+            cancellationToken);
+    }
+}
+
+/// <summary>旅程成本登錄。DR 旅程成本 / CR 現金；團被取消時這筆仍要入帳。</summary>
+internal sealed class TripCostRecordedLedgerHandler(LedgerPostingService posting)
+    : IIntegrationEventHandler<TripCostRecorded>
+{
+    public async Task HandleAsync(TripCostRecorded @event, CancellationToken cancellationToken)
+    {
+        await posting.PostAsync(
+            @event.TenantId,
+            @event.OccurredAt,
+            "Campaign",
+            @event.TripCostId.ToString(),
+            string.IsNullOrWhiteSpace(@event.Memo)
+                ? $"旅程成本（{@event.Kind}）"
+                : $"旅程成本（{@event.Kind}）：{@event.Memo}",
+            [
+                new(AccountCodes.TripCost, Direction.Debit, @event.Amount, @event.CampaignId),
+                new(AccountCodes.Cash, Direction.Credit, @event.Amount, @event.CampaignId),
+            ],
+            cancellationToken);
+    }
 }

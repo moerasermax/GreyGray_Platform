@@ -54,7 +54,17 @@ public sealed record ShipmentSummary(
     string? TrackingNumber,
     IReadOnlyList<OrderId> OrderIds,
     DateTimeOffset? DispatchedAt,
-    DateTimeOffset? DeliveredAt);
+    DateTimeOffset? DeliveredAt)
+{
+    public Money? CarrierCost { get; init; }
+}
+
+public sealed record ShipmentPage(IReadOnlyList<ShipmentSummary> Items, string? NextCursor);
+
+public sealed record AdminShipmentListRequest(
+    ShipmentStatus? Status,
+    ShipmentId? Cursor,
+    int Limit = 20);
 
 // ── 同步契約 ─────────────────────────────────────────────────────────────
 
@@ -64,6 +74,40 @@ public interface IFulfillmentQuery
 
     Task<Result<IReadOnlyList<ShipmentSummary>>> GetByOrderAsync(
         OrderId orderId,
+        CancellationToken cancellationToken);
+
+    Task<Result<ShipmentPage>> ListAsync(
+        AdminShipmentListRequest request,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>Admin BFF 用的 Fulfillment input port——建立出貨單、交運、簽收。</summary>
+public interface IFulfillmentApplication
+{
+    /// <summary>
+    /// 建立出貨單。<b>Order 與 Shipment 是 N:M</b>——<paramref name="orderIds"/>
+    /// 可以是同一張訂單被拆進多個包裹裡的其中之一，也可以是同一客人的多張訂單合併出貨。
+    /// </summary>
+    Task<Result<ShipmentSummary>> CreateAsync(
+        IReadOnlyList<OrderId> orderIds,
+        DeliveryMethod method,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 交運。<paramref name="carrierCost"/> 是<b>付給物流商的成本</b>，
+    /// 不是向客人收的運費（那是訂單的 <c>ShippingFee</c>）。
+    /// </summary>
+    Task<Result<ShipmentSummary>> DispatchAsync(
+        ShipmentId id,
+        string trackingNumber,
+        Money carrierCost,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 簽收。正常情況由物流商回報自動觸發，這裡是人工補登用的端點。
+    /// </summary>
+    Task<Result<ShipmentSummary>> DeliverAsync(
+        ShipmentId id,
         CancellationToken cancellationToken);
 }
 

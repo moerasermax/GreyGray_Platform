@@ -49,13 +49,13 @@ Report 'ASP.NET Core 10 Runtime' (@($runtimes | Where-Object { $_ -match '^Micro
 
 $psql = Get-Command psql.exe -CommandType Application -ErrorAction SilentlyContinue
 if (-not $psql) {
-    $knownPsql = 'C:\Program Files\PostgreSQL\17\bin\psql.exe'
+    $knownPsql = Join-Path $InstallRoot 'PostgreSQL\bin\psql.exe'
     if (Test-Path -LiteralPath $knownPsql -PathType Leaf) { $psql = Get-Item -LiteralPath $knownPsql }
 }
 $psqlPath = if ($psql -and $psql.PSObject.Properties['Source']) { $psql.Source } elseif ($psql) { $psql.FullName } else { $null }
 $psqlVersion = if ($psqlPath) { & $psqlPath --version 2>$null } else { '找不到 psql.exe' }
 Report 'PostgreSQL 17 binary' ($psqlVersion -match ' 17\.') $psqlVersion
-Report 'PostgreSQL service' (Service-IsRunning 'postgresql-x64-17') 'postgresql-x64-17 必須 Running'
+Report 'PostgreSQL service' (Service-IsRunning 'GreyGray-PostgreSQL') 'GreyGray-PostgreSQL 必須 Running'
 $pgIsReady = if ($psqlPath) { Join-Path (Split-Path -Parent $psqlPath) 'pg_isready.exe' } else { $null }
 $pgReadyOutput = '找不到 pg_isready.exe'
 $pgReady = $false
@@ -65,23 +65,34 @@ if ($pgIsReady -and (Test-Path -LiteralPath $pgIsReady -PathType Leaf)) {
 }
 Report 'PostgreSQL 連線 5432' $pgReady $pgReadyOutput
 Report 'PostgreSQL data 在 C 槽' ([IO.Path]::GetFullPath($PostgreSqlDataRoot).StartsWith('C:\',[StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $PostgreSqlDataRoot -PathType Container)) $PostgreSqlDataRoot
-$pgWalLink = Join-Path $PostgreSqlDataRoot 'pg_wal'
-$walIsLink = $false
-if (Test-Path -LiteralPath $pgWalLink) {
-    $walIsLink = [bool]((Get-Item -LiteralPath $pgWalLink -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)
-}
-Report 'PostgreSQL WAL 在 C 槽獨立目錄' ($walIsLink -and [IO.Path]::GetFullPath($PostgreSqlWalRoot).StartsWith('C:\',[StringComparison]::OrdinalIgnoreCase)) "$pgWalLink -> $PostgreSqlWalRoot"
+$pgWalPath = Join-Path $PostgreSqlDataRoot 'pg_wal'
+$pgWalOnC = (Test-Path -LiteralPath $pgWalPath -PathType Container) -and [IO.Path]::GetFullPath($pgWalPath).StartsWith('C:\', [StringComparison]::OrdinalIgnoreCase)
+Report 'PostgreSQL WAL 在 C 槽' $pgWalOnC "$pgWalPath（docs/14 §8.3：不強制獨立 junction，data 與 WAL 都在 C 槽即滿足需求）"
 
-$valkey = Get-Command valkey-cli.exe -CommandType Application -ErrorAction SilentlyContinue
-if (-not $valkey) {
-    $knownValkey = Join-Path $InstallRoot 'runtime\valkey\valkey-cli.exe'
-    if (Test-Path -LiteralPath $knownValkey -PathType Leaf) { $valkey = Get-Item -LiteralPath $knownValkey }
+$garnetExe = Join-Path $InstallRoot 'Garnet\GarnetServer.exe'
+Report 'Garnet binary' (Test-Path -LiteralPath $garnetExe -PathType Leaf) $(if (Test-Path -LiteralPath $garnetExe -PathType Leaf) { $garnetExe } else { '找不到 GarnetServer.exe' })
+Report 'Garnet service' (Service-IsRunning 'GreyGray-Garnet') 'GreyGray-Garnet 必須 Running'
+$garnetPort = Get-NetTCPConnection -State Listen -LocalPort 6379 -ErrorAction SilentlyContinue
+Report 'Garnet port 6379' ($null -ne $garnetPort) '127.0.0.1:6379 必須有 listener'
+$garnetPingOutput = '未測試'
+$garnetPing = $false
+if ($null -ne $garnetPort) {
+    try {
+        $client = New-Object System.Net.Sockets.TcpClient('127.0.0.1', 6379)
+        $client.ReceiveTimeout = 3000
+        $stream = $client.GetStream()
+        $request = [System.Text.Encoding]::ASCII.GetBytes("*1`r`n`$4`r`nPING`r`n")
+        $stream.Write($request, 0, $request.Length)
+        $stream.Flush()
+        $buffer = New-Object byte[] 32
+        $read = $stream.Read($buffer, 0, $buffer.Length)
+        $garnetPingOutput = [System.Text.Encoding]::ASCII.GetString($buffer, 0, $read).Trim()
+        $garnetPing = $garnetPingOutput -eq '+PONG'
+        $client.Close()
+    }
+    catch { $garnetPingOutput = $_.Exception.Message }
 }
-$valkeyPath = if ($valkey -and $valkey.PSObject.Properties['Source']) { $valkey.Source } elseif ($valkey) { $valkey.FullName } else { $null }
-Report 'Valkey binary' ($null -ne $valkey) $(if ($valkeyPath) { $valkeyPath } else { '找不到 valkey-cli.exe' })
-Report 'Valkey service' (Service-IsRunning 'GreyGray-Valkey') 'GreyGray-Valkey 必須 Running'
-$valkeyPort = Get-NetTCPConnection -State Listen -LocalPort 6379 -ErrorAction SilentlyContinue
-Report 'Valkey port 6379' ($null -ne $valkeyPort) '127.0.0.1:6379 必須有 listener'
+Report 'Garnet RESP PING' $garnetPing $garnetPingOutput
 
 $cloudflared = Get-Command cloudflared.exe -CommandType Application -ErrorAction SilentlyContinue
 Report 'cloudflared binary' ($null -ne $cloudflared) $(if ($cloudflared) { $cloudflared.Source } else { '找不到 cloudflared.exe' })
@@ -89,13 +100,36 @@ Report 'cloudflared 單一服務' (Service-IsRunning 'cloudflared') 'cloudflared
 Report 'ngrok 已退出' (@(Get-Process -Name ngrok -ErrorAction SilentlyContinue).Count -eq 0) 'ngrok process count 必須為 0'
 Report 'NSSM binary' (Has-Command 'nssm.exe') 'nssm.exe 必須可解析'
 
+function Test-ServiceAccountCanReadBinary([Microsoft.Management.Infrastructure.CimInstance]$Service, [string]$Account) {
+    <#
+        重現 sc start 錯誤 5 的根因檢查：服務帳號對 binPath 指到的執行檔
+        有沒有至少讀取權。這條擋的是「winget 裝的東西被服務直接參照」這一類坑——
+        WinGet\Links／WinGet\Packages 底下的檔案 ACL 只開放安裝者與 Administrators/SYSTEM。
+    #>
+    if ($null -eq $Service -or [string]::IsNullOrWhiteSpace($Service.PathName)) { return $null }
+    $exePath = ($Service.PathName -replace '^"([^"]+)".*$', '$1')
+    if (-not (Test-Path -LiteralPath $exePath -PathType Leaf)) { return $null }
+    $expected = $Account -replace '^\.\\', ''
+    $acl = Get-Acl -LiteralPath $exePath
+    return @($acl.Access | Where-Object {
+        $_.IdentityReference.Value -like "*$expected" -or
+        $_.IdentityReference.Value -eq 'NT AUTHORITY\Authenticated Users' -or
+        $_.IdentityReference.Value -eq 'BUILTIN\Users'
+    } | Where-Object { $_.FileSystemRights -match 'ReadAndExecute|GenericRead|GenericExecute|FullControl|Modify' }).Count -gt 0
+}
+
 $manifest = & (Join-Path $PSScriptRoot 'service-manifest.ps1')
-foreach ($definition in $manifest.Services) {
-    $service = Get-CimInstance Win32_Service -Filter "Name='$($definition.Name)'" -ErrorAction SilentlyContinue
-    Report "NSSM $($definition.Name)" ($null -ne $service) $(if ($service) { "StartName=$($service.StartName); State=$($service.State)" } else { '找不到服務' })
+$allNssmServiceNames = @($manifest.Services | ForEach-Object { $_.Name }) + @('GreyGray-PostgreSQL', 'GreyGray-Garnet')
+foreach ($name in $allNssmServiceNames) {
+    $service = Get-CimInstance Win32_Service -Filter "Name='$name'" -ErrorAction SilentlyContinue
+    Report "NSSM $name" ($null -ne $service) $(if ($service) { "StartName=$($service.StartName); State=$($service.State)" } else { '找不到服務' })
     if ($service) {
         $expected = $ServiceAccount -replace '^\.\\', ''
-        Report "$($definition.Name) 專屬帳號" ($service.StartName -like "*$expected") "StartName=$($service.StartName)"
+        Report "$name 專屬帳號" ($service.StartName -like "*$expected") "StartName=$($service.StartName)"
+        $canRead = Test-ServiceAccountCanReadBinary -Service $service -Account $ServiceAccount
+        if ($null -ne $canRead) {
+            Report "$name binPath 服務帳號可讀取" $canRead "PathName=$($service.PathName)"
+        }
     }
 }
 

@@ -1,7 +1,9 @@
+using GreyGray.Modules.Campaign.Contracts;
 using GreyGray.Modules.Ledger.Contracts;
 using GreyGray.Modules.Ledger.Core;
 using GreyGray.Modules.Ordering.Contracts;
 using GreyGray.Modules.Payment.Contracts;
+using GreyGray.Modules.Procurement.Contracts;
 using GreyGray.Platform.Abstractions.Messaging;
 using GreyGray.Platform.Messaging;
 using GreyGray.Platform.Modules;
@@ -78,6 +80,14 @@ internal sealed class LedgerModule : IModuleRegistration
         services.AddIdempotentIntegrationEventHandler<
             OrderCompleted,
             OrderCompletedLedgerHandler,
+            LedgerDbContext>();
+        services.AddIdempotentIntegrationEventHandler<
+            GoodsReceived,
+            GoodsReceivedLedgerHandler,
+            LedgerDbContext>();
+        services.AddIdempotentIntegrationEventHandler<
+            TripCostRecorded,
+            TripCostRecordedLedgerHandler,
             LedgerDbContext>();
         return services;
     }
