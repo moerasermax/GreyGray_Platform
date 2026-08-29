@@ -44,10 +44,32 @@ GG_PACKAGE=BE-9 codex
 
 ---
 
-（目前沒有生效中的派工。BE-12 已於 2026-08-29 通過驗收。BE-9 現在可以派。BE-10 已通過驗收（2c05c99）；BE-9 在寫碼前正確停工——派工缺三個上游接縫，改由 BE-12 先補，見 docs/13。）
+**第六波已生效（2026-08-30）。** 五包同時開，`GG_PACKAGE` 不是可選的。
 
-<!--
-派工 BE-9：M1b-3 帶回入庫與旅程成本　·　docs/13-後端第五波派工書.md
+| 包 | 主題 | 派工書 |
+|---|---|---|
+| BE-13 | M-1 環境收尾 🔴 最高優先，不寫 C# | `docs/16` |
+| BE-9 | M1b-3b 帶回入庫與旅程成本 | `docs/13` |
+| BE-11 | M1b-2 缺貨補償與現場漲價詢問 | `docs/13` ＋ ADR-023 |
+| BE-14 | M1b-4 出貨、交運與簽收 | `docs/16` |
+| BE-15 | `refundTo` 語意的契約異動（只改 description） | `docs/16` |
+
+**啟動 prompt 在 `.dispatch/PROMPTS.md`**，直接複製貼上。
+
+> ⚠️ **BE-9／BE-11／BE-14 三包都會跑 `ops/test.ps1`，要排開不要同時跑。**
+> 兩包同時 build 會搶 obj/bin 與 NuGet 全域資料夾，
+> 症狀是 `NuGet.targets(198,5)` 的「當檔案已存在時，無法建立該檔案」——那是競態不是你的程式壞了。
+
+---
+
+派工 BE-13：M-1 環境收尾　·　docs/16-後端第六波派工書.md
+
+package: BE-13
+doc: docs/16-後端第六波派工書.md
+allow: ops/
+allow: .github/workflows/
+
+派工 BE-9：M1b-3b 帶回入庫與旅程成本　·　docs/13-後端第五波派工書.md
 
 package: BE-9
 doc: docs/13-後端第五波派工書.md
@@ -56,33 +78,9 @@ allow: src/Modules/Ledger/
 allow: db/migrations/0010_
 allow: src/Hosts/GreyGray.Api.Admin/M1bInventoryEndpoints.cs
 allow: tests/
--->
 
-<!--
-派工 BE-10：M-1 環境整備腳本化　·　docs/13-後端第五波派工書.md
-
-package: BE-10
-doc: docs/13-後端第五波派工書.md
-allow: ops/
-allow: .github/workflows/
--->
-
-<!--
-派工 BE-12：M1b-3 的三個上游接縫（BE-9 的前置）　·　docs/13-後端第五波派工書.md
-
-package: BE-12
-doc: docs/13-後端第五波派工書.md
-allow: src/Modules/Procurement/
-allow: src/Modules/Campaign/
-allow: src/Modules/Ordering/
-allow: db/migrations/0009_
-allow: tests/
--->
-
-
-<!--
-派工 BE-11：M1b-2 缺貨補償與現場漲價詢問
-🔴 docs/13 §5 的兩個決策沒有答案之前不准啟用這一段。
+派工 BE-11：M1b-2 缺貨補償與現場漲價詢問　·　docs/13-後端第五波派工書.md
+（ADR-023 已拍板，決策阻塞解除）
 
 package: BE-11
 doc: docs/13-後端第五波派工書.md
@@ -91,12 +89,48 @@ allow: src/Modules/Notification/
 allow: db/migrations/0011_
 allow: src/Hosts/GreyGray.Api.Admin/M1bCompensationEndpoints.cs
 allow: tests/
+
+派工 BE-14：M1b-4 出貨、交運與簽收　·　docs/16-後端第六波派工書.md
+
+package: BE-14
+doc: docs/16-後端第六波派工書.md
+allow: src/Modules/Fulfillment/
+allow: db/migrations/0012_
+allow: src/Hosts/GreyGray.Api.Admin/M1bFulfillmentEndpoints.cs
+allow: tests/
+
+派工 BE-15：refundTo 語意的契約異動　·　docs/16-後端第六波派工書.md
+
+package: BE-15
+doc: docs/16-後端第六波派工書.md
+allow: docs/api/
+
+---
+
+<!--
+派工 BE-16：端對端煙霧腳本　·　docs/16-後端第六波派工書.md
+⏸ 等 BE-9／BE-11／BE-13／BE-14 四包全部通過整合驗收才啟用。
+
+package: BE-16
+doc: docs/16-後端第六波派工書.md
+allow: ops/e2e/
+allow: tests/
 -->
 
-> **`tests/` 給了兩個包**，因為兩邊都要加自己的測試專案。設了 `GG_PACKAGE` 也分不開
-> （兩包的 `allow` 都寫 `tests/`）——BE-9 只准動 `tests/**/Inventory*`，
-> BE-11 只准動 `tests/**/Procurement*`，這一條由總驗收第 1 條逐檔看 diff 把關。
+> **`tests/` 給了三個包**（BE-9／BE-11／BE-14），因為三邊都要加自己的測試專案。
+> 設了 `GG_PACKAGE` 也分不開——BE-9 只准動 `tests/**/Inventory*`、
+> BE-11 只准動 `tests/**/Procurement*`、BE-14 只准動 `tests/**/Fulfillment*`，
+> 這一條由總驗收第 1 條逐檔看 diff 把關。
+>
+> **`ops/` 給了 BE-13**，`ops/e2e/` 留給 BE-16——BE-13 不要去建那個目錄。
 >
 > `GreyGray.slnx` 與各 Host 的 `Program.cs` **不在任何 allow 清單裡**，這是刻意的：
-> `docs/13` §2 只授權「加一行」，那種一行的變更請整合者代為套用，
+> `docs/16` §3 只授權「加一行」，那種一行的變更請整合者代為套用，
 > 或由整合者臨時在這裡開一筆 package 留下軌跡。
+
+---
+
+## 已經通過、不再生效的（保留軌跡）
+
+BE-1～BE-8（M0，各自的 commit 見 `GreyGray_PM/00-進度總表.md`）·
+BE-10（M-1 腳本化，`2c05c99`）· BE-12（M1b-3a 三個上游接縫，`dbec9cd`）
