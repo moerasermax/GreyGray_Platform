@@ -101,7 +101,17 @@ pnpm api:generate     # 契約改了要重跑
 | `UserPromptSubmit` → `claim-package.sh` | 認出 prompt 裡的 `GG_PACKAGE=<包名>`，把包別綁到這個 session_id（給 ai-cli fan out 的子 agent 用） |
 | `SessionStart` → `session-brief.sh` | 一開場就把「你這一包能動哪些路徑」送進 context |
 | `PreToolUse`（Write／Edit）→ `dispatch-guard.sh` | 即時擋下派工範圍外的寫入 |
-| `Stop` → `stop-gate.sh` | 收工前用 `git diff` 再查一次越界——**這一層不能省**，因為用 Bash（`sed -i`、heredoc、重導向）寫的檔案繞得過 `PreToolUse`，但繞不過 git |
+| `Stop` → `stop-gate.sh` | 實作者：用 `git diff` 再查一次越界——**這一層不能省**，因為用 Bash（`sed -i`、heredoc、重導向）寫的檔案繞得過 `PreToolUse`，但繞不過 git。整合者：越界 ＋ **每個生效中的包都要有啟動 prompt** ＋ `GreyGray_PM` 同步 |
+
+**派工書寫完就要給得出啟動 prompt。** 放在 `.dispatch/PROMPTS.md`，一包一段，
+可以直接複製貼上，不要讓人自己回去讀派工書再拼一段出來。
+`ACTIVE.md` 裡每個生效的 `package:` 都必須在 `PROMPTS.md` 找得到
+`GG_PACKAGE=<包名>`，否則 `Stop` 會擋下整合者收工。
+
+**閘門自己的檔案（`.dispatch/`、`.claude/`、`.codex/`）只有「沒有綁定包別」的 session 寫得了。**
+判準不是「有沒有派工生效」——那會讓閘門在派工期間變成沒人能維護，
+而那正是要加派工、改 prompt、驗收後撤包的時機。實作者一定綁了包別
+（prompt 都帶 `GG_PACKAGE=`），所以自我擴權那條路仍然堵死。
 
 `docs/`、`.claude/`、`management/`、`STATE.md`、`CLAUDE.md` 不受限——那是整合與 PM 的工作，不是「開工」。
 `ACTIVE.md` 沒有任何 `package:` 時是**整合者模式**：原始碼一律不准寫。

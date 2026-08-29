@@ -192,8 +192,22 @@ gg_path_allowed() {
   for prefix in $GG_ALWAYS_ALLOW; do
     case "$rel" in "$prefix"*) return 0 ;; esac
   done
-  # 閘門自己的檔案：整合者模式才放行
-  if ! gg_has_dispatch; then
+  # 閘門自己的檔案：只有「沒有綁定包別」的 session 才放行。
+  #
+  # 原本這裡寫的是 `! gg_has_dispatch`（＝完全沒有派工生效時才放行），
+  # 但那把兩件不同的事混在一起了：整合者需要維護閘門的時機，
+  # 剛好就是有派工生效的時候（要加一包、要改 PROMPTS、驗收完要撤一包）。
+  # 照舊寫法，一旦派下去閘門就變成沒人能維護。
+  #
+  # 現在的判準是「這個 session 有沒有綁到包別」：
+  # 實作者一定有（PROMPTS.md 的每份 prompt 都帶 GG_PACKAGE=，
+  # claim-package.sh 會把它綁到 session_id），所以實作者仍然改不了閘門，
+  # 自我擴權那條路還是堵死的。
+  #
+  # 殘留風險誠實寫著：實作者若「完全沒宣告包別」就能寫閘門檔。
+  # 那個狀態本身已經是降級狀態（gg_scope_is_loose），SessionStart 會明講，
+  # 而且子代理的 prompt 一律帶 GG_PACKAGE=，實務上不會落到那裡。
+  if [ -z "${GG_PACKAGE:-}" ]; then
     for prefix in $GG_GATE_PATHS; do
       case "$rel" in "$prefix"*) return 0 ;; esac
     done
@@ -259,6 +273,28 @@ EOF
 }
 
 # 整合者模式的 PM 同步檢查。有問題就印出訊息，沒有就不印。
+# 每一個生效中的包，.dispatch/PROMPTS.md 裡都要有可以直接貼的啟動 prompt。
+#
+# 為什麼要擋：派工書寫完、ACTIVE.md 也啟用了，但沒有人整理出「這一包怎麼開」，
+# 使用者就得自己回去讀派工書再拼一段 prompt 出來——那是整合者漏做的一步。
+# 回傳缺少 prompt 的包名（以、分隔），全部齊了就回空字串。
+gg_prompts_missing() {
+  local f="$GG_ROOT/.dispatch/PROMPTS.md" pkg missing=""
+  gg_has_dispatch || return 0
+  if [ ! -f "$f" ]; then
+    gg_active_packages | gg_join '、'
+    return 0
+  fi
+  while IFS= read -r pkg; do
+    [ -n "$pkg" ] || continue
+    # 要精確比對，否則 BE-1 會被 BE-13 誤判成已涵蓋
+    grep -qE "GG_PACKAGE=${pkg}([[:space:]]|\$)" "$f"       || missing="${missing}${missing:+、}${pkg}"
+  done <<EOF
+$(gg_active_packages)
+EOF
+  printf '%s' "$missing"
+}
+
 gg_pm_out_of_sync() {
   local pm="$GG_ROOT/../GreyGray_PM"
   [ -d "$pm" ] || return 0

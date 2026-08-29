@@ -50,50 +50,74 @@ GG_PACKAGE=FE-9 claude
 
 ---
 
-（目前沒有生效中的派工。FE-9／FE-10／FE-11 已於 2026-08-29 通過整合驗收，commit bbce5e1。）
+**第四波已生效（2026-08-30）。** 三包同時開，`GG_PACKAGE` 不是可選的。
 
-<!--
-派工 FE-9：admin 契約同步與缺貨退款金額　·　docs/12-前端第三波派工書.md
+| 包 | 主題 | 派工書 |
+|---|---|---|
+| FE-13 | 後台：出貨、交運與簽收 | `docs/15` |
+| FE-14 | 後台：缺貨補償、漲價詢問 ＋ **退款去向回工**（ADR-023） | `docs/15` |
+| FE-15 | 前台：客人看得到自己的品項缺貨與退款 | `docs/15` |
 
-package: FE-9
-doc: docs/12-前端第三波派工書.md
-allow: frontend/packages/api-client/src/types.admin.ts
-allow: frontend/packages/api-client/src/mock/fixtures.admin.ts
-allow: frontend/packages/api-client/src/mock/handlers.admin.ts
-allow: frontend/apps/admin/app/(dash)/orders/
-allow: docs/api/openapi.admin.yaml
+**啟動 prompt 在 `.dispatch/PROMPTS.md`**，直接複製貼上。
 
-派工 FE-10：後台登入接上真 API　·　docs/12-前端第三波派工書.md
+---
 
-package: FE-10
-doc: docs/12-前端第三波派工書.md
-allow: frontend/apps/admin/app/login/
-allow: frontend/apps/admin/app/_lib/
-allow: frontend/apps/admin/middleware.ts
-allow: frontend/packages/api-client/src/mock/handlers.admin.auth.ts
-allow: frontend/packages/api-client/src/mock/handlers.admin.ts
+派工 FE-13：後台出貨、交運與簽收　·　docs/15-前端第四波派工書.md
 
-派工 FE-11：後台採購清單與買到回報　·　docs/12-前端第三波派工書.md
-
-package: FE-11
-doc: docs/12-前端第三波派工書.md
-allow: frontend/apps/admin/app/(dash)/procurement/
+package: FE-13
+doc: docs/15-前端第四波派工書.md
+allow: frontend/apps/admin/app/(dash)/shipments/
 allow: frontend/apps/admin/app/(dash)/layout.tsx
-allow: frontend/packages/api-client/src/mock/fixtures.admin.procurement.ts
-allow: frontend/packages/api-client/src/mock/handlers.admin.procurement.ts
+allow: frontend/packages/api-client/src/mock/fixtures.admin.shipments.ts
+allow: frontend/packages/api-client/src/mock/handlers.admin.shipments.ts
 allow: frontend/packages/api-client/src/mock/handlers.admin.ts
--->
+
+派工 FE-14：後台缺貨補償、漲價詢問 ＋ 退款去向回工　·　docs/15-前端第四波派工書.md
+
+package: FE-14
+doc: docs/15-前端第四波派工書.md
+allow: frontend/apps/admin/app/(dash)/orders/
+allow: frontend/apps/admin/app/(dash)/procurement/
+allow: frontend/packages/api-client/src/mock/fixtures.admin.compensation.ts
+allow: frontend/packages/api-client/src/mock/handlers.admin.compensation.ts
+allow: frontend/packages/api-client/src/mock/handlers.admin.ts
+
+派工 FE-15：前台缺貨與退款的呈現　·　docs/15-前端第四波派工書.md
+
+package: FE-15
+doc: docs/15-前端第四波派工書.md
+allow: frontend/apps/storefront/app/(account)/orders/
+allow: frontend/packages/api-client/src/mock/fixtures.storefront.orderlines.ts
+allow: frontend/packages/api-client/src/mock/handlers.storefront.orderlines.ts
+allow: frontend/packages/api-client/src/mock/handlers.storefront.ts
+
+---
 
 <!--
-派工 FE-12：關掉 mock、對真後端跑一遍　·　docs/12-前端第三波派工書.md
-⏸ 等 M-1 環境備妥才能啟用。
+派工 FE-12：關掉 mock、對真後端跑一遍　·　docs/15-前端第四波派工書.md
+⏸ 等後端 BE-13（M-1 環境收尾）通過整合驗收才啟用。
+解除條件：ops/verify-environment.ps1 全 PASS、兩個服務重開機後自動起得來。
 
 package: FE-12
-doc: docs/12-前端第三波派工書.md
+doc: docs/15-前端第四波派工書.md
 allow: frontend/apps/admin/.env.local
 allow: frontend/apps/storefront/.env.local
 -->
 
-> **三包都列了 `handlers.admin.ts`**，因為每包各被授權在 `adminHandlers` 陣列尾端加一行。
+> **FE-13 與 FE-14 都列了 `handlers.admin.ts`**、**FE-15 列了 `handlers.storefront.ts`**，
+> 因為每包各被授權在對應的 handlers 陣列尾端**加一行**。
 > 閘門擋不住「加了不只一行」——那一條由整合驗收時逐行看 diff 把關
-> （`docs/12` §3 例外授權第 2 條）。
+> （`docs/15` §4 例外授權第 1 條）。
+>
+> **`(dash)/layout.tsx` 只給 FE-13**（加一個「出貨」選單項）。FE-14 不需要它，
+> 因為 orders 與 procurement 的選單項已經存在。
+>
+> **FE-14 會改到第三波 FE-9 擁有的 `orders/`**，那是**跨波修改，不是違規**——
+> 所有權表是同一波之內的邊界。
+
+---
+
+## 已經通過、不再生效的（保留軌跡）
+
+FE-1～FE-8（前兩波 ＋ 技術債收尾 `631e7bc`）·
+FE-9／FE-10／FE-11（第三波，`bbce5e1`，24 個變更檔零越界）
