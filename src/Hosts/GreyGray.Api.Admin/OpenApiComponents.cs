@@ -34,6 +34,7 @@ internal sealed class M1aOpenApiComponents : IOpenApiDocumentTransformer
         (HttpMethod.Post, "/v1/campaigns/{campaignId}/offers"),
         (HttpMethod.Delete, "/v1/campaigns/{campaignId}/offers/{offerId}"),
         (HttpMethod.Post, "/v1/orders/{orderId}/cancel"),
+        (HttpMethod.Post, "/v1/orders/{orderId}/lines/{lineId}/cancel"),
     ];
 
     /// <summary>用游標分頁（cursor／limit）的清單端點。</summary>
