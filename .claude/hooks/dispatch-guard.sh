@@ -1,20 +1,39 @@
 #!/usr/bin/env bash
-# Claude Code · PreToolUse（Write｜Edit）：沒有派工書授權的路徑，一律不准寫。
-# 邏輯在 .dispatch/lib.sh，與 Codex 那邊共用同一份。
+# Claude Code · PreToolUse：兩件事
+#   1. 沒有派工書授權的路徑，不准寫（Write／Edit）
+#   2. 會毀掉別人未提交交付的 shell 指令，不准跑（Bash／PowerShell）
+# 判斷邏輯在 .dispatch/，與 Codex 那邊共用同一份。
 set -u
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.dispatch/lib.sh"
+. "$GG_ROOT/.dispatch/shell-guard-lib.sh"
 
 payload="$(cat)"
 gg_resolve_package "$payload"
-case "$payload" in
-  *'"Write"'*|*'"Edit"'*) ;;
-  *) exit 0 ;;
-esac
 
 deny() {
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$(gg_json_escape "$1")"
   exit 0
 }
+
+# ── 危險 shell 指令 ──────────────────────────────────────────────
+cmdtext="$(printf '%s' "$payload" | sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+if [ -n "$cmdtext" ] && gg_has_dispatch; then
+  if why="$(gg_dangerous_shell_reason "$cmdtext")"; then
+    # git commit 只擋實作者——整合者要靠它提交。
+    # 其餘（stash／reset --hard／clean／全樹還原）對所有人都擋，
+    # 因為它們會毀掉工作區裡別人未提交的交付。
+    case "$cmdtext" in
+      *"git commit"*) [ -n "${GG_PACKAGE:-}" ] || why="" ;;
+    esac
+    [ -n "$why" ] && deny "$why"
+  fi
+fi
+
+# ── 派工範圍 ────────────────────────────────────────────────────
+case "$payload" in
+  *'"Write"'*|*'"Edit"'*) ;;
+  *) exit 0 ;;
+esac
 
 if ! gg_package_valid; then
   deny "GG_PACKAGE 設成了 ${GG_PACKAGE}，但 .dispatch/ACTIVE.md 裡沒有這一包（現有的是：$(gg_active_packages | gg_join '、')）。包名拼錯不該變成什麼都能寫，所以這裡一律擋下。改成正確的包名，或請整合者更新 ACTIVE.md。"

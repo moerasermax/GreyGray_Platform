@@ -96,6 +96,21 @@ lead 用 ai-cli fan out 子 agent 時，在子 agent 的 prompt 裡寫一行 `GG
 
 現在的派工書：`docs/13-後端第五波派工書.md`（前端的在 `-fe` worktree 的 `docs/12`）。
 
+
+### 不要碰整個工作區的 git 指令
+
+`git stash`、`git reset --hard`、`git clean`、`git checkout -- .`、`git commit`
+**一律不准**。同一棵 worktree 裡有別包在平行工作，他們的交付在被整合驗收之前都還沒 commit，
+這些指令會把別人的東西一起處理掉；而且 stash stack 是**跨 worktree 共用**的，
+別棵樹的 session 也會被波及。提交是整合者的事。
+
+閘門（`PreToolUse`）會擋下這些指令，但你本來就不該試。
+這不是假設性風險——FE-10 曾為了「取得乾淨的驗證基準」跑 `git stash`，
+把 FE-9 已完成、還沒提交的交付與整合者正在改的文件整個掃走，
+導致整合者當下那個 commit 只記錄到三個檔案裡的一個。
+
+要乾淨的比較基準請用不動工作區的方式：`git diff`、`git diff --stat`。
+
 ## 驗收完就要更新進度表
 
 **做完一次完整的整合驗收，必須同步 `GreyGray_PM/`。**
