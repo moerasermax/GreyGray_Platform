@@ -35,9 +35,8 @@ GG_PACKAGE=FE-9 codex           # Codex
 
 ---
 
-（目前沒有生效中的派工。）
+（FE-9／FE-10／FE-11 三包已啟用，2026-08-29。）
 
-<!--
 派工 FE-9：admin 契約同步與缺貨退款金額　·　docs/12-前端第三波派工書.md
 
 package: FE-9
@@ -47,9 +46,7 @@ allow: frontend/packages/api-client/src/mock/fixtures.admin.ts
 allow: frontend/packages/api-client/src/mock/handlers.admin.ts
 allow: frontend/apps/admin/app/(dash)/orders/
 allow: docs/api/openapi.admin.yaml
--->
 
-<!--
 派工 FE-10：後台登入接上真 API　·　docs/12-前端第三波派工書.md
 
 package: FE-10
@@ -59,9 +56,7 @@ allow: frontend/apps/admin/app/_lib/
 allow: frontend/apps/admin/middleware.ts
 allow: frontend/packages/api-client/src/mock/handlers.admin.auth.ts
 allow: frontend/packages/api-client/src/mock/handlers.admin.ts
--->
 
-<!--
 派工 FE-11：後台採購清單與買到回報　·　docs/12-前端第三波派工書.md
 
 package: FE-11
@@ -71,7 +66,6 @@ allow: frontend/apps/admin/app/(dash)/layout.tsx
 allow: frontend/packages/api-client/src/mock/fixtures.admin.procurement.ts
 allow: frontend/packages/api-client/src/mock/handlers.admin.procurement.ts
 allow: frontend/packages/api-client/src/mock/handlers.admin.ts
--->
 
 > **三包都列了 `handlers.admin.ts`**，因為每包各被授權在 `adminHandlers` 陣列尾端加一行。
 > 閘門擋不住「加了不只一行」——那一條由整合驗收時逐行看 diff 把關
