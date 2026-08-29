@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"C:\\Program Files\\Git\\bin\\bash.exe\" ./.codex/hooks/session-brief.sh",
+            "command": "C:\\PROGRA~1\\Git\\bin\\bash.exe ./.codex/hooks/session-brief.sh",
             "timeout": 20,
             "statusMessage": "讀取生效中的派工"
           }
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"C:\\Program Files\\Git\\bin\\bash.exe\" ./.codex/hooks/dispatch-guard.sh",
+            "command": "C:\\PROGRA~1\\Git\\bin\\bash.exe ./.codex/hooks/dispatch-guard.sh",
             "timeout": 20,
             "statusMessage": "檢查派工範圍"
           }
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"C:\\Program Files\\Git\\bin\\bash.exe\" ./.codex/hooks/stop-gate.sh",
+            "command": "C:\\PROGRA~1\\Git\\bin\\bash.exe ./.codex/hooks/stop-gate.sh",
             "timeout": 30,
             "statusMessage": "檢查越界與 PM 同步"
           }
@@ -43,7 +43,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"C:\\Program Files\\Git\\bin\\bash.exe\" ./.codex/hooks/claim-package.sh",
+            "command": "C:\\PROGRA~1\\Git\\bin\\bash.exe ./.codex/hooks/claim-package.sh",
             "timeout": 15,
             "statusMessage": "綁定派工包別"
           }
