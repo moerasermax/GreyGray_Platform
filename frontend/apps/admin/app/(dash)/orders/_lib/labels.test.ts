@@ -11,6 +11,7 @@ import {
   paymentStatusTone,
   refundDestinationHint,
   refundDestinationLabel,
+  refundedAmountText,
   shippingPolicyLabel,
 } from './labels';
 
@@ -81,6 +82,26 @@ describe('orderLineStatus', () => {
     const label = orderLineStatusLabel('Unavailable');
     expect(label).not.toBe('Unavailable');
     expect(label).not.toBe('');
+  });
+});
+
+/**
+ * `refundedAmount` 是 `Money | null`。**null 不是 0**——沒退款不能顯示「$0」，
+ * 這是 FE-9 派工書明講的鐵則（`docs/12` §4 FE-9）。
+ */
+describe('refundedAmountText', () => {
+  it('null 回傳「—」，不是「$0」也不是空字串', () => {
+    const text = refundedAmountText(null);
+    expect(text).toBe('—');
+    expect(text).not.toContain('0');
+  });
+
+  it('undefined 也回傳「—」——契約裡這個欄位是 optional', () => {
+    expect(refundedAmountText(undefined)).toBe('—');
+  });
+
+  it('有金額時用 formatMoney 格式化，不是自己組字串', () => {
+    expect(refundedAmountText({ amountMinor: 89_000, currency: 'TWD' })).toContain('890');
   });
 });
 

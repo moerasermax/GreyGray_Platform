@@ -4,6 +4,7 @@
  * 所有 `switch` 都有 `default`：後端新增列舉值不算破壞性變更，
  * 畫面要退回顯示原始字串而不是崩掉（`docs/06-前端工作包.md` 鐵則 5）。
  */
+import { formatMoney } from '@greygray/api-client';
 import type { StatusTone } from '@greygray/ui/admin';
 import type { components } from '@greygray/api-client/admin';
 
@@ -186,6 +187,14 @@ export function refundDestinationLabel(destination: S['RefundDestination'] | (st
     default:
       return destination;
   }
+}
+
+/**
+ * `refundedAmount` 是 `Money | null`。`null` 不是 0——沒退款就不顯示「$0」，回傳 `—`。
+ */
+export function refundedAmountText(refundedAmount: S['Money'] | null | undefined): string {
+  if (refundedAmount == null) return '—';
+  return formatMoney(refundedAmount);
 }
 
 export function refundDestinationHint(destination: S['RefundDestination'] | (string & {})): string {

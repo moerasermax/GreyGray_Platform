@@ -1907,6 +1907,8 @@ export interface components {
             quantity: number;
             unitPrice: components["schemas"]["Money"];
             lineTotal: components["schemas"]["Money"];
+            /** @description 該品項已完成或已要求的退款金額；未退款時為 null。 */
+            refundedAmount?: components["schemas"]["Money"] | null;
             campaignId?: components["schemas"]["Id"] | null;
             /** @description 出貨時實際結轉成本的批號。 */
             consumedLotId?: components["schemas"]["Id"] | null;

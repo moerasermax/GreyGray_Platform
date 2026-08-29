@@ -29,6 +29,7 @@ import {
   paymentProviderLabel,
   paymentStatusLabel,
   paymentStatusTone,
+  refundedAmountText,
   shippingPolicyLabel,
 } from '../_lib/labels';
 
@@ -161,6 +162,12 @@ export default function OrderDetailPage() {
       header: '小計',
       headerAlign: 'right',
       renderCell: (line) => <MoneyCell value={formatMoney(line.lineTotal)} />,
+    },
+    {
+      key: 'refundedAmount',
+      header: '缺貨退款',
+      headerAlign: 'right',
+      renderCell: (line) => <MoneyCell value={refundedAmountText(line.refundedAmount)} />,
     },
     {
       key: 'action',

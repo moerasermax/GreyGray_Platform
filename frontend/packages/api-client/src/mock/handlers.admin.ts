@@ -6,6 +6,8 @@
 
 import { http, HttpResponse } from 'msw';
 import type { components } from '../types.admin';
+import { adminAuthHandlers } from './handlers.admin.auth';
+import { adminProcurementHandlers } from './handlers.admin.procurement';
 import {
   adminCampaignDetailOf,
   adminCampaignOffersByCampaignId,
@@ -319,6 +321,9 @@ export const adminHandlers = [
   http.get(url('/v1/ledger/campaign-margin/:campaignId'), () => HttpResponse.json(campaignMarginFixture)),
 
   http.get(url('/v1/ledger/liability-vs-cash'), () => HttpResponse.json(liabilityVsCashFixture)),
+
+  ...adminAuthHandlers,
+  ...adminProcurementHandlers,
 ];
 
 function adminCampaignDetailFrom(campaignId: string): S['AdminCampaignDetail'] | null {

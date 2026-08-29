@@ -180,6 +180,7 @@ const orderLineMixed: S['AdminOrderLine'][] = [
     quantity: 1,
     unitPrice: twd(890),
     lineTotal: twd(890),
+    refundedAmount: twd(890),
     campaignId: null,
     consumedLotId: null,
   },

@@ -40,6 +40,28 @@ const NAV_DEFINITIONS: readonly NavDefinition[] = [
   { key: 'catalog', label: '商品管理', href: '/catalog', requiredRole: 'ReadOnly', icon: <CatalogIcon /> },
   { key: 'campaigns', label: '開團管理', href: '/campaigns', requiredRole: 'ReadOnly', icon: <CampaignIcon /> },
   { key: 'orders', label: '訂單', href: '/orders', requiredRole: 'ReadOnly', icon: <OrderIcon /> },
+  {
+    key: 'procurement',
+    label: '現場採購',
+    href: '/procurement',
+    requiredRole: 'Operator',
+    icon: (
+      <svg
+        width={20}
+        height={20}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M3 7h18l-1.6 12.2a2 2 0 0 1-2 1.8H6.6a2 2 0 0 1-2-1.8L3 7Z" />
+        <path d="M8 7V5.5a4 4 0 0 1 8 0V7" />
+      </svg>
+    ),
+  },
   { key: 'ledger', label: '帳務', href: '/ledger', requiredRole: 'Accountant', icon: <LedgerIcon /> },
 ];
 

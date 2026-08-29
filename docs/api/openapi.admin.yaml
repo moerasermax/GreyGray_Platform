@@ -1240,6 +1240,11 @@ components:
         quantity: { type: integer }
         unitPrice: { $ref: '#/components/schemas/Money' }
         lineTotal: { $ref: '#/components/schemas/Money' }
+        refundedAmount:
+          description: 該品項已完成或已要求的退款金額；未退款時為 null。
+          oneOf:
+            - { $ref: '#/components/schemas/Money' }
+            - { type: 'null' }
         campaignId:
           oneOf:
             - { $ref: '#/components/schemas/Id' }
