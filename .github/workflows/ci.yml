@@ -74,6 +74,14 @@ jobs:
         shell: powershell
         run: .\ops\self-test.ps1 -Configuration Release
 
+      - name: Validate M-1 scripts with Windows PowerShell 5.1
+        shell: powershell
+        run: .\ops\environment-self-test.ps1
+
+      - name: Validate M-1 scripts with PowerShell 7
+        shell: pwsh
+        run: .\ops\environment-self-test.ps1
+
       - name: Compare AddOpenApi output with frozen contracts
         shell: pwsh
         run: .\ops\check-openapi.ps1 -Configuration Release -NoBuild -OutputDirectory "$env:RUNNER_TEMP\greygray-openapi"
