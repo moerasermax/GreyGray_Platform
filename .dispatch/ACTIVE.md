@@ -44,7 +44,7 @@ GG_PACKAGE=BE-9 codex
 
 ---
 
-（目前沒有生效中的派工。BE-10 已於 2026-08-29 通過驗收（2c05c99）；BE-9 在寫碼前正確停工——派工缺三個上游接縫，改由 BE-12 先補，見 docs/13。）
+（**BE-12 已啟用**，2026-08-29。BE-10 已通過驗收（2c05c99）；BE-9 在寫碼前正確停工——派工缺三個上游接縫，改由 BE-12 先補，見 docs/13。）
 
 <!--
 派工 BE-9：M1b-3 帶回入庫與旅程成本　·　docs/13-後端第五波派工書.md
@@ -67,7 +67,6 @@ allow: ops/
 allow: .github/workflows/
 -->
 
-<!--
 派工 BE-12：M1b-3 的三個上游接縫（BE-9 的前置）　·　docs/13-後端第五波派工書.md
 
 package: BE-12
@@ -77,7 +76,7 @@ allow: src/Modules/Campaign/
 allow: src/Modules/Ordering/
 allow: db/migrations/0008_
 allow: tests/
--->
+
 
 <!--
 派工 BE-11：M1b-2 缺貨補償與現場漲價詢問
