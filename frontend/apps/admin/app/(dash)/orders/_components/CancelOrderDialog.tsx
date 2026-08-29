@@ -18,13 +18,13 @@ export interface CancelOrderDialogProps {
 /** 整張訂單取消。取消後該單全部品項一併取消退款。 */
 export function CancelOrderDialog({ open, orderNumber, onClose, onConfirm }: CancelOrderDialogProps) {
   const [reason, setReason] = useState('');
-  const [refundTo, setRefundTo] = useState<S['RefundDestination']>('StoredValue');
+  const [refundTo, setRefundTo] = useState<S['RefundDestination'] | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function reset() {
     setReason('');
-    setRefundTo('StoredValue');
+    setRefundTo(null);
     setError(null);
   }
 
@@ -39,6 +39,10 @@ export function CancelOrderDialog({ open, orderNumber, onClose, onConfirm }: Can
       setError('請填寫取消原因。');
       return;
     }
+    if (!refundTo) {
+      setError('請選擇退款去處——這是客人的選擇，不能代選。');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -46,7 +50,13 @@ export function CancelOrderDialog({ open, orderNumber, onClose, onConfirm }: Can
       reset();
       onClose();
     } catch (cause) {
-      setError(cause instanceof ApiError ? cause.problem.title : '取消失敗，請稍後再試。');
+      setError(
+        cause instanceof ApiError
+          ? cause.problem.detail
+            ? `${cause.problem.title}（${cause.problem.detail}）`
+            : cause.problem.title
+          : '取消失敗，請稍後再試。',
+      );
     } finally {
       setSubmitting(false);
     }

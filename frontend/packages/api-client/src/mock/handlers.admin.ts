@@ -7,7 +7,9 @@
 import { http, HttpResponse } from 'msw';
 import type { components } from '../types.admin';
 import { adminAuthHandlers } from './handlers.admin.auth';
+import { adminCompensationHandlers } from './handlers.admin.compensation';
 import { adminProcurementHandlers } from './handlers.admin.procurement';
+import { adminShipmentHandlers } from './handlers.admin.shipments';
 import {
   adminCampaignDetailOf,
   adminCampaignOffersByCampaignId,
@@ -324,6 +326,8 @@ export const adminHandlers = [
 
   ...adminAuthHandlers,
   ...adminProcurementHandlers,
+  ...adminCompensationHandlers,
+  ...adminShipmentHandlers,
 ];
 
 function adminCampaignDetailFrom(campaignId: string): S['AdminCampaignDetail'] | null {

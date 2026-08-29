@@ -9,9 +9,19 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { browserApi } from '../../../_lib/apiClient';
 import { usePayloadIdempotency } from '../../../_lib/usePayloadIdempotency';
-import { listPurchaseItems, reportPurchased, type ReportPurchasedRequest } from '../_lib/api';
+import {
+  listPurchaseItems,
+  markUnavailable,
+  reportPriceChanged,
+  reportPurchased,
+  type MarkUnavailableRequest,
+  type ReportPriceChangedRequest,
+  type ReportPurchasedRequest,
+} from '../_lib/api';
 import { purchaseItemStatusLabel, purchaseItemStatusTone } from '../_lib/labels';
 import { Button } from '../_components/Button';
+import { MarkUnavailableDialog } from '../_components/MarkUnavailableDialog';
+import { ReportPriceChangeDialog } from '../_components/ReportPriceChangeDialog';
 import { ReportPurchasedDialog } from '../_components/ReportPurchasedDialog';
 
 type S = components['schemas'];
@@ -36,6 +46,8 @@ export default function ProcurementCampaignPage() {
   const [error, setError] = useState<ApiError | Error | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [reportingItem, setReportingItem] = useState<S['PurchaseItem'] | null>(null);
+  const [unavailableItem, setUnavailableItem] = useState<S['PurchaseItem'] | null>(null);
+  const [priceChangeItem, setPriceChangeItem] = useState<S['PurchaseItem'] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,6 +93,61 @@ export default function ProcurementCampaignPage() {
     toast.show('success', `「${reportingItem.name}」已回報買到。`);
     setReportingItem(null);
     setReloadKey((current) => current + 1);
+  }
+
+  async function handleMarkUnavailableConfirm(input: MarkUnavailableRequest) {
+    if (!unavailableItem) return;
+    const targetId = unavailableItem.id;
+    const payload = { purchaseItemId: targetId, input };
+    await markUnavailable(browserApi(), targetId, input, {
+      idempotencyKey: idempotency.current(payload),
+    });
+    idempotency.complete();
+    toast.show('success', `「${unavailableItem.name}」已標記缺貨並退款。`);
+    // 這支端點只回 200，不回完整的 PurchaseItem，狀態變化在本地直接套用。
+    setItems((current) =>
+      current.map((item) =>
+        item.id === targetId ? { ...item, status: 'Unavailable', decidedAt: new Date().toISOString() } : item,
+      ),
+    );
+    setUnavailableItem(null);
+  }
+
+  async function handleReportPriceChangeConfirm(input: ReportPriceChangedRequest) {
+    if (!priceChangeItem) return;
+    const targetId = priceChangeItem.id;
+    const originalPrice = priceChangeItem.targetPrice ?? input.newPrice;
+    const payload = { purchaseItemId: targetId, input };
+    const result = await reportPriceChanged(browserApi(), targetId, input, {
+      idempotencyKey: idempotency.current(payload),
+    });
+    idempotency.complete();
+    const deadline = new Intl.DateTimeFormat('zh-TW', { dateStyle: 'medium', timeStyle: 'short' }).format(
+      new Date(result.timeoutAt),
+    );
+    toast.show('success', `已通知客人。${deadline} 前沒回覆就自動視為照買，你可以繼續買下一項。`);
+    // 這支端點只回 { inquiryId, timeoutAt }，詢價軌跡在本地依回應組出來顯示。
+    setItems((current) =>
+      current.map((item) =>
+        item.id === targetId
+          ? {
+              ...item,
+              status: 'PriceChangedPendingConfirmation',
+              inquiry: {
+                id: result.inquiryId,
+                originalPrice,
+                newPrice: input.newPrice,
+                askedAt: new Date().toISOString(),
+                timeoutAt: result.timeoutAt,
+                repliedAt: null,
+                outcome: null,
+                replyText: null,
+              },
+            }
+          : item,
+      ),
+    );
+    setPriceChangeItem(null);
   }
 
   return (
@@ -149,10 +216,32 @@ export default function ProcurementCampaignPage() {
               </div>
 
               {item.status === 'Pending' ? (
-                <div className="mt-3">
-                  <Button variant="primary" className="w-full sm:w-auto" onClick={() => setReportingItem(item)}>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button variant="primary" onClick={() => setReportingItem(item)}>
                     回報買到
                   </Button>
+                  <Button variant="secondary" onClick={() => setPriceChangeItem(item)}>
+                    回報漲價
+                  </Button>
+                  <Button variant="danger" onClick={() => setUnavailableItem(item)}>
+                    標記缺貨
+                  </Button>
+                </div>
+              ) : null}
+
+              {item.status === 'PriceChangedPendingConfirmation' && item.inquiry ? (
+                <div className="mt-3 rounded-card bg-info-subtle px-3 py-2 text-sm text-fg-on-tint">
+                  <p>
+                    現場新價 <span className="gg-numeric font-semibold">{formatMoney(item.inquiry.newPrice)}</span>
+                    （原價 <span className="gg-numeric">{formatMoney(item.inquiry.originalPrice)}</span>）
+                  </p>
+                  <p className="mt-1">
+                    已通知客人，不必等回覆。
+                    {new Intl.DateTimeFormat('zh-TW', { dateStyle: 'medium', timeStyle: 'short' }).format(
+                      new Date(item.inquiry.timeoutAt),
+                    )}{' '}
+                    前沒回覆就自動視為照買，差額由賣方吸收。
+                  </p>
                 </div>
               ) : null}
             </li>
@@ -165,6 +254,18 @@ export default function ProcurementCampaignPage() {
         item={reportingItem}
         onClose={() => setReportingItem(null)}
         onConfirm={handleReportConfirm}
+      />
+      <ReportPriceChangeDialog
+        open={priceChangeItem !== null}
+        item={priceChangeItem}
+        onClose={() => setPriceChangeItem(null)}
+        onConfirm={handleReportPriceChangeConfirm}
+      />
+      <MarkUnavailableDialog
+        open={unavailableItem !== null}
+        item={unavailableItem}
+        onClose={() => setUnavailableItem(null)}
+        onConfirm={handleMarkUnavailableConfirm}
       />
     </div>
   );

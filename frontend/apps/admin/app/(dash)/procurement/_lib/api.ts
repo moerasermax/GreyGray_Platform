@@ -23,6 +23,20 @@ export interface ReportPurchasedRequest {
   readonly actualPaidBooking: S['Money'];
 }
 
+export interface MarkUnavailableRequest {
+  readonly reason: string;
+}
+
+export interface ReportPriceChangedRequest {
+  readonly newPrice: S['Money'];
+}
+
+/** 回應只給軌跡 id 與逾時時間，不代表要等——發完就放行。 */
+export interface ReportPriceChangedResult {
+  readonly inquiryId: string;
+  readonly timeoutAt: string;
+}
+
 export interface MutationOptions {
   readonly idempotencyKey: string;
   readonly signal?: AbortSignal;
@@ -44,4 +58,22 @@ export function reportPurchased(
   options: MutationOptions,
 ): Promise<void> {
   return client.post(`/v1/purchase-items/${purchaseItemId}/purchased`, { body, ...options });
+}
+
+export function markUnavailable(
+  client: ApiClient,
+  purchaseItemId: string,
+  body: MarkUnavailableRequest,
+  options: MutationOptions,
+): Promise<void> {
+  return client.post(`/v1/purchase-items/${purchaseItemId}/unavailable`, { body, ...options });
+}
+
+export function reportPriceChanged(
+  client: ApiClient,
+  purchaseItemId: string,
+  body: ReportPriceChangedRequest,
+  options: MutationOptions,
+): Promise<ReportPriceChangedResult> {
+  return client.post(`/v1/purchase-items/${purchaseItemId}/price-changed`, { body, ...options });
 }

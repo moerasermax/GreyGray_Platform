@@ -62,6 +62,29 @@ const NAV_DEFINITIONS: readonly NavDefinition[] = [
       </svg>
     ),
   },
+  {
+    key: 'shipments',
+    label: '出貨',
+    href: '/shipments',
+    requiredRole: 'Operator',
+    icon: (
+      <svg
+        width={20}
+        height={20}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M3.5 8.5 12 4l8.5 4.5v7L12 20l-8.5-4.5v-7Z" />
+        <path d="M3.5 8.5 12 13l8.5-4.5" />
+        <path d="M12 13v7" />
+      </svg>
+    ),
+  },
   { key: 'ledger', label: '帳務', href: '/ledger', requiredRole: 'Accountant', icon: <LedgerIcon /> },
 ];
 
