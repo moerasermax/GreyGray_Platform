@@ -76,8 +76,26 @@ pnpm api:generate     # 契約改了要重跑
 
 `docs/`、`management/`、`STATE.md`、`CLAUDE.md`、`AGENTS.md` 不受限——那是整合與 PM 的工作，不是「開工」。
 `ACTIVE.md` 沒有任何 `package:` 時是**整合者模式**：原始碼一律不准寫。
-閘門自己的檔案（`.dispatch/`、`.claude/`、`.codex/`）只有整合者模式能寫——
+閘門自己的檔案（`.dispatch/`、`.claude/`、`.codex/`）**只有宣告了 `GG_ROLE=leader` 的 session 能寫**——
 實作者能改 `ACTIVE.md` 的話，他就能自我擴權，那閘門只是建議。
+（判準不是「有沒有派工生效」：那會讓閘門在派工期間變成沒人能維護，
+而那正是要加派工、改 prompt、驗收後撤包的時機。）
+
+**派工書要通過 `bash .dispatch/audit-dispatch.sh` 才准收工。** 它查六件機械查得出來的事：
+`allow` 路徑存在、migration 編號沒被佔用、**兩包的 `allow` 不互相涵蓋**、
+派工書引用的檔案真的存在（簡寫要能唯一對到一個檔）、行號沒超出檔案長度、每包都有啟動 prompt。
+
+為什麼要有它：第六波的派工書寫錯三個前提，第七波第一版又把事件 handler 的註冊檔
+劃給了錯的包——BE-18 要註冊 `ShipmentDelivered` handler，而那個檔被劃給 BE-19，
+它會直接做不完。**那幾個錯全都可以機械查出來，只是我沒查。**
+手審抓得到一次，抓不到每一次。
+
+第三條特別寫成「**前綴涵蓋**」而不是「字串相等」：一包拿 `src/Modules/Ordering/`、
+另一包拿 `.../Ordering.Infra/ModuleRegistration.cs`，兩個字串不同但實際重疊，
+用 `uniq -d` 完全抓不到——而那正是那次的洞。
+
+跨樹或還不存在的引用，在**同一行**寫上「新檔」「另一棵樹」「後端 worktree」之類的字就會豁免——
+刻意要求同一行，因為順手加一個詞就能關掉的檢查遲早會被關光。
 
 **只開一個 terminal 當 Leader。** Leader 用 ai-cli fan out 子代理，一包一個，
 不必一包一個 terminal。Leader 的啟動 prompt 與每包的原文都在 `.dispatch/PROMPTS.md`。
