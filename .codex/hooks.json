@@ -15,7 +15,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "^(apply_patch|Edit|Write|MultiEdit)$",
+        "matcher": "^(apply_patch|Edit|Write|MultiEdit|Bash|PowerShell|shell|local_shell|shell_command)$",
         "hooks": [
           {
             "type": "command",

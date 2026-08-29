@@ -360,14 +360,39 @@ System.Text.Json 預設會寫成帶連字號的形式。放著不管的話同一
 現行的 phoneNumber / password / displayName / email / referralCode 就是定案，
 `Identity` 的 schema 可以直接設計，不必等匯出檔。
 
-**代價，要有人處理**：
+**儲值金：沒有這個問題**（2026-08-28 由老闆確認）。
+舊平台**從來沒有啟用過儲值金功能，所有餘額都是 0**，沒有任何要搬過來的負債。
+新系統的儲值金功能照原計畫做（退款退成儲值金零手續費是 M1a 的賣點之一），
+**期初餘額一律從 0 開始**——不要因為「代購生意通常有儲值金」就自己假設要做遷移或對帳。
 
-1. **儲值金餘額**。這是真的欠客人的錢，不會因為不遷就消失。
-   舊平台租約到期前要把餘額**人工搬過來或另行補償**，並在 Ledger 開對應的期初分錄。
-   這件事沒有系統會提醒你，租約到期那天就查不到了。
-2. **客人體驗的一次斷點**。老客人第一次來會發現要重新註冊、看不到舊訂單。
-   上線公告要講清楚「舊訂單請到原平台查詢，查詢期限到 ____」。
-3. **舊平台的租約到期日要記下來**。那是儲值金對帳與舊訂單查詢的實際死線。
+**唯一的代價**：客人體驗的一次斷點。老客人第一次來會發現要重新註冊、看不到舊訂單。
+上線公告與註冊頁要講清楚「舊訂單請到原平台查詢，查詢期限到 ____」——
+那個日期是舊平台的租約到期日，要去查出來填上。
 
 ---
 
+## ADR-020　單一品項缺貨使用 Unavailable，退款金額進入兩側訂單投影
+**狀態**：已採納（2026-08-29，M1a-6 契約補漏）
+
+`POST /v1/orders/{orderId}/lines/{lineId}/cancel` 的 frozen description 明寫
+「現場缺貨時用」，所以該 line 轉 `Unavailable`；整張訂單取消時才把尚未完成的
+line 轉 `Cancelled`。兩者不靠自由文字 `reason` 判斷。
+
+Admin 的 `AdminOrderLine` 新增可空 `refundedAmount`，與 Storefront 對稱。
+缺貨補償不做部分數量：整條 line 的退款額固定為 `lineTotal`；其餘 line 與訂單狀態不變，
+`GoodsTotal`／`GrandTotal` 扣掉該 line，`ShippingFee` 保留。Payment 累計退款額並以
+`PartiallyRefunded`／`Refunded` 區分；Ledger 只在 `PaymentRefunded` 事實成立後開平衡分錄。
+
+原路退款 provider 尚未接妥時，已付款訂單一律在 BFF 擋下，不得先改狀態或先記帳。
+
+---
+
+## ADR-021　Admin 瀏覽器跨 origin 只開明確白名單
+**狀態**：已採納（2026-08-29，M1a-6 串接補漏）
+
+Admin 前端在 mock 關閉後會從 `:5003` 直接呼叫 Admin BFF，因此 BFF 必須處理瀏覽器
+preflight。Development 僅預設允許 `http://localhost:5003` 與 `http://127.0.0.1:5003`，
+並允許 credentials；Production 沒有預設來源，必須用 `Cors:AllowedOrigins` 明確設定。
+不得使用 `AllowAnyOrigin`，也不得把 credentials 與萬用來源混用。
+
+---
