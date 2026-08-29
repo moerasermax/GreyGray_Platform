@@ -3,6 +3,10 @@
 set -u
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.dispatch/lib.sh"
 
+payload="${1:-}"
+if [ -z "$payload" ] && [ ! -t 0 ]; then payload="$(cat)"; fi
+gg_resolve_package "$payload"
+
 if ! gg_has_dispatch; then
   msg="目前沒有生效中的派工（.dispatch/ACTIVE.md 沒有任何 package）。這代表沒有人派工給你：原始碼一律不准寫。要開工請先向整合者要派工書，不要自己挑一件事做。"
 elif ! gg_package_valid; then

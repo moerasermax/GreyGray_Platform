@@ -9,7 +9,13 @@ publish/
 appsettings.*.local.json
 .env
 .env.*
+# 範例檔要進版控——frontend/README.md 叫人 `cp .env.example .env.local`，
+# 範例檔被忽略的話那條指令會複製出一個空檔。
+!.env.example
 secrets/
 
 # .planner-id 刻意「進」版控（沿用 2026-08-25 的裁定：單一中央 planner）。
 # 不進版控的話，fresh clone 會產生第二個 project 條目，兩邊的 session 與提醒就分家了。
+
+# 派工閘門的 per-session 包別標記，只在本機有意義
+.dispatch/.session/

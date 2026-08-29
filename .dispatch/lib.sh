@@ -131,6 +131,42 @@ gg_has_dispatch() {
   [ -n "$(gg_active_packages)" ]
 }
 
+# ── 包別的來源有兩個 ───────────────────────────────────────────────
+# 1. 環境變數 GG_PACKAGE —— 人自己開 terminal 時用，最直接
+# 2. session 標記 .dispatch/.session/<session_id> —— 給 ai-cli 派出去的子 agent 用
+#
+# 之所以需要第 2 種：ai-cli 的 run 只吃 workFolder／prompt／model，
+# **沒有環境變數參數**，所以 lead fan out 子 agent 時 GG_PACKAGE 傳不進去。
+# 但 hook payload 一定帶 session_id，於是改成：lead 在子 agent 的 prompt 裡寫
+# GG_PACKAGE=FE-9，UserPromptSubmit 認出來後把包別綁到那個 session_id 上。
+# 多個子 agent 同時跑也不會互相蓋掉，因為檔名就是各自的 session_id。
+
+gg_session_id() {
+  printf '%s' "$1" | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1
+}
+
+# 把包別綁到某個 session
+gg_remember_package() {
+  local sid="$1" pkg="$2"
+  [ -n "$sid" ] && [ -n "$pkg" ] || return 1
+  mkdir -p "$GG_ROOT/.dispatch/.session" 2>/dev/null || return 1
+  printf '%s' "$pkg" > "$GG_ROOT/.dispatch/.session/$sid"
+}
+
+# 決定這個 session 受哪一包管。環境變數優先，其次才是 session 標記。
+gg_resolve_package() {
+  [ -z "${GG_PACKAGE:-}" ] || return 0
+  local sid f
+  sid="$(gg_session_id "${1:-}")"
+  [ -n "$sid" ] || return 0
+  f="$GG_ROOT/.dispatch/.session/$sid"
+  if [ -f "$f" ]; then
+    GG_PACKAGE="$(cat "$f")"
+    export GG_PACKAGE
+  fi
+  return 0
+}
+
 # 這個 session 實際受哪一包管：有設 GG_PACKAGE 就是它，沒設就是全部（聯集）
 gg_scope_label() {
   if [ -n "${GG_PACKAGE:-}" ]; then

@@ -38,6 +38,18 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-D:/WorkSpace/01_開發中_wip/GreyGray_Platform}/.claude/hooks/claim-package.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

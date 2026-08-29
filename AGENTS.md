@@ -15,15 +15,17 @@
 - 有 `package:` 且是你這一包 → 只准改該包 `allow:` 列出的路徑
 - 沒有 `package:` → **沒有人派工給你，不要自己挑一件事做**，回報並等派工
 
-你的 session 應該是用 `GG_PACKAGE=<包名> codex` 起的。
+你的 session 會用兩種方式之一標明包別：環境變數 `GG_PACKAGE=<包名> codex`，
+或是 prompt 裡的一行 `GG_PACKAGE=<包名>`（lead 用 ai-cli 派你時走這條）。
 `SessionStart` 會告訴你受管的是哪一包、能寫哪些路徑——**以它說的為準**。
 如果它說「沒有設 GG_PACKAGE」，代表閘門只擋得住整波之外，擋不住你去寫別包的檔案：
 那時請嚴格照派工書的所有權表自律，並在回報時提一句。
 
-這條有三個 hook 在守（`.codex/hooks.json`）：
+這條有四個 hook 在守（`.codex/hooks.json`）：
 
 | 事件 | 做什麼 |
 |---|---|
+| `UserPromptSubmit` | 認出 prompt 裡的 `GG_PACKAGE=<包名>`，把包別綁到這個 session |
 | `SessionStart` | 一開場就告訴你能動哪些路徑 |
 | `PreToolUse` | `apply_patch` 碰到範圍外的檔案就擋下 |
 | `Stop` | 收工前用 `git diff` 再查一次——**用 shell 寫的檔案繞得過 `apply_patch` 閘門，但繞不過 git** |

@@ -20,17 +20,27 @@ allow: <相對 repo 根的路徑前綴，一行一個>
 ## 開工的兩個步驟
 
 1. **整合者**：把下面要派的那一段的 `<!--` 與 `-->` 兩行刪掉，讓它生效。
-2. **每個實作者 session**：開工前設好自己的包名。
+2. **每個實作者 session 要宣告自己是哪一包。** 兩條路，擇一：
+
+**A. 自己開 terminal** —— 用環境變數：
 
 ```bash
-GG_PACKAGE=BE-9 codex           # Codex
-GG_PACKAGE=BE-9 claude          # Claude Code
+GG_PACKAGE=BE-9 codex
 ```
 
-**`GG_PACKAGE` 不是可選的。** 同時派兩包而沒設它時，
-`allow` 清單會變成兩包的**聯集**——閘門仍擋得住「整波之外」，
+**B. lead 用 ai-cli fan out 子 agent** —— 在子 agent 的 prompt 裡寫一行 `GG_PACKAGE=BE-9`。
+`UserPromptSubmit` 會認出它，把包別綁到那個 session_id 上，之後的閘門就照那一包判斷。
+多個子 agent 同時跑不會互相蓋掉，因為標記檔名就是各自的 session_id。
+
+> 為什麼 B 不能用環境變數：ai-cli 的 `run` 只吃 `workFolder`／`prompt`／`model`／
+> `reasoning_effort`／`session_id`，**沒有 env 參數**；而且它的子行程是
+> `env: process.env`（`src/core/process-service.ts`），繼承的是 MCP server 自己的環境。
+> 一個 server 行程 spawn 所有子 agent，行程層級的環境變數本質上帶不了
+> 「每個子 agent 不同」的值。所以綁定只能走 session_id。
+
+**宣告不是可選的。** 沒宣告時 `allow` 是所有生效包的**聯集**——閘門仍擋得住「整波之外」，
 但擋不住 BE-9 去寫 BE-11 的檔案，而那正是所有權表要防的事。
-沒設的話 `SessionStart` 會明講這件事。包名拼錯則一律擋下（fail-closed）。
+包名拼錯一律擋下（fail-closed）。一個 session 只認第一次宣告，之後想改包會被拒絕。
 
 ---
 

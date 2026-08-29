@@ -5,6 +5,7 @@ set -u
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.dispatch/lib.sh"
 
 payload="$(cat)"
+gg_resolve_package "$payload"
 case "$payload" in
   *'"Write"'*|*'"Edit"'*) ;;
   *) exit 0 ;;
