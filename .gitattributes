@@ -1,0 +1,7 @@
+# 閘門的 shell 腳本由 Git Bash 執行，行尾一定要 LF。
+#
+# 這台機器的 core.autocrlf=true：commit 時會把 CRLF 正規化成 LF（所以 blob 是對的），
+# 但 **checkout 時會把 LF 換回 CRLF**。那會讓 bash 在每一行結尾吃到 \r，
+# 症狀是 "$'\r': command not found" 之類的錯誤，而且只在重新 checkout 之後才出現——
+# 在原本那台機器上永遠測不出來。
+*.sh text eol=lf

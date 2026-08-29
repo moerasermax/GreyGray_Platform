@@ -57,6 +57,48 @@ pnpm api:generate     # 契約改了要重跑
 **架構測試擋下你的時候，那是它在做它該做的事。不要改測試去繞過。**
 真的認為規則錯了，停下來說明理由，不要自己改。
 
+## 只能照派工書開工
+
+**沒有派工書就不准寫原始碼。** 生效中的派工寫在 `.dispatch/ACTIVE.md`，
+由整合者維護，格式與範例都在那個檔案裡。三個 hook 一起守這條規則：
+
+| Hook | 做什麼 |
+|---|---|
+| `SessionStart` → `session-brief.sh` | 一開場就把「你這一包能動哪些路徑」送進 context |
+| `PreToolUse`（Write／Edit）→ `dispatch-guard.sh` | 即時擋下派工範圍外的寫入 |
+| `Stop` → `stop-gate.sh` | 收工前用 `git diff` 再查一次越界——**這一層不能省**，因為用 Bash（`sed -i`、heredoc、重導向）寫的檔案繞得過 `PreToolUse`，但繞不過 git |
+
+`docs/`、`management/`、`STATE.md`、`CLAUDE.md`、`AGENTS.md` 不受限——那是整合與 PM 的工作，不是「開工」。
+`ACTIVE.md` 沒有任何 `package:` 時是**整合者模式**：原始碼一律不准寫。
+閘門自己的檔案（`.dispatch/`、`.claude/`、`.codex/`）只有整合者模式能寫——
+實作者能改 `ACTIVE.md` 的話，他就能自我擴權，那閘門只是建議。
+
+**每個實作者 session 都要帶 `GG_PACKAGE`**：`GG_PACKAGE=BE-9 codex`。
+不帶的話，同時派多包時 `allow` 會變成聯集——擋得住整波之外，
+擋不住 BE-9 去寫 BE-11 的檔案。包名拼錯一律擋下（fail-closed）。
+
+**Codex 也受同一套閘門管。** 它不讀 `.claude/`，讀的是 `.codex/hooks.json` 與 `AGENTS.md`，
+但判斷邏輯共用 `.dispatch/lib.sh`、狀態共用 `.dispatch/ACTIVE.md`——派工狀態只有一份。
+
+這一條要擋的是踩過的坑：**交付後不停手、自己往下做下一波**。
+子代理只做自己那包的「自驗」，逐條貼出實際指令與輸出，
+**不能自己宣告通過**；總驗收是整合者的事（`docs/13` §6 那十條）。
+
+現在的派工書：`docs/13-後端第五波派工書.md`（前端的在 `-fe` worktree 的 `docs/12`）。
+
+## 驗收完就要更新進度表
+
+**做完一次完整的整合驗收，必須同步 `GreyGray_PM/`。**
+那個資料夾刻意不在任何 worktree 裡——`STATE.md` 曾在兩棵樹上分岔，前端那份落後四波，
+在不同視窗看到不同的「現況」是最容易失去方向的一種故障。
+
+1. `03-驗收紀錄.md` —— 誰驗的、怎麼驗的、結論、發現什麼
+2. `00-進度總表.md` —— 階段狀態、基準 commit、「現在卡在哪」
+3. `web/dashboard.html` 最上面的 `DATA`，改完重新發布
+
+標 ✅ 之前一定要寫得出「怎麼驗的」：哪個指令、什麼輸出。**交付方不能自己標 ✅。**
+`stop-gate.sh` 在整合者模式下會比對這三個檔的修改時間，沒同步就擋下收工。
+
 ## 三個會咬人的地方
 
 - **`Microsoft.OpenApi` 釘在 2.12.2，不要跳 3.x。**
