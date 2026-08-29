@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { Card, ProductCard } from '@greygray/ui';
 import type { components } from '@greygray/api-client/storefront';
 import { toBadgeProps } from '../_lib/badges';
-import { placeholderImage } from '../_lib/placeholderImage';
 
 type S = components['schemas'];
 
@@ -40,7 +39,7 @@ export function ProductCardLink({ product }: { product: S['ProductListItem'] }) 
   return (
     <Link href={`/products/${product.id}`} className="block h-full" prefetch={false}>
       <ProductCard
-        imageSrc={product.imageUrl ?? placeholderImage(product.name)}
+        imageSrc={product.imageUrl}
         imageAlt={product.name}
         name={product.name}
         description={product.shortDescription ?? undefined}

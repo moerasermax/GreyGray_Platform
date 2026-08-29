@@ -1,5 +1,4 @@
 import type { components } from '@greygray/api-client/storefront';
-import { placeholderImage } from '../_lib/placeholderImage';
 import { CategoryChipLink } from './CategoryChipLink';
 
 type S = components['schemas'];
@@ -12,7 +11,7 @@ export function CategoryRail({ categories }: { categories: S['Category'][] }) {
         <CategoryChipLink
           key={category.id}
           categoryId={category.id}
-          imageSrc={category.imageUrl ?? placeholderImage(category.name)}
+          imageSrc={category.imageUrl}
           imageAlt={category.name}
           label={category.name}
         />

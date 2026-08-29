@@ -1,8 +1,10 @@
 'use client';
 
 import { useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from './internal/cn';
 import { useFocusTrap } from './internal/useFocusTrap';
+import { usePortalTarget } from './internal/usePortalTarget';
 import { IconButton } from './IconButton';
 import { IconX } from './icons';
 
@@ -17,14 +19,18 @@ export interface BottomSheetProps {
 /**
  * 手機上的選項面板。Esc 關、focus trap，從底部滑入。
  *
- * 不用 `createPortal`，理由同 `Dialog.tsx`——這個套件目前無法宣告
- * `react-dom` 依賴，改用 `position: fixed`。
+ * 用 `createPortal` 掛到 `document.body`，理由同 `Dialog.tsx`——
+ * 只靠 `position: fixed` 會被任何有 `overflow: hidden` 或 CSS transform 的父層裁掉。
+ * 這個元件的典型用法是「商品卡上的選項面板」，而卡片牆與橫捲分類標
+ * 正是那種父層，所以這裡比 Dialog 更容易踩到。
  */
 export function BottomSheet({ open, onClose, title, children, className }: BottomSheetProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(panelRef, open, onClose);
+  const portalTarget = usePortalTarget();
+  if (!portalTarget) return null;
 
-  return (
+  return createPortal(
     <div
       inert={!open}
       className={cn(
@@ -68,6 +74,7 @@ export function BottomSheet({ open, onClose, title, children, className }: Botto
 
         <div className="mt-[var(--gg-space-4)]">{children}</div>
       </div>
-    </div>
+    </div>,
+    portalTarget,
   );
 }

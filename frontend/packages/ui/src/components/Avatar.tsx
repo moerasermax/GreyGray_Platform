@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import { cn } from './internal/cn';
 import { IconUser } from './icons';
 
@@ -18,22 +19,21 @@ export interface AvatarProps {
   className?: string;
 }
 
-/** 沒有 next/image——這個套件目前無法宣告 next 依賴，見 FE-2 交付說明。 */
+/** 有圖走 `next/image`；沒有圖退回姓名首字，再沒有才用人形圖示。 */
 export function Avatar({ src, alt, name, size = 'md', className }: AvatarProps) {
   const initials = name?.trim().slice(0, 1).toUpperCase();
 
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 items-center justify-center overflow-hidden rounded-pill',
+        'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-pill',
         'bg-surface-sunken font-display font-bold text-primary-text',
         SIZE_CLASS[size],
         className,
       )}
     >
       {src ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt={alt} className="h-full w-full object-cover" />
+        <Image src={src} alt={alt} fill sizes="64px" className="object-cover" />
       ) : initials ? (
         <span aria-hidden={alt ? undefined : true}>{initials}</span>
       ) : (

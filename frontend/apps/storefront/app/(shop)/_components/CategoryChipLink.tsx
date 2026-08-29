@@ -5,7 +5,7 @@ import { CategoryChip } from '@greygray/ui';
 
 export interface CategoryChipLinkProps {
   categoryId: string;
-  imageSrc: string;
+  imageSrc?: string | null | undefined;
   imageAlt: string;
   label: string;
 }

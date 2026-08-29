@@ -1,7 +1,9 @@
 import { cn } from './internal/cn';
+import { Thumbnail } from './Thumbnail';
 
 export interface CategoryChipProps {
-  imageSrc: string;
+  /** 直接傳契約的 `Category.imageUrl`，可以是 `null`——沒圖就由外層底色當佔位。 */
+  imageSrc?: string | null | undefined;
   imageAlt: string;
   label: string;
   selected?: boolean;
@@ -34,13 +36,12 @@ export function CategoryChip({
     >
       <span
         className={cn(
-          'aspect-square w-full overflow-hidden rounded-pill bg-surface-sunken',
+          'relative aspect-square w-full overflow-hidden rounded-pill bg-surface-sunken',
           'transition-colors duration-[var(--gg-duration-base)] ease-out-soft',
           selected && 'ring-2 ring-primary',
         )}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={imageSrc} alt={imageAlt} className="h-full w-full object-cover" loading="lazy" />
+        <Thumbnail src={imageSrc} alt={imageAlt} sizes="96px" />
       </span>
       <span
         className={cn(

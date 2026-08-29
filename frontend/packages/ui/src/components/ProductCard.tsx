@@ -2,10 +2,16 @@ import { cn } from './internal/cn';
 import { Badge, type BadgeVariant } from './Badge';
 import { FavoriteHeart } from './FavoriteHeart';
 import { PriceDisplay } from './PriceDisplay';
+import { Thumbnail } from './Thumbnail';
 import type { Money } from '@greygray/api-client';
 
 export interface ProductCardProps {
-  imageSrc: string;
+  /**
+   * 商品圖。**直接傳契約的 `Product.imageUrl`，可以是 `null`。**
+   * 沒有圖的時候由這個元件畫佔位版面，呼叫端不要自己組 data URI——
+   * 那不只是多一份程式碼，`next/image` 也不吃 `data:`。
+   */
+  imageSrc?: string | null | undefined;
   imageAlt: string;
   name: string;
   /** 1–2 句描述。 */
@@ -26,9 +32,9 @@ export interface ProductCardProps {
 }
 
 /**
- * 純展示元件，不處理路由——要包 `next/link` 或 `onClick` 導頁是頁面自己的事
- * （這個套件目前無法宣告 next 依賴，見 FE-2 交付說明）。
- * 圖片用 1:1 裁切的原生 `<img>`，不是 `next/image`，理由同上。
+ * 純展示元件，不處理路由——要包 `next/link` 或 `onClick` 導頁是頁面自己的事。
+ * 圖片走 `next/image` ＋ 1:1 裁切（鐵則 7）；`imageUrl` 是 `null` 時不發圖片請求，
+ * 直接畫底色佔位。
  */
 export function ProductCard({
   imageSrc,
@@ -70,8 +76,12 @@ export function ProductCard({
       )}
     >
       <div className="relative aspect-square w-full overflow-hidden bg-surface-sunken">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={imageSrc} alt={imageAlt} className="h-full w-full object-cover" loading="lazy" />
+        {/* 卡片在手機兩欄、平板三欄、桌機四欄，讓瀏覽器挑尺寸而不是一律載大圖 */}
+        <Thumbnail
+          src={imageSrc}
+          alt={imageAlt}
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+        />
 
         {badges && badges.length > 0 && (
           <div className="absolute left-[var(--gg-space-2)] top-[var(--gg-space-2)] flex flex-wrap gap-[var(--gg-space-1)]">

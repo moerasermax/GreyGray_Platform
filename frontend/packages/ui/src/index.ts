@@ -54,3 +54,4 @@ export * from './components/Input';
 export * from './components/Select';
 export * from './components/Textarea';
 export * from './components/Tabs';
+export * from './components/Thumbnail';

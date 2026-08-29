@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { components } from '@greygray/api-client/storefront';
-import { placeholderImage } from '../_lib/placeholderImage';
+import { Thumbnail } from '@greygray/ui';
 
 type S = components['schemas'];
 
@@ -24,12 +24,7 @@ export function HeroBanner({ campaign }: { campaign: S['CampaignListItem'] | und
         </p>
       </div>
       <div className="h-[var(--gg-space-8)] w-[var(--gg-space-8)] shrink-0 overflow-hidden rounded-pill shadow-raised sm:h-32 sm:w-32">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={campaign.coverImageUrl ?? placeholderImage(campaign.destination)}
-          alt={campaign.destination}
-          className="h-full w-full object-cover"
-        />
+        <Thumbnail src={campaign.coverImageUrl} alt={campaign.destination} sizes="(max-width: 640px) 128px, 128px" />
       </div>
     </Link>
   );

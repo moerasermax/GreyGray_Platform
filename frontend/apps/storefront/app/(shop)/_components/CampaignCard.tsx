@@ -1,9 +1,8 @@
 import Link from 'next/link';
-import { Badge, Card, Countdown } from '@greygray/ui';
+import { Badge, Card, Countdown, Thumbnail } from '@greygray/ui';
 import type { components } from '@greygray/api-client/storefront';
 import { formatDateRange } from '../_lib/campaignDate';
 import { campaignStatusLabel } from '../_lib/campaignStatusLabel';
-import { placeholderImage } from '../_lib/placeholderImage';
 
 type S = components['schemas'];
 
@@ -13,13 +12,7 @@ export function CampaignCard({ campaign }: { campaign: S['CampaignListItem'] }) 
     <Link href={`/campaigns/${campaign.id}`} className="block">
       <Card padding="none" className="flex flex-col overflow-hidden">
         <div className="relative aspect-square w-full overflow-hidden bg-surface-sunken sm:aspect-[16/9]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={campaign.coverImageUrl ?? placeholderImage(campaign.destination)}
-            alt={campaign.destination}
-            className="h-full w-full object-cover"
-            loading="lazy"
-          />
+          <Thumbnail src={campaign.coverImageUrl} alt={campaign.destination} sizes="(max-width: 640px) 100vw, 33vw" />
           <div className="absolute left-[var(--gg-space-2)] top-[var(--gg-space-2)]">
             <Badge variant={campaign.status} label={campaignStatusLabel(campaign.status)} />
           </div>

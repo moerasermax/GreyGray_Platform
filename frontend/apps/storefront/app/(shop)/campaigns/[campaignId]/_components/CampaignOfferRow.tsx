@@ -1,13 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, PriceDisplay, QuantityStepper, Toast } from '@greygray/ui';
+import { Button, PriceDisplay, QuantityStepper, Toast, Thumbnail } from '@greygray/ui';
 import { addCartLine } from '@greygray/api-client/endpoints/storefront';
 import type { components } from '@greygray/api-client/storefront';
 import { ApiError } from '@greygray/api-client';
 import { browserApi } from '../../../../_lib/apiClient';
 import { usePayloadIdempotency } from '../../../../_lib/usePayloadIdempotency';
-import { placeholderImage } from '../../../_lib/placeholderImage';
 
 type S = components['schemas'];
 
@@ -50,12 +49,7 @@ export function CampaignOfferRow({ offer, isAcceptingOrders }: CampaignOfferRowP
   return (
     <div className="flex items-center gap-[var(--gg-space-3)] rounded-card bg-surface p-[var(--gg-space-3)] shadow-card">
       <div className="h-[var(--gg-space-8)] w-[var(--gg-space-8)] shrink-0 overflow-hidden rounded-card bg-surface-sunken">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={offer.imageUrl ?? placeholderImage(offer.name)}
-          alt={offer.name}
-          className="h-full w-full object-cover"
-        />
+        <Thumbnail src={offer.imageUrl} alt={offer.name} sizes="64px" />
       </div>
 
       <div className="flex flex-1 flex-col gap-[var(--gg-space-1)]">

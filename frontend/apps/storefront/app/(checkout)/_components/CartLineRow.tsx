@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, IconAlertTriangle, IconButton, IconX, PriceDisplay, QuantityStepper } from '@greygray/ui';
+import { Badge, IconAlertTriangle, IconButton, IconX, PriceDisplay, QuantityStepper, Thumbnail } from '@greygray/ui';
 import type { components } from '@greygray/api-client/storefront';
 
 type S = components['schemas'];
@@ -13,19 +13,16 @@ export interface CartLineRowProps {
 }
 
 /**
- * `ProductCard` 已知偏離用原生 `<img>`（見交付回報），這裡的縮圖跟著同一個做法，
- * 不在這個路徑自己重新發明一套圖片載入方式。
+ * 縮圖走 `packages/ui` 的 `Thumbnail`（`next/image` ＋ 沒圖就不發請求），
+ * 跟商品卡是同一套，不在這個路徑自己重新發明一次。
  */
 export function CartLineRow({ line, onQuantityChange, onRemove, busy = false }: CartLineRowProps) {
   return (
     <div className="flex flex-col gap-[var(--gg-space-3)] border-b border-border-soft py-[var(--gg-space-4)] last:border-b-0">
       <div className="flex gap-[var(--gg-space-3)]">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={line.imageUrl ?? undefined}
-          alt=""
-          className="h-16 w-16 shrink-0 rounded-[var(--gg-radius-sm)] bg-surface-sunken object-cover"
-        />
+        <span className="relative h-16 w-16 shrink-0 overflow-hidden rounded-[var(--gg-radius-sm)] bg-surface-sunken">
+          <Thumbnail src={line.imageUrl} alt="" sizes="64px" />
+        </span>
 
         <div className="flex flex-1 flex-col gap-[var(--gg-space-1)]">
           <div className="flex items-start justify-between gap-[var(--gg-space-2)]">

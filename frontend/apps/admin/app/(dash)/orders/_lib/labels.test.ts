@@ -1,0 +1,131 @@
+import { describe, expect, it } from 'vitest';
+import {
+  deliveryMethodLabel,
+  fulfillmentModeLabel,
+  orderLineStatusLabel,
+  orderLineStatusTone,
+  orderStatusLabel,
+  orderStatusTone,
+  paymentProviderLabel,
+  paymentStatusLabel,
+  paymentStatusTone,
+  refundDestinationHint,
+  refundDestinationLabel,
+  shippingPolicyLabel,
+} from './labels';
+
+/**
+ * 這一組測試守的是 `docs/06-前端工作包.md` 鐵則 5：
+ * **enum 一律容忍未知值——後端新增列舉成員不算破壞性變更（`docs/05` §1）。**
+ *
+ * 未知值要退回顯示原始字串，不可以是空字串、不可以丟例外。
+ * 這條規則只靠 code review 守不住：新增一個 `case` 忘了 `default`，
+ * 型別檢查不會抱怨（回傳型別仍然是 string），畫面要等後端真的加了新狀態才爆。
+ */
+
+/** 訂單狀態九個（`docs/02-事件與狀態機.md` 的訂單狀態機）。 */
+const ORDER_STATUSES = [
+  'AwaitingPayment',
+  'PaidAwaitingClose',
+  'ClosedAwaitingDeparture',
+  'Purchasing',
+  'GoodsReceived',
+  'ReadyToShip',
+  'Shipped',
+  'Completed',
+  'Cancelled',
+] as const;
+
+const UNKNOWN = 'SomeStatusTheBackendAddedLater';
+
+describe('orderStatusLabel', () => {
+  it('九個狀態都有中文標籤，而且不會是原始英文', () => {
+    for (const status of ORDER_STATUSES) {
+      const label = orderStatusLabel(status);
+      expect(label, status).not.toBe('');
+      expect(label, status).not.toBe(status);
+    }
+  });
+
+  it('九個狀態的標籤互不重複——重複的話畫面上分不出來', () => {
+    const labels = ORDER_STATUSES.map(orderStatusLabel);
+    expect(new Set(labels).size).toBe(ORDER_STATUSES.length);
+  });
+
+  it('未知狀態退回原始字串，不是空字串也不丟例外', () => {
+    expect(orderStatusLabel(UNKNOWN)).toBe(UNKNOWN);
+  });
+});
+
+describe('orderStatusTone', () => {
+  it('未知狀態退回 neutral，不丟例外', () => {
+    expect(orderStatusTone(UNKNOWN)).toBe('neutral');
+  });
+
+  it('待付款是 warning——那是唯一需要客服追的狀態', () => {
+    expect(orderStatusTone('AwaitingPayment')).toBe('warning');
+  });
+
+  it('Cancelled 用 neutral 不用 danger——取消是正常結局，不是錯誤', () => {
+    expect(orderStatusTone('Cancelled')).toBe('neutral');
+  });
+});
+
+describe('orderLineStatus', () => {
+  it('未知值退回原始字串與 neutral', () => {
+    expect(orderLineStatusLabel(UNKNOWN)).toBe(UNKNOWN);
+    expect(orderLineStatusTone(UNKNOWN)).toBe('neutral');
+  });
+
+  it('Unavailable 有自己的標籤——缺貨退款的 line 要一眼看得出來', () => {
+    const label = orderLineStatusLabel('Unavailable');
+    expect(label).not.toBe('Unavailable');
+    expect(label).not.toBe('');
+  });
+});
+
+describe('paymentStatus', () => {
+  it('未知值退回原始字串與 neutral', () => {
+    expect(paymentStatusLabel(UNKNOWN)).toBe(UNKNOWN);
+    expect(paymentStatusTone(UNKNOWN)).toBe('neutral');
+  });
+});
+
+describe('其餘 enum 的未知值處理', () => {
+  it('全部退回原始字串', () => {
+    expect(fulfillmentModeLabel(UNKNOWN)).toBe(UNKNOWN);
+    expect(deliveryMethodLabel(UNKNOWN)).toBe(UNKNOWN);
+    expect(shippingPolicyLabel(UNKNOWN)).toBe(UNKNOWN);
+    expect(paymentProviderLabel(UNKNOWN)).toBe(UNKNOWN);
+    expect(refundDestinationLabel(UNKNOWN)).toBe(UNKNOWN);
+  });
+});
+
+/**
+ * 退款去向是**會動到錢**的選擇，而且兩個選項對客人的實收金額不同。
+ * `docs/06` FE-8 要求 UI 說明差別，說明文字寫錯等於誤導客服與客人。
+ */
+describe('refundDestination', () => {
+  it('兩個選項都有標籤，而且分得出來', () => {
+    expect(refundDestinationLabel('StoredValue')).toBe('退成儲值金');
+    expect(refundDestinationLabel('OriginalPaymentMethod')).toBe('原路退回');
+  });
+
+  it('儲值金的說明要講到「零手續費」——那是預設選它的理由', () => {
+    expect(refundDestinationHint('StoredValue')).toContain('零手續費');
+  });
+
+  it('原路退回的說明要講到「手續費」——客人實收會變少，不講清楚會有客訴', () => {
+    expect(refundDestinationHint('OriginalPaymentMethod')).toContain('手續費');
+  });
+
+  it('兩個說明不可以一樣，否則等於沒說明', () => {
+    expect(refundDestinationHint('StoredValue')).not.toBe(
+      refundDestinationHint('OriginalPaymentMethod'),
+    );
+  });
+
+  it('未知值的說明回空字串——寧可不顯示，也不要顯示錯的金流說明', () => {
+    expect(refundDestinationHint(UNKNOWN)).toBe('');
+  });
+});

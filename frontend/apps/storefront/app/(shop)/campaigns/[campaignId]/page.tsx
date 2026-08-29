@@ -1,12 +1,11 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { Badge, Countdown } from '@greygray/ui';
+import { Badge, Countdown, Thumbnail } from '@greygray/ui';
 import { getCampaign } from '@greygray/api-client/endpoints/storefront';
 import { ApiError } from '@greygray/api-client';
 import { serverApi } from '../../../_lib/apiClient';
 import { formatDateRange } from '../../_lib/campaignDate';
 import { campaignStatusLabel } from '../../_lib/campaignStatusLabel';
-import { placeholderImage } from '../../_lib/placeholderImage';
 import { CampaignOfferRow } from './_components/CampaignOfferRow';
 
 interface CampaignDetailPageProps {
@@ -46,12 +45,7 @@ export default async function CampaignDetailPage({ params }: CampaignDetailPageP
   return (
     <main className="mx-auto flex max-w-[var(--gg-container-max)] flex-col gap-[var(--gg-space-5)] px-[var(--gg-space-4)] py-[var(--gg-space-4)]">
       <div className="relative aspect-[16/9] w-full overflow-hidden rounded-[var(--gg-radius-xl)] bg-surface-sunken">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={campaign.coverImageUrl ?? placeholderImage(campaign.destination)}
-          alt={campaign.destination}
-          className="h-full w-full object-cover"
-        />
+        <Thumbnail src={campaign.coverImageUrl} alt={campaign.destination} sizes="(max-width: 640px) 100vw, 640px" />
         <div className="absolute left-[var(--gg-space-3)] top-[var(--gg-space-3)]">
           <Badge variant={campaign.status} label={campaignStatusLabel(campaign.status)} />
         </div>
