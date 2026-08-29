@@ -31,6 +31,26 @@ $managedNames = @(
     'GreyGray-Web-Storefront', 'GreyGray-Web-Admin'
 )
 
+function Resolve-WingetPath {
+    <#
+        winget 在 SSH 這種非互動 session 裡常常不在 PATH 上——
+        App Installer 是把 winget.exe 放在使用者的 WindowsApps 別名目錄，
+        而那個目錄只有互動登入的 session 才會被加進 PATH。
+        YC 上實測過：Get-Command winget 找不到，但
+        %LOCALAPPDATA%\Microsoft\WindowsApps\winget.exe 確實存在（App Installer 1.29.290.0）。
+        只靠 Get-Command 會讓整支安裝腳本在遠端執行時第一步就 throw。
+    #>
+    $cmd = Get-Command winget.exe -CommandType Application -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    foreach ($candidate in @(
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\winget.exe'),
+        (Join-Path $env:ProgramFiles 'WindowsApps\winget.exe')
+    )) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate)) { return $candidate }
+    }
+    return $null
+}
+
 function Write-Existing([string]$Name) { Write-Host "已存在 $Name" }
 function Write-Installed([string]$Name) { Write-Host "已安裝 $Name" }
 
@@ -102,10 +122,11 @@ function Install-WinGetPackage {
         [string[]]$AdditionalArguments = @()
     )
     if (& $IsInstalled) { Write-Existing $Name; return }
-    if (-not (Get-Command winget.exe -ErrorAction SilentlyContinue)) { throw "找不到 winget，無法安裝 $Name。" }
+    $winget = Resolve-WingetPath
+    if (-not $winget) { throw "找不到 winget，無法安裝 $Name。" }
     $arguments = @('install', '--id', $Id, '--exact', '--silent', '--scope', 'machine',
         '--accept-source-agreements', '--accept-package-agreements', '--disable-interactivity') + $AdditionalArguments
-    if ($PSCmdlet.ShouldProcess($Name, "winget install $Id")) { Invoke-Native 'winget.exe' $arguments }
+    if ($PSCmdlet.ShouldProcess($Name, "winget install $Id")) { Invoke-Native $winget $arguments }
     Update-ProcessPath
     if (-not (& $IsInstalled)) { throw "$Name 安裝後仍無法驗證。請查看 winget log。" }
     Write-Installed $Name
