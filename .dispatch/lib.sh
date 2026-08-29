@@ -239,12 +239,23 @@ gg_out_of_scope_files() {
     } | sort -u | grep -v '^$'
   )"
   [ -n "$changed" ] || return 0
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    gg_path_allowed "$f" || printf '%s\n' "$f"
-  done <<EOF
+  # 用「整波聯集」判斷，不是用自己那一包。
+  #
+  # 同一棵 worktree 裡多個 agent 平行跑時，git diff 看得到別人的交付，
+  # 但看不出那是誰寫的。拿自己那一包去判，別人的正當交付會被誤報成你的越界——
+  # 實測過：FE-9 交付後還沒提交，FE-10 一收工就被自己的閘門擋住。
+  #
+  # 精確到「包」的把關由 PreToolUse 負責，那一層知道是誰在寫。
+  # 這一層只負責攔「整波之外」，也就是用 shell 繞過 PreToolUse 的那種寫入。
+  (
+    unset GG_PACKAGE
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      gg_path_allowed "$f" || printf '%s\n' "$f"
+    done <<EOF
 $changed
 EOF
+  )
 }
 
 # 整合者模式的 PM 同步檢查。有問題就印出訊息，沒有就不印。
