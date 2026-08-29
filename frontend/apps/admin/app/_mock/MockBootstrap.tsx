@@ -29,6 +29,14 @@ let started: Promise<unknown> | null = null;
  * 才能保證「請求送出時 worker 一定已經就緒」。
  */
 export function startMock() {
+  // server 端一律不做事。SSR 那一側由 `instrumentation.ts` 的 `setupServer` 攔，
+  // 這裡是瀏覽器的 service worker，在 Node 裡呼叫會丟
+  // `[MSW] Failed to execute setupWorker in a non-browser environment`。
+  //
+  // 守衛放在這裡而不是靠呼叫端：`_lib/apiClient.ts` 是在**模組層級**就
+  // `import('./MockBootstrap').then(m => m.startMock())`，那支模組 SSR 也會載入，
+  // 所以「呼叫端記得只在 client 呼叫」這個約定守不住——`next build` 預先渲染時就會踩到。
+  if (typeof window === 'undefined') return Promise.resolve();
   if (started) return started;
   started = (async () => {
     const [{ isMockEnabled }, { adminWorker }] = await Promise.all([
