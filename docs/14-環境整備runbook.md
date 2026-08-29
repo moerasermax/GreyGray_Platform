@@ -189,3 +189,94 @@ pwsh.exe       -NoProfile -File .\ops\environment-self-test.ps1
 - PostgreSQL data/WAL 不做破壞性自動回復。任何 junction 或 cluster 歧義都停下由人判斷。
 - cloudflared 正常後才移除六個 ngrok 的既有自啟設定；驗收腳本會把仍存在的 ngrok process 判為 FAIL。
 - 部署應沿用 `ops/deploy.ps1` 的 PID＋StartTime＋release path 接手驗證，HTTP 200 本身不足以證明新版本接手。
+
+---
+
+## 8. 透過 SSH 遠端執行時會踩到的四個坑
+
+2026-08-29 從開發機 ssh 到 YC（`192.168.0.92`）實際跑一遍時撞到的。
+**每一條都是「互動登入沒事、SSH 就壞」**，在自己機器上測不出來。
+
+### 8.1　winget 不在 PATH 上
+
+App Installer 把 `winget.exe` 放在**使用者的 WindowsApps 別名目錄**，
+那個目錄只有互動登入的 session 才會被加進 PATH。
+`Get-Command winget` 在 SSH session 裡找不到，但 winget 其實裝著。
+
+`install-environment.ps1` 的 `Resolve-WingetPath` 已經處理：先試 `Get-Command`，
+再退回 `%LOCALAPPDATA%\Microsoft\WindowsApps\winget.exe`。
+
+### 8.2　EDB 的 PostgreSQL 圖形安裝程式在 SSH 下不能用
+
+症狀：`exit 1`，log 只寫
+
+```
+Error writing file ...\postgresql_installer_xxx	emp_check_comspec.bat
+Exiting with code 1
+```
+
+**不是 COMSPEC 的問題**（實測 COMSPEC 正常、在 TEMP 寫 .bat 並執行也成功）。
+真因是安裝程式會自己再提權一次，在非互動 session 下權限脈絡對不上——
+它建出來的 temp 目錄是空的，**連原本那個管理員也寫不進去**。
+
+**改用官方 ZIP 二進位**（`postgresql-17.11-1-windows-x64-binaries.zip`，324.9 MB，
+SHA256 `6EABDF00D2893713B75DB4336A23C3FDF505F056E217EC6E2E95D901750CFEA3`），
+解壓到 `C:\GreyGray\PostgreSQL` 後自己 `initdb`。
+這反而更符合 ADR-003（Native ＋ NSSM，不倚賴安裝程式），路徑也完全可控。
+
+### 8.3　`initdb -X`（外置 WAL 目錄）在 Windows 上會失敗
+
+```
+initdb: 錯誤: 無法建立目錄 ".../data/pg_wal/archive_status": Invalid argument
+```
+
+`-X` 會把 `pg_wal` 做成 junction，而穿過 junction 建子目錄失敗。
+
+**拿掉 `-X` 就好。** 藍圖的要求是「data 與 WAL 都在 C 槽 NVMe」，
+`pg_wal` 留在 `data\pg_wal` 一樣在 C 槽，需求照樣滿足，還少一個會壞的機制。
+
+### 8.4　`Start-Process -Credential` 在 SSH 下拿不到 window station
+
+以另一個帳號執行程式會得到 `0xC0000142`（STATUS_DLL_INIT_FAILED）。
+非互動 session 建的行程沒有 window station／desktop 存取權。
+
+需要以服務帳號執行一次性工作時，改用**排程工作**（它跑在正確的 session 脈絡下），
+或乾脆用目前身分執行再修 ACL——`initdb` 本身**不會**拒絕管理員身分執行
+（PostgreSQL 拒絕管理員的是**伺服器行程**，不是 initdb）。
+
+---
+
+## 9. 2026-08-29 在 YC 上實際完成到哪
+
+| 項目 | 狀態 |
+|---|---|
+| .NET SDK 10.0.400 ＋ runtime 10.0.11 | ✅ winget |
+| NSSM | ✅ winget |
+| **Garnet 1.0.83**（取代 Valkey，見 ADR-022） | ✅ 實測 RESP `PING` → `+PONG` |
+| **PostgreSQL 17.11** | ✅ ZIP 解壓 ＋ `initdb` 完成，`PG_VERSION = 17` |
+| `pg_hba.conf` | ✅ 6 條規則全部 `scram-sha-256`，**`trust` 歸零** |
+| `postgresql.conf` | ✅ `listen_addresses = 'localhost'`、`port = 5432` |
+| 服務帳號 `GreyGraySvc` | ✅ 非管理員，SID `...-1010` |
+| NSSM 服務兩個 | ⚠️ 已建立、設為 Automatic、帳號是 `.\GreyGraySvc`，**但啟動失敗** |
+| cloudflared | ✅ 本來就 Running／Automatic |
+| node v22.17.0 | ✅ 本來就是正確版本 |
+
+**沒完成的那一項**：`sc start` 回 `錯誤 5：存取被拒`。
+不是 1069（登入失敗），所以不是服務帳號密碼或 `SeServiceLogonRight` 的問題
+（後者已用 LSA API 授予成功）。**待在機器前面用互動 session 啟動一次確認**；
+兩個服務都是 Automatic，重開機也會自動嘗試啟動。
+
+### 秘密檔的位置
+
+```
+C:\GreyGray\secrets\postgres-superuser.txt   PostgreSQL superuser 密碼
+C:\GreyGray\secrets\greygraysvc.txt          GreyGraySvc 服務帳號密碼
+```
+
+兩個都 28 字元隨機、ACL 只給 `YC\moera`／`SYSTEM`／`Administrators`。
+**這兩組密碼從未離開 YC**，不在任何對話、commit 或 log 裡。
+
+> **一次操作失誤的紀錄**：第一次安裝 PostgreSQL 時把 superuser 密碼放在
+> winget 的命令列參數上，winget 把整條指令寫進了它的 log。
+> 已刪除該 log 並**更換密碼**，改用 `--optionfile` 讓密碼不進命令列。
+> 記在這裡是因為這種錯很容易重犯：**任何 `--password` 類參數都不要放在命令列上。**

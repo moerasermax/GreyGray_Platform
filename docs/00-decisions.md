@@ -396,3 +396,48 @@ preflight。Development 僅預設允許 `http://localhost:5003` 與 `http://127.
 不得使用 `AllowAnyOrigin`，也不得把 credentials 與萬用來源混用。
 
 ---
+
+## ADR-022　快取／session 儲存改用 Microsoft Garnet，不用 Valkey
+**狀態**：已採納（2026-08-29，YC 上實測後）
+
+**背景**：ADR 原本寫 Valkey。實際要在正式機 YC（Windows 11 家用版）安裝時才發現，
+**Valkey 官方沒有任何 Windows binary，也沒有計畫要做**——官方安裝文件只列
+Linux／macOS／WSL／Docker，而 WSL 與 Docker 都違反 ADR-003（Native ＋ NSSM）。
+
+查過的三條路：
+
+| 選項 | 為什麼不選 |
+|---|---|
+| Layerbase 的社群 build | 綁 Cygwin，沒有公布版本號與 checksum，只能透過他們的 app 或 npm 取得 |
+| Memurai Developer | 原生 Windows、winget 可裝，但 **Developer 版不授權正式環境**，正式用要買 Enterprise |
+| `Redis.Redis` 3.0.504 | 微軟 2016 年就停止維護的移植版 |
+
+**決定用 Microsoft Garnet**（`winget install Microsoft.Garnet.DN8`）：
+
+- **MIT 授權、微軟開源**，正式環境免費
+- **原生 Windows**：.NET 寫的，不需要 Cygwin、WSL 或 Docker
+- **RESP 線上協定**，未修改的 Redis client 直接可用——包含這專案在用的
+  `StackExchange.Redis`（`AddStackExchangeRedisCache`）。**應用程式一行都不用改**
+- winget 安裝有雜湊驗證，符合 BE-10 腳本「來源要能驗證」的要求
+
+**YC 上的實測**（2026-08-29）：綁 `127.0.0.1:6379` 啟動後，用原始 TCP 送 RESP `PING`，
+回 `+PONG`。winget 的 DN8 套件會順帶帶入 .NET 8 runtime（`NETCore.App 8.0.30`），
+`net9.0` 那份因為沒有 .NET 9 runtime 起不來，用 `net8.0` 那份。
+
+**這個決定的影響範圍很小，因為它扛的東西比藍圖寫的少。** 查過原始碼：
+
+| 藍圖說 Valkey 要做 | 實際上 |
+|---|---|
+| session | ✅ 只有這個真的接了（`DistributedSessionStore`） |
+| 鎖 | ❌ 已經在 Postgres（Worker 用 advisory lock 1002） |
+| rate limit | ❌ 還沒接，程式裡 0 筆 |
+
+也就是說它現在只存後台 session——一份「高頻讀取、丟了最壞是重新登入」的資料。
+
+**沒有選「乾脆不要這個服務、session 存 Postgres」的理由**：那要改程式，而 Garnet 是零改動。
+等 M3 要接 rate limit 時再重新評估要不要留這一層。
+
+**連帶要改的**：`ops/install-environment.ps1` 的 Valkey 段、
+`ops/verify-environment.ps1` 的 5 項 Valkey 檢查、`docs/14` runbook。
+
+---
