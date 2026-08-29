@@ -51,74 +51,54 @@ Leader 要明講。
 
 ---
 
-**第四波已生效（2026-08-30）。** 三包同時開，`GG_PACKAGE` 不是可選的。
+**第五波已生效（2026-08-30）。** 兩包同時開，`GG_PACKAGE` 不是可選的。
 
 | 包 | 主題 | 派工書 |
 |---|---|---|
-| FE-13 | 後台：出貨、交運與簽收 | `docs/15` |
-| FE-14 | 後台：缺貨補償、漲價詢問 ＋ **退款去向回工**（ADR-023） | `docs/15` |
-| FE-15 | 前台：客人看得到自己的品項缺貨與退款 | `docs/15` |
+| FE-12 | **關掉 mock，對真後端跑一遍** 🔴 D 階段的第一步 | `docs/18` |
+| FE-16 | 老闆拍板的四件前端跟進（ADR-027／028 等） | `docs/18` |
 
-**啟動 prompt 在 `.dispatch/PROMPTS.md`**，直接複製貼上。
+**啟動 prompt 在 `.dispatch/PROMPTS.md`**，Leader 用 ai-cli fan out。
 
----
-
-派工 FE-13：後台出貨、交運與簽收　·　docs/15-前端第四波派工書.md
-
-package: FE-13
-doc: docs/15-前端第四波派工書.md
-allow: frontend/apps/admin/app/(dash)/shipments/
-allow: frontend/apps/admin/app/(dash)/layout.tsx
-allow: frontend/packages/api-client/src/mock/fixtures.admin.shipments.ts
-allow: frontend/packages/api-client/src/mock/handlers.admin.shipments.ts
-allow: frontend/packages/api-client/src/mock/handlers.admin.ts
-
-派工 FE-14：後台缺貨補償、漲價詢問 ＋ 退款去向回工　·　docs/15-前端第四波派工書.md
-
-package: FE-14
-doc: docs/15-前端第四波派工書.md
-allow: frontend/apps/admin/app/(dash)/orders/
-allow: frontend/apps/admin/app/(dash)/procurement/
-allow: frontend/packages/api-client/src/mock/fixtures.admin.compensation.ts
-allow: frontend/packages/api-client/src/mock/handlers.admin.compensation.ts
-allow: frontend/packages/api-client/src/mock/handlers.admin.ts
-
-派工 FE-15：前台缺貨與退款的呈現　·　docs/15-前端第四波派工書.md
-
-package: FE-15
-doc: docs/15-前端第四波派工書.md
-allow: frontend/apps/storefront/app/(account)/orders/
-allow: frontend/packages/api-client/src/mock/fixtures.storefront.orderlines.ts
-allow: frontend/packages/api-client/src/mock/handlers.storefront.orderlines.ts
-allow: frontend/packages/api-client/src/mock/handlers.storefront.ts
+> **FE-12 從第三波等到現在**，等的就是後端環境。2026-08-30 BE-13 修好
+> `sc start` 錯誤 5（根因是 `nssm.exe` 的 ACL），YC 上兩個服務重開機後 9 秒自動起來，
+> **這一包終於解除阻塞**。
+>
+> **FE-16 的後兩件（開團逾時欄位、出貨詳情端點）等後端 BE-19 的契約落地**，
+> 前兩件（`NT$`、拿掉 KPI 假數字）現在就能做。
 
 ---
 
-<!--
-派工 FE-12：關掉 mock、對真後端跑一遍　·　docs/15-前端第四波派工書.md
-⏸ 等後端 BE-13（M-1 環境收尾）通過整合驗收才啟用。
-解除條件：ops/verify-environment.ps1 全 PASS、兩個服務重開機後自動起得來。
+派工 FE-12：關掉 mock、對真後端跑一遍　·　docs/18-前端第五波派工書.md
 
 package: FE-12
-doc: docs/15-前端第四波派工書.md
+doc: docs/18-前端第五波派工書.md
 allow: frontend/apps/admin/.env.local
 allow: frontend/apps/storefront/.env.local
--->
 
-> **FE-13 與 FE-14 都列了 `handlers.admin.ts`**、**FE-15 列了 `handlers.storefront.ts`**，
-> 因為每包各被授權在對應的 handlers 陣列尾端**加一行**。
-> 閘門擋不住「加了不只一行」——那一條由整合驗收時逐行看 diff 把關
-> （`docs/15` §4 例外授權第 1 條）。
+派工 FE-16：金額 NT$、拿掉 KPI 假數字、開團逾時欄位、出貨詳情端點　·　docs/18-前端第五波派工書.md
+
+package: FE-16
+doc: docs/18-前端第五波派工書.md
+allow: frontend/packages/api-client/src/money.ts
+allow: frontend/packages/api-client/src/__tests__/
+allow: frontend/apps/admin/app/(dash)/page.tsx
+allow: frontend/apps/admin/app/(dash)/_lib/dashboardMock.ts
+allow: frontend/apps/admin/app/(dash)/campaigns/new/
+allow: frontend/apps/admin/app/(dash)/shipments/_lib/api.ts
+
+---
+
+> **`money.ts` 是例外授權。** 那個檔平常在「沒有人擁有」的清單裡，
+> 這次明確劃給 FE-16——因為 ADR-028 的正確做法**就是只改這一處**，
+> 在呼叫端各自加前綴會變成散在幾十個元件裡的字串拼接。
 >
-> **`(dash)/layout.tsx` 只給 FE-13**（加一個「出貨」選單項）。FE-14 不需要它，
-> 因為 orders 與 procurement 的選單項已經存在。
->
-> **FE-14 會改到第三波 FE-9 擁有的 `orders/`**，那是**跨波修改，不是違規**——
-> 所有權表是同一波之內的邊界。
+> 改 `formatMoney()` 會影響**每一個顯示金額的地方**，包含別包的測試斷言。
+> FE-16 只准修自己所有權內的測試；**別包的測試檔要列清單回報，不要自己改**。
 
 ---
 
 ## 已經通過、不再生效的（保留軌跡）
 
-FE-1～FE-8（前兩波 ＋ 技術債收尾 `631e7bc`）·
-FE-9／FE-10／FE-11（第三波，`bbce5e1`，24 個變更檔零越界）
+FE-1～FE-8（前兩波 ＋ 技術債收尾 `631e7bc`）· FE-9／FE-10／FE-11（第三波 `bbce5e1`）·
+**第四波 FE-13／FE-14／FE-15（`e8156e6`，admin 60 條＋storefront 44 條全過）**
