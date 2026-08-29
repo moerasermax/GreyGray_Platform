@@ -17,36 +17,37 @@ allow: <相對 repo 根的路徑前綴，一行一個>
 
 ---
 
-## 開工的兩個步驟
+## 開工：你只開一個 terminal
 
-1. **整合者**：把下面要派的那一段的 `<!--` 與 `-->` 兩行刪掉，讓它生效。
-2. **每個實作者 session 要宣告自己是哪一包。** 兩條路，擇一：
+**Leader 模型。** 使用者開一個 terminal 當 Leader，Leader 用 ai-cli fan out 子代理，
+一包一個子代理。使用者不必一包一包開 terminal，也不必自己設 `GG_PACKAGE`。
 
-**A. 自己開 terminal** —— 用環境變數：
+**Leader 的啟動 prompt 與八包的原文都在 `.dispatch/PROMPTS.md`。**
 
-```bash
-GG_PACKAGE=FE-9 claude
-```
+### 三種身分，閘門分得出來
 
-**B. lead 用 ai-cli fan out 子 agent** —— 在子 agent 的 prompt 裡寫一行 `GG_PACKAGE=FE-9`。
-`UserPromptSubmit` 會認出它，把包別綁到那個 session_id 上，之後的閘門就照那一包判斷。
-多個子 agent 同時跑不會互相蓋掉，因為標記檔名就是各自的 session_id。
+| 身分 | 怎麼宣告 | 寫得了什麼 |
+|---|---|---|
+| **Leader** | prompt 開頭 `GG_ROLE=leader`，或 `GG_ROLE=leader claude` | 閘門檔（`.dispatch/`、`.claude/`、`.codex/`）、`docs/`、`GreyGray_PM`。**不寫原始碼** |
+| **實作者** | prompt 開頭 `GG_PACKAGE=<包名>`，或 `GG_PACKAGE=<包名> codex` | 只有該包 `allow:` 的路徑，加上全域放行的 `docs/` 等 |
+| **身分不明** | 沒宣告 | **什麼都寫不了**（有派工生效時）。這是刻意的 fail-closed |
 
-> 為什麼 B 不能用環境變數：ai-cli 的 `run` 只吃 `workFolder`／`prompt`／`model`／
+第三列是重點：**「忘記宣告的實作者」與「Leader」從外面看一模一樣**，
+所以不能用「沒綁包別」推定是 Leader——那會讓忘記宣告的人擁有改閘門的權力。
+Leader 要明講。
+
+> **包別優先於角色。** 子代理的 prompt 一定帶 `GG_PACKAGE=`；
+> 萬一同一段文字裡也混進 `GG_ROLE=leader`（例如 Leader 把整份說明貼過去），
+> 子代理仍然只會被綁成實作者，不會升級。已實測。
+
+> 為什麼子代理不能用環境變數：ai-cli 的 `run` 只吃 `workFolder`／`prompt`／`model`／
 > `reasoning_effort`／`session_id`，**沒有 env 參數**；而且它的子行程是
 > `env: process.env`（`src/core/process-service.ts`），繼承的是 MCP server 自己的環境。
-> 一個 server 行程 spawn 所有子 agent，行程層級的環境變數本質上帶不了
-> 「每個子 agent 不同」的值。所以綁定只能走 session_id。
+> 一個 server 行程 spawn 所有子代理，行程層級的環境變數本質上帶不了
+> 「每個子代理不同」的值。所以綁定只能走 prompt ＋ session_id。
 
-**宣告不是可選的。** 沒宣告時 `allow` 是所有生效包的**聯集**——閘門仍擋得住「整波之外」，
-但擋不住一包去寫另一包的檔案，而那正是所有權表要防的事。
-包名拼錯一律擋下（fail-closed）。一個 session 只認第一次宣告，之後想改包會被拒絕。
-
-**`GG_PACKAGE` 不是可選的。** 同時派三包而沒設它時，
-`allow` 清單會變成三包的**聯集**——閘門仍擋得住「整波之外」，
-但擋不住 FE-9 去寫 FE-10 的檔案，而那正是所有權表要防的事。
-沒設的話 `SessionStart` 會明講這件事。包名拼錯則一律擋下（fail-closed），
-不會退化成「什麼都能寫」。
+一個 session 只認第一次宣告，之後想改包或改角色都會被拒絕。
+包名拼錯一律擋下（fail-closed）。
 
 ---
 
