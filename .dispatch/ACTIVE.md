@@ -84,6 +84,16 @@ allow: frontend/packages/api-client/src/mock/handlers.admin.procurement.ts
 allow: frontend/packages/api-client/src/mock/handlers.admin.ts
 -->
 
+<!--
+派工 FE-12：關掉 mock、對真後端跑一遍　·　docs/12-前端第三波派工書.md
+⏸ 等 M-1 環境備妥才能啟用。
+
+package: FE-12
+doc: docs/12-前端第三波派工書.md
+allow: frontend/apps/admin/.env.local
+allow: frontend/apps/storefront/.env.local
+-->
+
 > **三包都列了 `handlers.admin.ts`**，因為每包各被授權在 `adminHandlers` 陣列尾端加一行。
 > 閘門擋不住「加了不只一行」——那一條由整合驗收時逐行看 diff 把關
 > （`docs/12` §3 例外授權第 2 條）。
