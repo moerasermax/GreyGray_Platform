@@ -39,7 +39,7 @@ if (adminFrontendOrigins.Length == 0 && builder.Environment.IsDevelopment())
     adminFrontendOrigins = ["http://localhost:5003", "http://127.0.0.1:5003"];
 }
 
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options => options.AddDocumentTransformer<M1aOpenApiComponents>());
 builder.Services.AddProblemDetails();
 if (adminFrontendOrigins.Length > 0)
 {

@@ -27,7 +27,7 @@ GreyGrayTelemetry.ConfigureW3CActivityIds();
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options => options.AddDocumentTransformer<M1aOpenApiComponents>());
 builder.Services.AddProblemDetails();
 builder.Services.ConfigureHttpJsonOptions(options =>
     BffHttp.ApplyGreyGrayJson(options.SerializerOptions));
