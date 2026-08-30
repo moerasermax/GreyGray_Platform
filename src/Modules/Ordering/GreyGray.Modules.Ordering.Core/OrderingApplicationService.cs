@@ -17,7 +17,7 @@ internal sealed class OrderingApplicationService(
     IPricingQuotation pricing,
     IClock clock,
     ICorrelationContext correlationContext,
-    IFulfillmentQuery? fulfillmentQuery = null,
+    Lazy<IFulfillmentQuery?>? fulfillmentQuery = null,
     ISagaTimerScheduler? timerScheduler = null,
     TimeSpan appraisalPeriod = default)
     : IOrderingApplication, IOrderingGoodsReceipt, IOrderQuery, IOrderingShipmentDelivery
@@ -495,6 +495,11 @@ internal sealed class OrderingApplicationService(
         ArgumentNullException.ThrowIfNull(fulfillmentQuery);
         ArgumentNullException.ThrowIfNull(timerScheduler);
 
+        // 延遲解析（ADR-025 循環相依修法，docs/24 §0）：只有走到這裡才真的觸發
+        // IFulfillmentQuery 的 GetService，不會在 OrderingApplicationService 建構時就解析。
+        var resolvedFulfillmentQuery = fulfillmentQuery.Value;
+        ArgumentNullException.ThrowIfNull(resolvedFulfillmentQuery);
+
         var scheduled = false;
         foreach (var orderId in orderIds.Distinct())
         {
@@ -504,7 +509,7 @@ internal sealed class OrderingApplicationService(
                 continue;
             }
 
-            var shipments = await fulfillmentQuery.GetByOrderAsync(orderId, cancellationToken);
+            var shipments = await resolvedFulfillmentQuery.GetByOrderAsync(orderId, cancellationToken);
             if (shipments.IsFailure)
             {
                 return Result.Failure(shipments.Error);

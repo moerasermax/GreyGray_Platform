@@ -51,9 +51,18 @@ Leader 要明講。
 
 ---
 
-**沒有生效中的派工（2026-08-30）。** 整合者模式：原始碼一律不准寫。
+派工 BE-27：修 Ordering ↔ Fulfillment 循環相依，解除 admin BFF 三組端點永久掛住　·　docs/24-後端第十二波派工書.md
 
-**啟動 prompt 在 `.dispatch/PROMPTS.md`**，下一波派工前 Leader 用 ai-cli fan out。
+package: BE-27
+doc: docs/24-後端第十二波派工書.md
+allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Infra/ModuleRegistration.cs
+allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Core/OrderingApplicationService.cs
+allow: src/Modules/Fulfillment/GreyGray.Modules.Fulfillment.Infra/ModuleRegistration.cs
+allow: src/Modules/Fulfillment/GreyGray.Modules.Fulfillment.Core/FulfillmentApplicationService.cs
+allow: tests/GreyGray.M1b.Fulfillment.Tests/
+allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
+
+**啟動 prompt 在 `.dispatch/PROMPTS.md`**。
 
 ---
 

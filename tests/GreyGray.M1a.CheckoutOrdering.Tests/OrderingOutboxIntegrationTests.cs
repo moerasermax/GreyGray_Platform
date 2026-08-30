@@ -204,7 +204,7 @@ public sealed class OrderingOutboxIntegrationTests : IAsyncLifetime
                 new FakePricing(clock),
                 clock,
                 correlation,
-                fulfillmentQuery,
+                new Lazy<IFulfillmentQuery?>(() => fulfillmentQuery),
                 new SagaTimerScheduler<OrderingDbContext>(txContext, clock),
                 TimeSpan.FromDays(7));
 

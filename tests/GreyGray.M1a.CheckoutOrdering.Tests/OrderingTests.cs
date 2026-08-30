@@ -461,7 +461,7 @@ public sealed class OrderingTests
                 Pricing,
                 Clock,
                 new FakeCorrelation(),
-                FulfillmentQuery,
+                new Lazy<IFulfillmentQuery?>(() => FulfillmentQuery),
                 TimerScheduler,
                 AppraisalPeriod);
         }
