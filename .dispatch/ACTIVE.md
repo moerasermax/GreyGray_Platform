@@ -73,9 +73,13 @@ Leader 要明講。
 
 派工 FE-17：前台運費文案改從契約來　·　docs/20-前端第六波派工書.md
 
+<!--
+★ 2026-08-30 已通過整合驗收並提交（前端 50c314c），撤包。原文保留供追溯。
+
 package: FE-17
 doc: docs/20-前端第六波派工書.md
 allow: frontend/apps/storefront/app/(checkout)/
+-->
 
 ---
 
@@ -92,6 +96,8 @@ allow: frontend/apps/storefront/.env.local
 ---
 
 ## 已經通過、不再生效的（保留軌跡）
+
+- **FE-17** 前台運費文案改從契約來　·　2026-08-30 通過　·　`50c314c`
 
 FE-1～FE-8（前兩波 ＋ 技術債收尾 `631e7bc`）· FE-9／FE-10／FE-11（第三波 `bbce5e1`）·
 第四波 FE-13／FE-14／FE-15（`e8156e6`）·
