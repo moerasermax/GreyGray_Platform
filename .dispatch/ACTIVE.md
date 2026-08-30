@@ -51,20 +51,31 @@ Leader 要明講。
 
 ---
 
-**第九波：後端兩包已通過，FE-12 生效中（2026-08-30）。**
+**第十波已生效（2026-08-30）。** 純基礎建設，一包，不涉及業務模組。
 
 | 包 | 主題 | 派工書 |
 |---|---|---|
-| FE-12 | 關掉 mock 對真後端跑一遍（開工前先跑 `ops/start-dev-hosts.ps1`） | `docs/18`（前端樹） |
+| BE-25 | 開發環境與正式機的機密投遞機制（`Identity:DataProtectionKey` ＋ `ConnectionStrings:*`） | `docs/22` |
 
 **啟動 prompt 在 `.dispatch/PROMPTS.md`**，Leader 用 ai-cli fan out。
 
-> ⚠️ **自驗報告是檔案，不是對話。** 每包要寫 `.dispatch/reports/<包名>.md`，
+> ⚠️ **自驗報告是檔案，不是對話。** `.dispatch/reports/BE-25.md`，
 > 三個固定標頭缺一不可，`audit-dispatch.sh` 第 ⑧ 項會擋。
 > 規格見 `.dispatch/reports/README.md`。
 >
 > ⚠️ **不准把測試丟背景。** `ops/test.ps1` 實測淨執行已超過 10 分鐘單次呼叫上限
 > （BE-24 實測 12 專案合計約 796 秒，加建置會超），分批前景跑完，不准背景、不准排程 wakeup。
+
+---
+
+派工 BE-25：開發環境與正式機的機密投遞機制　·　docs/22-後端第十波派工書.md
+
+package: BE-25
+doc: docs/22-後端第十波派工書.md
+allow: ops/lib/Secrets.ps1
+allow: ops/install-dev-environment.ps1
+allow: ops/start-dev-hosts.ps1
+allow: ops/deploy.ps1
 
 ---
 

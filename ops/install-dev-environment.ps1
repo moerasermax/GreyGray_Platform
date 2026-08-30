@@ -34,6 +34,12 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 . "$PSScriptRoot\lib\Process.ps1"
+# 只為了取 New-DataProtectionKey 一個函式（docs/22 §5 必做 2）。
+# 這個檔也定義了 New-SecretPassword／Protect-SecretDirectory，但下面 54-83 行
+# 既有的 New-RandomPassword／Protect-SecretDirectory 刻意原地不動：函式定義是
+# 依序執行的，這行之後的定義會蓋掉 dot-source 進來的同名版本，所以這支腳本
+# 用到的仍然是它自己那兩份——已經在跑、已經驗證過的那兩份。
+. "$PSScriptRoot\lib\Secrets.ps1"
 
 # 這一波要套的完整清單；不是「找 db/migrations 底下所有檔案」，
 # 是刻意列死——多一個未預期的檔案代表基準線變了，寧可讓腳本 throw 也不要默默多套。
@@ -382,6 +388,35 @@ finally {
     if (Test-Path -LiteralPath $alterSqlFile) { Remove-Item -LiteralPath $alterSqlFile -Force }
 }
 Write-Host "PASS 模組角色密碼：$($moduleSchemas.Count) 個 role（$($moduleSchemas -join ', ')）已設定，明文只在 $modulePasswordFile"
+
+# ── Identity 個資保護金鑰：三個 Host 解析 IdentityModule 時就會要，缺了就 500 ──
+<#
+    FE-12（第九波）對真後端實測時，登入／註冊／購物車全部 500，根因是
+    Identity:DataProtectionKey 從來沒有人投遞過（ModuleRegistration.cs:59-63
+    直接丟「缺少 Identity 個資保護金鑰」）。
+
+    ★ 一定要用 New-DataProtectionKey，不能用上面的 New-RandomPassword：
+    後者會把 Base64 裡的 + / = 換成 x，而 IdentityDataProtector 要求
+    Convert.FromBase64String 解碼後正好 32 bytes（AES-256）。理由見 lib\Secrets.ps1。
+
+    ★ 「已存在就重用」不是為了省事：金鑰換掉之後，iam.customer 既有的密文欄位
+    就再也解不開了。這一段跟上面 module-role.password 是同一個形狀，刻意的。
+#>
+$dataProtectionKeyFile = Join-Path $secretsDir 'identity-dataprotection.key'
+$dataProtectionKeyReused = Test-Path -LiteralPath $dataProtectionKeyFile -PathType Leaf
+if (-not $dataProtectionKeyReused) {
+    [IO.File]::WriteAllText($dataProtectionKeyFile, (New-DataProtectionKey), (New-Object Text.UTF8Encoding($false)))
+}
+Write-Host "PASS Identity 個資保護金鑰：$dataProtectionKeyFile（$(if ($dataProtectionKeyReused) { '沿用既有' } else { '本次產生' })，明文不印出）"
+
+<#
+    ★ Payment:ECPay:* 這一波刻意不接（docs/22 §0）：目前沒有任何可用的綠界
+    開發測試特店代號，編一組假值填進去只會讓 Payment 模組從「清楚地說缺設定」
+    變成「拿假憑證去打綠界然後失敗得很難懂」。
+    憑證到手之後的接法：$secretsDir\ecpay.json（格式見 docs/22 §5 必做 4 第 3 點，
+    與正式機同一份格式），存在就讀出三個值注入 Payment__ECPay__MerchantId／
+    HashKey／HashIV，不存在就跳過。正式機那半（ops/deploy.ps1）已經接好了。
+#>
 
 Write-Host "PASS 本機開發環境整備完成：PostgreSQL 17 ($PostgreSqlPort)、Garnet ($GarnetPort)、migrations 0001~0014。"
 Write-Host "下一步：ops\start-dev-hosts.ps1 啟動三個 Host；ops\stop-dev-environment.ps1 全部收掉。"

@@ -52,6 +52,16 @@ foreach ($schema in $moduleSchemas) {
 }
 $sharedConnectionStrings['ConnectionStrings__GreyGray_valkey'] = "127.0.0.1:$GarnetPort"
 
+# Identity 個資保護金鑰：三個 Host 都呼叫 AddIdentityModule，缺這個鍵的話
+# DI 解析期就丟「缺少 Identity 個資保護金鑰」，登入／註冊／購物車全部 500
+# （FE-12 第九波實測）。巢狀設定鍵用雙底線，跟上面的 ConnectionStrings__ 同一個慣例。
+$dataProtectionKeyFile = Join-Path $secretsDir 'identity-dataprotection.key'
+if (-not (Test-Path -LiteralPath $dataProtectionKeyFile -PathType Leaf)) {
+    throw "找不到 Identity 個資保護金鑰：$dataProtectionKeyFile。先執行 ops\install-dev-environment.ps1。"
+}
+$sharedConnectionStrings['Identity__DataProtectionKey'] =
+    (Get-Content -LiteralPath $dataProtectionKeyFile -Raw).Trim()
+
 function Start-DevHost {
     param(
         [Parameter(Mandatory)][string]$Name,

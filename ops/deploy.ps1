@@ -14,7 +14,11 @@ param(
     [switch]$SkipMigrations,
     [string]$DatabaseHost = '127.0.0.1',
     [ValidateRange(1, 65535)][int]$DatabasePort = 5432,
-    [string]$DatabaseName = 'greygray',
+    # 'greygray' 是既有 bug：全 repo 沒有任何 CREATE DATABASE，
+    # 實際一直用的是 PostgreSQL 內建的 postgres 資料庫
+    # （install-dev-environment.ps1 明確傳 'postgres'）。deploy.ps1 從沒被真的跑過，
+    # 這個錯的預設值才沒露餡；下面新接的 ConnectionStrings 會用這個值，不修就全部指向不存在的 DB。
+    [string]$DatabaseName = 'postgres',
     [string]$PsqlPath = 'psql.exe',
     [string]$WatchdogTaskName = 'GreyGray-Watchdog',
     [string]$WatchdogUserSid,
@@ -28,6 +32,7 @@ $repo = Split-Path -Parent $PSScriptRoot
 . "$PSScriptRoot\lib\Process.ps1"
 . "$PSScriptRoot\lib\Deployment.ps1"
 . "$PSScriptRoot\lib\Node.ps1"
+. "$PSScriptRoot\lib\Secrets.ps1"
 $manifestPath = "$PSScriptRoot\service-manifest.ps1"
 $manifest = & $manifestPath
 
@@ -97,6 +102,134 @@ if (-not $SkipMigrations) {
         -MigrationCredential $MigrationCredential -DatabaseHost $DatabaseHost `
         -DatabasePort $DatabasePort -DatabaseName $DatabaseName -PsqlPath $PsqlPath
 }
+
+<#
+    ── 正式機的機密與連線設定投遞 ────────────────────────────────────────────
+    在這之前，deploy.ps1 對正式機服務只設了 DOTNET_ENVIRONMENT／
+    ASPNETCORE_ENVIRONMENT／ASPNETCORE_URLS 三個鍵——一個 ConnectionStrings 都沒有。
+    三個 .NET Host 開機後連資料庫都連不上（docs/22 §0）。
+
+    模式刻意跟 ops/install-dev-environment.ps1 一模一樣，不是另設計一套：
+      · $InstallRoot\secrets\，ACL 收緊到目前使用者 ＋ Administrators ＋ SYSTEM
+      · 明文檔案，「已存在就重用、不存在就生成」，所以 deploy.ps1 可以安全重跑
+      · 密碼永遠不上命令列：ALTER ROLE 走臨時 .sql 檔，連線密碼走 PGPASSWORD
+        （照 ops/invoke-migrations.ps1:52-66）
+
+    放在 migration 之後、停服之前：這一段若失敗，舊版服務還在跑，沒有停機。
+    -ValidateOnly 在更前面就 return 了，dry-run 路徑碰不到這裡。
+#>
+$secretsDir = Join-Path $installFull 'secrets'
+if (-not (Test-Path -LiteralPath $secretsDir -PathType Container)) {
+    New-Item -ItemType Directory -Path $secretsDir -Force | Out-Null
+}
+Protect-SecretDirectory -Path $secretsDir
+
+# 0001_schemas_and_roles.sql 建的 role 預設沒有密碼，服務連不進去。
+# 這份清單與 install-dev-environment.ps1／start-dev-hosts.ps1 的同一份刻意一致：
+# 14 個 schema 裡 audit／reporting 沒有任何 *.Infra 讀對應的 ConnectionStrings 鍵。
+$moduleSchemas = @(
+    'iam', 'catalog', 'campaign', 'checkout', 'fulfillment', 'inventory',
+    'ledger', 'notify', 'ordering', 'payment', 'pricing', 'procurement', 'platform'
+)
+$modulePasswordFile = Join-Path $secretsDir 'module-role.password'
+$modulePasswordIsNew = -not (Test-Path -LiteralPath $modulePasswordFile -PathType Leaf)
+if ($modulePasswordIsNew) {
+    # 首次部署：沒有 -MigrationCredential 就套不進資料庫，生了也只是留一個
+    # 「服務拿著連不進去的密碼」的檔案。寧可 fail-closed，也不要部署出一個
+    # 看起來成功、實際上三個 Host 全部連不上 DB 的版本。
+    if ($null -eq $MigrationCredential) {
+        throw "首次部署（找不到 $modulePasswordFile）必須提供 -MigrationCredential，才能對 $($moduleSchemas.Count) 個模組 role 設定密碼。"
+    }
+    [IO.File]::WriteAllText($modulePasswordFile, (New-SecretPassword), (New-Object Text.UTF8Encoding($false)))
+}
+$modulePassword = (Get-Content -LiteralPath $modulePasswordFile -Raw).Trim()
+
+if ($null -ne $MigrationCredential) {
+    # 有部署帳號（有 DDL 權限，見 db/migrations/0001_schemas_and_roles.sql:7）就重設一次。
+    # 重放同一個密碼是冪等的，而且能自我修復「密碼檔還在、role 密碼被人動過」的狀況。
+    $alterStatements = ($moduleSchemas | ForEach-Object { "ALTER ROLE greygray_$_ PASSWORD '$modulePassword';" }) -join "`n"
+    $alterSqlFile = Join-Path ([IO.Path]::GetTempPath()) ('greygray-role-passwords-' + [guid]::NewGuid().ToString('N') + '.sql')
+    try {
+        [IO.File]::WriteAllText($alterSqlFile, "\set ON_ERROR_STOP on`nBEGIN;`n$alterStatements`nCOMMIT;`n", (New-Object Text.UTF8Encoding($false)))
+        $migrationPassword = $MigrationCredential.GetNetworkCredential().Password
+        try {
+            # role 是 cluster 層級的，連哪個 db 都一樣；用 $DatabaseName 是因為
+            # invoke-migrations.ps1 剛剛才用同一個值連成功過，不必再猜第二個名字。
+            Invoke-NativeCommand -FilePath $PsqlPath `
+                -ArgumentList @('--host', $DatabaseHost, '--port', [string]$DatabasePort,
+                    '--username', $MigrationCredential.UserName, '--dbname', $DatabaseName,
+                    '--no-password', '--set', 'ON_ERROR_STOP=1', '--file', $alterSqlFile) `
+                -Environment @{ PGPASSWORD = $migrationPassword; PGCONNECT_TIMEOUT = '10' } | Out-Null
+        }
+        finally { $migrationPassword = $null }
+    }
+    finally {
+        if (Test-Path -LiteralPath $alterSqlFile) { Remove-Item -LiteralPath $alterSqlFile -Force }
+    }
+    Write-Host "✓ 模組角色密碼：$($moduleSchemas.Count) 個 role 已設定，明文只在 $modulePasswordFile"
+}
+else {
+    Write-Host "✓ 模組角色密碼：沿用 $modulePasswordFile（帶了 -SkipMigrations，沒有部署帳號可以重設 role 密碼）"
+}
+
+# Identity 個資保護金鑰。★ 一定要 New-DataProtectionKey：New-SecretPassword 會替換
+# Base64 字元，IdentityDataProtector 要求解碼後正好 32 bytes（見 lib\Secrets.ps1）。
+# ★「已存在就重用」是硬需求，不是省事：換掉金鑰，iam.customer 既有密文就解不開了。
+$dataProtectionKeyFile = Join-Path $secretsDir 'identity-dataprotection.key'
+$dataProtectionKeyIsNew = -not (Test-Path -LiteralPath $dataProtectionKeyFile -PathType Leaf)
+if ($dataProtectionKeyIsNew) {
+    [IO.File]::WriteAllText($dataProtectionKeyFile, (New-DataProtectionKey), (New-Object Text.UTF8Encoding($false)))
+}
+$dataProtectionKey = (Get-Content -LiteralPath $dataProtectionKeyFile -Raw).Trim()
+Write-Host "✓ Identity 個資保護金鑰：$dataProtectionKeyFile（$(if ($dataProtectionKeyIsNew) { '本次產生' } else { '沿用既有' })）"
+
+<#
+    綠界憑證（E3）：正式商店代號與金鑰是老闆要去辦的事，不是這支腳本能生的。
+    這裡只把管道接好——憑證到手之後把檔案放進 $secretsDir\ecpay.json 就好，
+    不必再改任何程式：
+
+        { "MerchantId": "...", "HashKey": "...", "HashIV": "..." }
+
+    檔案不存在就跳過（不 throw）。Payment 模組維持現有的清楚報錯
+    （ModuleRegistration.cs:105-107 的 Required），比灌一組編出來的假值好。
+#>
+$ecpayFile = Join-Path $secretsDir 'ecpay.json'
+$ecpaySettings = $null
+if (Test-Path -LiteralPath $ecpayFile -PathType Leaf) {
+    $ecpaySettings = Get-Content -LiteralPath $ecpayFile -Raw | ConvertFrom-Json
+    foreach ($key in @('MerchantId', 'HashKey', 'HashIV')) {
+        # StrictMode 下不存在的屬性會直接丟，所以先問 PSObject 有沒有這個名字。
+        $present = @($ecpaySettings.PSObject.Properties.Name) -contains $key
+        if (-not $present -or [string]::IsNullOrWhiteSpace([string]$ecpaySettings.$key)) {
+            throw "$ecpayFile 缺少或空白的 $key；格式：{ ""MerchantId"": ""..."", ""HashKey"": ""..."", ""HashIV"": ""..."" }"
+        }
+    }
+    Write-Host "✓ 綠界憑證：$ecpayFile 三個鍵齊全，將注入三個 .NET 服務"
+}
+else {
+    Write-Host "⚠ 找不到 $ecpayFile；Payment:ECPay:* 不注入，Payment 模組會照舊明確報缺設定（等 E3 憑證到位）。"
+}
+
+# 真正要送進 NSSM AppEnvironmentExtra 的那一包。鍵名用雙底線，跟 .NET 設定綁定
+# 慣例一致（ConnectionStrings__X → ConnectionStrings:X）。
+# ★ 正式機刻意不加 Include Error Detail=true：那個開發用旗標會讓 Npgsql 例外訊息
+#   帶出 SQL 與參數明細，正式機不該把這些吐出去。start-dev-hosts.ps1 有、這裡沒有，是刻意的差異。
+$secretConnectionStrings = [ordered]@{}
+foreach ($schema in $moduleSchemas) {
+    $secretConnectionStrings["ConnectionStrings__GreyGray_$schema"] =
+        "Host=$DatabaseHost;Port=$DatabasePort;Database=$DatabaseName;Username=greygray_$schema;Password=$modulePassword"
+}
+# Garnet 與三個 Host 同機（ADR-003 原生部署），不走 LAN。
+$secretConnectionStrings['ConnectionStrings__GreyGray_valkey'] = '127.0.0.1:6379'
+$secretConnectionStrings['Identity__DataProtectionKey'] = $dataProtectionKey
+if ($null -ne $ecpaySettings) {
+    $secretConnectionStrings['Payment__ECPay__MerchantId'] = [string]$ecpaySettings.MerchantId
+    $secretConnectionStrings['Payment__ECPay__HashKey'] = [string]$ecpaySettings.HashKey
+    $secretConnectionStrings['Payment__ECPay__HashIV'] = [string]$ecpaySettings.HashIV
+}
+$modulePassword = $null
+$dataProtectionKey = $null
+$ecpaySettings = $null
 
 function Invoke-Nssm {
     param([string[]]$Arguments, [switch]$AllowNonZeroExit)
@@ -216,6 +349,12 @@ try {
         }
         else {
             $environmentArguments = @('set', $definition.Name, 'AppEnvironmentExtra', 'DOTNET_ENVIRONMENT=Production')
+            # 三個 Kind='DotNet' 的服務（Storefront／Admin／Worker）全部呼叫
+            # AddIdentityModule 與 AddPaymentModule，也全部要連資料庫，所以整包都要。
+            # NextStandalone 那兩個（上面的分支）不需要，刻意不動。
+            foreach ($secretKey in $secretConnectionStrings.Keys) {
+                $environmentArguments += "$secretKey=$($secretConnectionStrings[$secretKey])"
+            }
         }
         if ($definition.Kind -eq 'DotNet' -and [int]$definition.Port -gt 0) {
             $environmentArguments += 'ASPNETCORE_ENVIRONMENT=Production'
@@ -229,6 +368,10 @@ try {
 }
 finally {
     $servicePassword = $null
+    # 連線字串與金鑰的明文只需要活到 NSSM 設定寫完為止；之後 script 還有
+    # 健康檢查、排程註冊等好幾十行，不要讓它們一路活到最後。
+    $secretConnectionStrings = $null
+    $environmentArguments = $null
 }
 
 $restartBoundaryUtc = [datetime]::UtcNow
