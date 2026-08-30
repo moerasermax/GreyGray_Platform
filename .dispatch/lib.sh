@@ -229,6 +229,24 @@ gg_path_allowed() {
   for prefix in $GG_ALWAYS_ALLOW; do
     case "$rel" in "$prefix"*) return 0 ;; esac
   done
+  # ★ 例外：自驗報告。稽核第 ⑧ 項要求每個有交付的包留下
+  # .dispatch/reports/<包名>.md，但 .dispatch/ 在 GG_GATE_PATHS 裡、只有 Leader
+  # 寫得了——等於「要求它做一件閘門禁止它做的事」。
+  #
+  # 兩種模式要分開，否則會放寬 fail-closed：
+  #   · PreToolUse（有綁包別）→ 只准寫**自己那一個**檔
+  #   · 收工的聯集檢查（GG_UNION=1，刻意 unset 了包別）
+  #     → 任何生效包的報告都算有主，否則實作者會被自己剛寫的報告擋下收工
+  # 身分不明（兩者皆無）走不到這兩條，仍然一律擋。
+  case "$rel" in
+    .dispatch/reports/*.md)
+      if [ -n "${GG_PACKAGE:-}" ]; then
+        [ "$rel" = ".dispatch/reports/${GG_PACKAGE}.md" ] && return 0
+      elif [ "${GG_UNION:-}" = "1" ]; then
+        __rp="${rel#.dispatch/reports/}"; __rp="${__rp%.md}"
+        gg_active_packages | grep -qxF "$__rp" && return 0
+      fi ;;
+  esac
   # 閘門自己的檔案：只有 Leader 放行（或什麼都還沒派的空窗期）。
   #
   # 原本這裡寫的是 `! gg_has_dispatch`（＝完全沒有派工生效時才放行），
@@ -265,7 +283,11 @@ EOF
 gg_extract_paths() {
   local payload="$1"
   {
-    printf '%s' "$payload" | sed -n 's/.*"file_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
+    # file_path 與 notebook_path 都要抓（NotebookEdit 用的是後者）。
+    # 用 grep -oE 逐個抓，不要用 sed 的貪婪 .*——那只抓得到一行裡的最後一個。
+    printf '%s' "$payload" \
+      | grep -oE '"(file_path|notebook_path)"[[:space:]]*:[[:space:]]*"[^"]*"' \
+      | sed -E 's/.*:[[:space:]]*"([^"]*)"/\1/'
     printf '%s' "$payload" | grep -oE '\*\*\* (Add|Update|Delete) File: [^"\\]+' \
       | sed -E 's/^\*\*\* (Add|Update|Delete) File: //'
   } | sed 's/[[:space:]]*$//' | grep -v '^$' | sort -u
@@ -298,7 +320,8 @@ gg_out_of_scope_files() {
   # 精確到「包」的把關由 PreToolUse 負責，那一層知道是誰在寫。
   # 這一層只負責攔「整波之外」，也就是用 shell 繞過 PreToolUse 的那種寫入。
   (
-    unset GG_PACKAGE
+      unset GG_PACKAGE
+      GG_UNION=1; export GG_UNION   # 告訴 gg_path_allowed 這是聯集模式
     while IFS= read -r f; do
       [ -n "$f" ] || continue
       gg_path_allowed "$f" || printf '%s\n' "$f"

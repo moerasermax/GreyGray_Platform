@@ -9,6 +9,7 @@ set -u
 
 payload="$(cat)"
 gg_resolve_package "$payload"
+gg_resolve_role "$payload"
 
 deny() {
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$(gg_json_escape "$1")"
@@ -17,13 +18,19 @@ deny() {
 
 # ── 危險 shell 指令 ──────────────────────────────────────────────
 cmdtext="$(printf '%s' "$payload" | sed -n 's/.*"command"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
-if [ -n "$cmdtext" ] && gg_has_dispatch; then
+# ★ 修正：原本這一段有 `&& gg_has_dispatch`，等於「撤包之後就不擋」。
+# 但危險指令要防的是「工作區裡別人未提交的交付」，那跟有沒有生效派工無關——
+# 驗收完還沒 commit 的交付正是最脆弱的時候（FE-10 事故就是這個情境）。
+# 而且 stash stack 是跨 worktree 共用的，這棵樹沒派工不代表另一棵沒有。
+if [ -n "$cmdtext" ]; then
   if why="$(gg_dangerous_shell_reason "$cmdtext")"; then
-    # git commit 只擋實作者——整合者要靠它提交。
+    # git commit 只放行 Leader（明確宣告 GG_ROLE=leader 的那個 session）。
+    # 原本寫「GG_PACKAGE 沒設就放行」，但那把【身分不明】也一起放行了——
+    # 而身分不明在這套閘門的其他每一處都是 fail-closed。
     # 其餘（stash／reset --hard／clean／全樹還原）對所有人都擋，
     # 因為它們會毀掉工作區裡別人未提交的交付。
     case "$cmdtext" in
-      *"git commit"*) [ -n "${GG_PACKAGE:-}" ] || why="" ;;
+      *"git commit"*) gg_is_leader && why="" ;;
     esac
     [ -n "$why" ] && deny "$why"
   fi
@@ -31,7 +38,7 @@ fi
 
 # ── 派工範圍 ────────────────────────────────────────────────────
 case "$payload" in
-  *'"Write"'*|*'"Edit"'*) ;;
+  *'"Write"'*|*'"Edit"'*|*'"MultiEdit"'*|*'"NotebookEdit"'*) ;;
   *) exit 0 ;;
 esac
 
