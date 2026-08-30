@@ -59,9 +59,18 @@ for pkg in $pkgs; do
     case "$prefix" in
       db/migrations/*)
         num="${prefix#db/migrations/}"
+        # 「已被佔用」要分兩種，否則交付後必然誤判：
+        #   ·  HEAD 裡就有 → 前面的波次用掉了，這一包會撞號（真的要擋）
+        #   ·  只在工作區  → 這一包自己剛交付的檔（正常，撤包前一定會看到）
+        #   ·  超過一個檔  → 一號多檔，任何時候都是違規
         hit="$(ls "$GG_ROOT/db/migrations/" 2>/dev/null | grep -c "^${num}" || true)"
-        if [ "${hit:-0}" -gt 0 ]; then
-          bad "$pkg 拿到的 migration 編號 $num 已經有 $hit 個檔了（一號一檔）"
+        committed="$(git -C "$GG_ROOT" ls-tree --name-only HEAD db/migrations/ 2>/dev/null | sed 's|.*/||' | grep -c "^${num}" || true)"
+        if [ "${hit:-0}" -gt 1 ]; then
+          bad "$pkg 的 migration 編號 $num 有 ${hit} 個檔（一號一檔）"
+        elif [ "${committed:-0}" -gt 0 ]; then
+          bad "$pkg 拿到的 migration 編號 $num 在 HEAD 裡已經有檔了——前面的波次用掉了，會撞號"
+        elif [ "${hit:-0}" -eq 1 ]; then
+          ok "$pkg → $num 已交付（工作區一個檔，HEAD 尚無，未撞號）"
         else
           ok "$pkg → $num 未被佔用"
         fi ;;
@@ -163,6 +172,36 @@ done
 say "⑥ 每個生效包都有啟動 prompt"
 missing="$(gg_prompts_missing)"
 if [ -n "$missing" ]; then bad "PROMPTS.md 缺：$missing"; else ok "全部涵蓋"; fi
+
+say "⑦ 兩棵樹的共用文件不得分岔"
+# 用 worktree 不拆 repo 的整個理由就是「兩邊看同一份契約 YAML」（見 ADR 與 KB）。
+# 一旦分岔，那個理由就沒了——而且分岔是安靜的：
+# 第七波實際發生過，前端樹的 docs/00-decisions.md 少了 ADR-022~028，
+# 於是 FE-14／FE-16 被要求實作它們在自己樹裡讀不到的 ADR。
+#
+# ★ 比對要忽略換行差異。CRLF/LF 不同不是分岔，
+#   誤報久了真分岔會被當雜訊——這個專案已經在別處吃過這個虧。
+GG_SIBLING=""
+case "$GG_ROOT" in
+  *-fe) GG_SIBLING="${GG_ROOT%-fe}" ;;
+  *)    [ -d "${GG_ROOT}-fe" ] && GG_SIBLING="${GG_ROOT}-fe" ;;
+esac
+if [ -z "$GG_SIBLING" ] || [ ! -d "$GG_SIBLING" ]; then
+  printf '  · 找不到另一棵 worktree，跳過
+'
+else
+  shared_diverged=0
+  for f in docs/00-decisions.md docs/05-API契約.md            docs/api/openapi.admin.yaml docs/api/openapi.storefront.yaml; do
+    [ -f "$GG_ROOT/$f" ] && [ -f "$GG_SIBLING/$f" ] || continue
+    a="$(tr -d "\015" < "$GG_ROOT/$f" | md5sum | cut -d' ' -f1)"
+    b="$(tr -d "\015" < "$GG_SIBLING/$f" | md5sum | cut -d' ' -f1)"
+    [ "$a" = "$b" ] && continue
+    bad "$f 兩棵樹內容不同——契約／ADR 分岔，子代理會讀到不一樣的規則"
+    shared_diverged=1
+  done
+  [ "$shared_diverged" -eq 0 ] && ok "共用文件兩棵樹一致（忽略換行）"
+fi
+
 
 say ""
 if [ "$FAIL" -eq 0 ]; then
