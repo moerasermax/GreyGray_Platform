@@ -38,6 +38,21 @@ pl_cmd()   { printf '{"session_id":"st","tool_name":"Bash","tool_input":{"comman
 # ── 路徑類別 ────────────────────────────────────────────────────
 PKG_A="$(gg_active_packages | sed -n 1p)"
 PKG_B="$(gg_active_packages | sed -n 2p)"
+
+# ★ 整合者模式（零個生效包）跑不了這份矩陣，而且要明講。
+#   這裡的每一段都以「有一個生效包」為前提——PKG_A 是空的時候，
+#   140 條斷言會全部拿空字串去比，跑出一整片無意義的紅字，
+#   其中還包含「ACTIVE.md 沒還原」這種會讓人以為檔案壞掉的假警報（實際上好好的）。
+#   ★ 不可以改成「安靜地通過」：那就變成這支測試自己在示範它要抓的那個病
+#     ——查了零個對象，看起來跟查過都沒事一模一樣。
+if [ -z "$PKG_A" ]; then
+  echo "═══ 自我測試（agent=$AGENT，樹=$(basename "$GG_SELFTEST_ROOT")）═══"
+  echo "  ⚠ 現在是整合者模式（.dispatch/ACTIVE.md 沒有任何生效的 package），"
+  echo "    這份矩陣的每一段都需要一個生效包才有意義，所以**沒有跑**。"
+  echo "    這不是通過，也不是失敗——是沒東西可測。"
+  echo "    有派工生效時再跑；蓋章檔維持原狀，稽核第 ⑩ 項在整合者模式下不會被查到。"
+  exit 0
+fi
 OWN="$(GG_PACKAGE="$PKG_A" gg_allow_list | grep -v '^tests/$' | sed -n 1p)"
 [ -n "$OWN" ] || OWN="src/"
 
