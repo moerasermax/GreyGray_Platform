@@ -51,37 +51,34 @@ Leader 要明講。
 
 ---
 
-**FE-12 已生效（2026-08-30）。** 配合後端第九波（`docs/21`，在後端樹）一起派。
+**第九波已收工（2026-08-30）。** 目前沒有生效包，整合者模式：原始碼一律不准寫。
 
-| 包 | 主題 | 派工書 |
-|---|---|---|
-| FE-12 | 關掉 mock 對真後端跑一遍 | `docs/18` §5（開工前提已更正，環境已就緒） |
-
-**啟動 prompt 在 `.dispatch/PROMPTS.md`**，Leader 用 ai-cli fan out。
-
-> 開工前提已滿足：後端 BE-22 已於第八波通過整合驗收（開發機 D:\GreyGray
-> 上 PG＋Garnet＋三個 Host 都起得來）。但那組環境目前是停著的——
-> 第八波整合驗收為了解開 build 的檔案鎖用 stop-dev-environment.ps1 收掉了
-> （資料保留，只是 stop，沒有 rm）。派這包之前，要先在後端樹跑
-> ops\start-dev-hosts.ps1 -InstallRoot 'D:\GreyGray' -Configuration 'Debug'，
-> 確認三個 /health 都回 200，FE-12 才真的開得了工。
-
-> 已知會踩到、不是 FE-12 要修的：後端 BE-23／BE-24（docs/21，同一輪在
-> 後端樹跑）修的是「結帳付款會炸 23514」與「migration 重放非冪等」兩個既有
-> bug。建議兩包先跑完再開 FE-12，或至少確認 BE-23 已通過再走到前台付款那
-> 一步——不然 FE-12 §5 第 3 點「前台走一條完整的：…→ 付款 →…」在第一次
-> 結帳付款就會踩到那個已知洞。
-
-> 自驗報告是檔案：`.dispatch/reports/<包名>.md`，三個標頭缺一不可，
-> `audit-dispatch.sh` 第 ⑧ 項會擋。規格見 `.dispatch/reports/README.md`。
-> 不准把工作丟背景後結束。
+**啟動 prompt 在 `.dispatch/PROMPTS.md`**，下一波派工前 Leader 用 ai-cli fan out。
 
 ---
 
-派工 FE-17：前台運費文案改從契約來　·　docs/20-前端第六波派工書.md
+<!--
+★ 2026-08-30 已執行並提交（前端 d48acbe），撤包。原文保留供追溯。
+FE-12 沒有把 §5 全部六條走完——不是前端沒做完，是後端環境缺
+Identity:DataProtectionKey／Payment:ECPay:MerchantId 兩項設定、
+資料庫是空的且無法建立員工帳號、admin BFF 三組端點永久不回應。
+FE-12 正確地只記錄不修改，詳見 .dispatch/reports/FE-12.md
+與 GreyGray_PM/03-驗收紀錄.md。
+
+派工 FE-12：關掉 mock、對真後端跑一遍　·　docs/18-前端第五波派工書.md
+
+package: FE-12
+doc: docs/18-前端第五波派工書.md
+allow: frontend/apps/admin/.env.local
+allow: frontend/apps/storefront/.env.local
+-->
+
+---
 
 <!--
 ★ 2026-08-30 已通過整合驗收並提交（前端 50c314c），撤包。原文保留供追溯。
+
+派工 FE-17：前台運費文案改從契約來　·　docs/20-前端第六波派工書.md
 
 package: FE-17
 doc: docs/20-前端第六波派工書.md
@@ -90,19 +87,12 @@ allow: frontend/apps/storefront/app/(checkout)/
 
 ---
 
-派工 FE-12：關掉 mock、對真後端跑一遍　·　docs/18-前端第五波派工書.md
-
-package: FE-12
-doc: docs/18-前端第五波派工書.md
-allow: frontend/apps/admin/.env.local
-allow: frontend/apps/storefront/.env.local
-
----
-
 ## 已經通過、不再生效的（保留軌跡）
 
+- **FE-12** 關掉 mock、對真後端跑一遍　·　2026-08-30 執行　·　`d48acbe`　·
+  §5 部分完成（mock 關閉、build/test/typecheck 全過），完整流程被後端環境缺口擋住，見自驗報告
 - **FE-17** 前台運費文案改從契約來　·　2026-08-30 通過　·　`50c314c`
 
 FE-1～FE-8（前兩波 ＋ 技術債收尾 `631e7bc`）· FE-9／FE-10／FE-11（第三波 `bbce5e1`）·
 第四波 FE-13／FE-14／FE-15（`e8156e6`）·
-**第五波 FE-16（`6165419`）——同一波的 FE-12 未完成，環境前提不成立**
+第五波 FE-16（`6165419`）
