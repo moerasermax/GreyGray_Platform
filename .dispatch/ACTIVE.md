@@ -51,6 +51,15 @@ Leader 要明講。
 
 ---
 
+**沒有生效中的派工（2026-08-30）。** 整合者模式：原始碼一律不准寫。
+
+**啟動 prompt 在 `.dispatch/PROMPTS.md`**，下一波派工前 Leader 用 ai-cli fan out。
+
+---
+
+<!--
+★ 2026-08-30 已通過整合驗收並提交（後端 5950a10），撤包。原文保留供追溯。
+
 派工 BE-26：員工帳號 bootstrap 工具 ＋ 開發環境最小種子資料　·　docs/23-後端第十一波派工書.md
 
 package: BE-26
@@ -60,8 +69,7 @@ allow: GreyGray.slnx
 allow: tests/GreyGray.Architecture.Tests/ModuleBoundaryTests.cs
 allow: ops/seed/
 allow: ops/seed-dev-staff.ps1
-
-**啟動 prompt 在 `.dispatch/PROMPTS.md`**。
+-->
 
 ---
 
@@ -152,6 +160,7 @@ allow: tests/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **BE-26** 員工帳號 bootstrap 工具 ＋ 開發環境最小種子資料　·　2026-08-30 通過　·　`5950a10`
 - **BE-25** 開發環境與正式機的機密投遞機制　·　2026-08-30 通過　·　`bd616ea`
 - **BE-24** `0003_channel_seams.sql` 的 `ledger.account` seed 非冪等　·　2026-08-30 通過　·　`22061a4`
 - **BE-23** `CapturePayment` 誤設 `RefundedCurrency` ＋ EF model 補約束　·　2026-08-30 通過　·　`22061a4`
