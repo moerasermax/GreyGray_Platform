@@ -51,85 +51,73 @@ Leader 要明講。
 
 ---
 
-**第七波已生效（2026-08-30）。** 三包同時開，`GG_PACKAGE` 不是可選的。
+**第八波已生效（2026-08-30）。** 兩包同時開，另兩包排在後面。
 
 | 包 | 主題 | 派工書 |
 |---|---|---|
-| BE-17 | 綠界原路退款 API（ADR-024 前半）🔴 最擋 M1b | `docs/17` |
-| BE-18 | Ordering：StoredValue 擋 ＋ 鑑賞期 Saga Timer（ADR-024 後半／ADR-025） | `docs/17` |
-| BE-19 | 契約與事件形狀異動（ADR-027 ＋ 兩個契約缺口） | `docs/17` |
+| BE-22 | **本機開發環境（裝在 `D:\GreyGray`，不壓 C 槽）** 🔴 解 FE-12 的阻塞 | `docs/19` |
+| BE-21 | 帶回→待出貨接線 ＋ `OrderLineId` 改必填 | `docs/19` |
+| FE-17 | 前台運費文案改從契約來（拿掉寫死的 `NT$60`／`NT$120`） | `docs/20`（前端樹） |
+| FE-12 | 關掉 mock 對真後端跑一遍 ⏸ **等 BE-22** | `docs/18`（前端樹） |
+| BE-20 | 部分買到（ADR-026）⏸ **等 BE-21** | `docs/19` |
 
 **啟動 prompt 在 `.dispatch/PROMPTS.md`**，Leader 用 ai-cli fan out。
 
-> ⚠️ **三包都會跑 `ops/test.ps1`，要排開不要同時跑。**
+> ⚠️ **BE-20 為什麼不能跟 BE-21 平行**：BE-20 放寬部分買到幾乎必然要改
+> `ProcurementContracts`（帶短缺數量），而那正是 BE-21 要動的檔；
+> BE-21 把 `GoodsReceived.OrderLineId` 改必填也會逼所有建構點跟著改。
+> 檔案層級看起來不重疊，模組層級會撞。
+
+> ⚠️ **自驗報告是檔案，不是對話。** 每包要寫 `.dispatch/reports/<包名>.md`，
+> 三個固定標頭缺一不可，`audit-dispatch.sh` 第 ⑧ 項會擋。
+> 規格見 `.dispatch/reports/README.md`。
 >
-> ⚠️ **Ordering 整個模組是 BE-18 的，BE-19 完全不碰。**
-> 第一版把 `Ordering.Infra/ModuleRegistration.cs` 給了 BE-19，那會讓 BE-18 做不完——
-> 它要訂閱 `ShipmentDelivered` 才排得了鑑賞期 timer，而 handler 與 saga scheduler
-> 都註冊在模組自己的 `ModuleRegistration.cs`。已修正，見 `docs/17` §3。
-> 代價是「帶回→待出貨接線」要獨立成 **BE-21**，等 BE-18 與 BE-19 都通過再開。
+> ⚠️ **不准把測試丟背景。** `ops/test.ps1` 實測淨執行 584 秒（9.7 分），
+> 前景跑得完。用長 timeout 同步跑。
 
 ---
 
-派工 BE-17：綠界原路退款 API　·　docs/17-後端第七波派工書.md
+派工 BE-22：本機開發環境（D:\GreyGray）　·　docs/19-後端第八波派工書.md
 
-package: BE-17
-doc: docs/17-後端第七波派工書.md
-allow: src/Modules/Payment/
-allow: tests/
+package: BE-22
+doc: docs/19-後端第八波派工書.md
+allow: ops/
+allow: .github/workflows/
 
-派工 BE-18：Ordering StoredValue 擋 ＋ 鑑賞期 Saga Timer　·　docs/17-後端第七波派工書.md
-
-package: BE-18
-doc: docs/17-後端第七波派工書.md
-allow: src/Modules/Ordering/
-allow: db/migrations/0013_
-allow: tests/
-
-派工 BE-19：契約與事件形狀異動　·　docs/17-後端第七波派工書.md
-
-package: BE-19
-doc: docs/17-後端第七波派工書.md
-allow: docs/api/
-allow: src/Modules/Procurement/
-allow: src/Modules/Campaign/
-allow: db/migrations/0014_
-allow: tests/
-
----
-
-<!--
-派工 BE-21：帶回→待出貨接線　·　docs/17-後端第七波派工書.md
-⏸ 等 BE-18（Ordering.Infra 的所有權）與 BE-19（GoodsReceived 的 OrderLineId）都通過。
-兩個上游都到齊才寫得完，硬要平行會 build 不過。
+派工 BE-21：帶回→待出貨接線 ＋ OrderLineId 改必填　·　docs/19-後端第八波派工書.md
 
 package: BE-21
-doc: docs/17-後端第七波派工書.md
-allow: src/Modules/Ordering/
+doc: docs/19-後端第八波派工書.md
+allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Infra/
+allow: src/Modules/Procurement/GreyGray.Modules.Procurement.Contracts/
+allow: src/Modules/Procurement/GreyGray.Modules.Procurement.Core/
 allow: tests/
--->
+
+---
 
 <!--
-派工 BE-20：部分買到（ADR-026）　·　docs/17-後端第七波派工書.md
-⏸ 等 BE-17／BE-18／BE-19 三包都通過整合驗收才啟用。
-會跨 Procurement／Ordering／Ledger，所有權表等開工前再配。
+派工 BE-20：部分買到（ADR-026）　·　docs/19-後端第八波派工書.md
+⏸ 等 BE-21 通過整合驗收才啟用（兩包會撞 Procurement 與 Ordering）。
 
 package: BE-20
-doc: docs/17-後端第七波派工書.md
+doc: docs/19-後端第八波派工書.md
+allow: src/Modules/Procurement/
+allow: src/Modules/Ordering/
+allow: src/Modules/Ledger/
+allow: db/migrations/0015_
 allow: tests/
 -->
 
-> **`tests/` 給了三個包**，設了 `GG_PACKAGE` 也分不開。
-> BE-17 只准動 `tests/**/Payment*`、BE-18 只准動 `tests/**/Ordering*`、
-> BE-19 只准動 `tests/**/Procurement*`。這一條由總驗收第 1 條逐檔看 diff 把關。
+> **`tests/` 給了兩個包**：BE-22 不寫測試，BE-21 只准動 `tests/**/Ordering*`
+> 與 `tests/**/Procurement*`。由總驗收逐檔看 diff 把關。
 >
-> `GreyGray.slnx`、各 Host 的 `Program.cs`、`M1bFulfillmentEndpoints.cs`
-> **不在任何 allow 清單裡**——`docs/17` §3 只授權「加一行／加一條 endpoint」，
-> 那種變更請整合者代為套用，或由整合者臨時開一筆 package 留痕。
+> `GreyGray.slnx` 與各 Host 的 `Program.cs` 不在任何 allow 裡——
+> 那種一行的變更請整合者代為套用，或臨時開一筆 package 留痕。
 
 ---
 
 ## 已經通過、不再生效的（保留軌跡）
 
-BE-1～BE-8（M0）· BE-10（M-1 腳本化 `2c05c99`）· BE-12（M1b-3a `dbec9cd`）·
-**第六波 BE-13／BE-9／BE-11／BE-14／BE-15（`de3a022`，157 條測試全綠）**
+BE-1～BE-8（M0）· BE-10（`2c05c99`）· BE-12（`dbec9cd`）·
+第六波 BE-13／BE-9／BE-11／BE-14／BE-15（`de3a022`，157 條）·
+**第七波 BE-17／BE-18／BE-19（`afd82f8`，171 條全綠）**
