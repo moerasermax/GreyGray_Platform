@@ -9,9 +9,14 @@ export const DELIVERY_METHOD_LABEL: Record<S['DeliveryMethod'], string> = {
   SelfPickup: '自取',
 };
 
+/**
+ * 這裡不放運費金額——選這一步還沒詢價（`quoteCart` 要等選定方式才打），
+ * 契約在這裡沒有 `shippingFee` 可用，金額只能等 `QuoteResult` 回來後用
+ * `formatMoney()` 渲染（見 `checkout/page.tsx` 的 `quote.shippingFee`）。
+ */
 export const DELIVERY_METHOD_HINT: Record<S['DeliveryMethod'], string> = {
-  ConvenienceStore: '一口價 NT$60',
-  HomeDelivery: '一口價 NT$120',
+  ConvenienceStore: '選定後立即試算運費',
+  HomeDelivery: '選定後立即試算運費',
   SelfPickup: '免運費',
 };
 
