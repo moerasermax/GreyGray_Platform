@@ -111,14 +111,30 @@ tally "allow 路徑都存在（或父目錄在，屬新檔）" "沒有任何可�
 
 # ── 2. migration 編號沒被用過 ───────────────────────────────────
 say "② migration 編號未被佔用"
+# 「HEAD 裡已有檔」原本一律擋——這條假設 db/migrations/ 底下的 allow
+# 一定是要新建一個編號。第九波第一次出現另一種合法情況：修訂既有檔的
+# 冪等性 bug（0003 對 ledger.account 的 seed 重放會炸），編號本來就該撞。
+# 豁免要求包的 block 裡明講「修訂既有檔」——跟 NEWMARK 同一套精神：
+# 順手加一個詞就能關掉檢查的話，那個檢查遲早會被關光，所以用固定片語而不是任意字。
+MIGEDIT='修訂既有檔'
 for pkg in $pkgs; do
+  block="$(gg_active_body | awk -v want="$pkg" '
+    /^[[:space:]]*package:/ {
+      cur = $0
+      sub(/^[[:space:]]*package:[[:space:]]*/, "", cur)
+      sub(/[[:space:]]*$/, "", cur)
+      inblock = (cur == want)
+      next
+    }
+    inblock { print }
+  ')"
   while IFS= read -r prefix; do
     case "$prefix" in
       db/migrations/*)
         seen
         num="${prefix#db/migrations/}"
         # 「已被佔用」要分兩種，否則交付後必然誤判：
-        #   ·  HEAD 裡就有 → 前面的波次用掉了，這一包會撞號（真的要擋）
+        #   ·  HEAD 裡就有 → 前面的波次用掉了，這一包會撞號（真的要擋，除非明講是修訂既有檔）
         #   ·  只在工作區  → 這一包自己剛交付的檔（正常，撤包前一定會看到）
         #   ·  超過一個檔  → 一號多檔，任何時候都是違規
         hit="$(ls "$GG_ROOT/db/migrations/" 2>/dev/null | grep -c "^${num}" || true)"
@@ -126,7 +142,11 @@ for pkg in $pkgs; do
         if [ "${hit:-0}" -gt 1 ]; then
           bad "$pkg 的 migration 編號 $num 有 ${hit} 個檔（一號一檔）"
         elif [ "${committed:-0}" -gt 0 ]; then
-          bad "$pkg 拿到的 migration 編號 $num 在 HEAD 裡已經有檔了——前面的波次用掉了，會撞號"
+          if printf '%s' "$block" | grep -qE "$MIGEDIT"; then
+            ok "$pkg → $num 是核准的既有檔修訂（block 內標明「修訂既有檔」），不是新編號撞號"
+          else
+            bad "$pkg 拿到的 migration 編號 $num 在 HEAD 裡已經有檔了——前面的波次用掉了，會撞號（若是刻意修訂既有檔，在該包 block 內加一行含「修訂既有檔」字樣）"
+          fi
         elif [ "${hit:-0}" -eq 1 ]; then
           ok "$pkg → $num 已交付（工作區一個檔，HEAD 尚無，未撞號）"
         else
@@ -185,7 +205,10 @@ for d in $docs; do
   # 字元類要含括號：Next.js 的 route group 目錄長 (checkout)、(dash) 這樣，
   # 少了括號會把 (checkout)/_lib/labels.ts 切成 /_lib/labels.ts，
   # 而那個殘段對到六個檔——本來明確的引用被自己的抓取切成「模糊」。
-  grep -oE '`[A-Za-z0-9_./()-]+\.(cs|ts|tsx|sql|ps1|yaml|yml|json|sh)`' "$GG_ROOT/$d" \
+  # 方括號同理：動態路由目錄長 [shipmentId] 這樣，少了方括號會把
+  # shipments/[shipmentId]/page.tsx 切成 /page.tsx，而 shipments/page.tsx
+  # 也存在，殘段就對到兩個檔——docs/18 的 FE-12 就撞過這個洞。
+  grep -oE '`[]A-Za-z0-9_./()[-]+\.(cs|ts|tsx|sql|ps1|yaml|yml|json|sh)`' "$GG_ROOT/$d" \
     | tr -d '`' | sort -u | while IFS= read -r f; do
       [ -n "$f" ] || continue
       seen
@@ -217,7 +240,7 @@ tally "沒有引用不存在的檔" "派工書裡一個檔案引用都沒抓到�
 say "⑤ 行號引用不超出檔案長度"
 for d in $docs; do
   [ -f "$GG_ROOT/$d" ] || continue
-  grep -oE '`?[A-Za-z0-9_./()-]+\.(cs|ts|tsx|sql|ps1|yaml)`?:[0-9]+' "$GG_ROOT/$d" \
+  grep -oE '`?[]A-Za-z0-9_./()[-]+\.(cs|ts|tsx|sql|ps1|yaml)`?:[0-9]+' "$GG_ROOT/$d" \
     | tr -d '`' | sort -u | while IFS= read -r ref; do
       f="${ref%:*}"; n="${ref##*:}"
       p=""

@@ -51,23 +51,30 @@ Leader 要明講。
 
 ---
 
-**第六波已生效（2026-08-30）。** 一包現在能做，一包等後端。
+**FE-12 已生效（2026-08-30）。** 配合後端第九波（`docs/21`，在後端樹）一起派。
 
 | 包 | 主題 | 派工書 |
 |---|---|---|
-| FE-17 | 前台運費文案改從契約來（拿掉寫死的 `NT$60`／`NT$120`） | `docs/20` |
-| FE-12 | 關掉 mock 對真後端跑一遍 ⏸ **等後端 BE-22** | `docs/18` §5（開工前提已更正） |
+| FE-12 | 關掉 mock 對真後端跑一遍 | `docs/18` §5（開工前提已更正，環境已就緒） |
 
 **啟動 prompt 在 `.dispatch/PROMPTS.md`**，Leader 用 ai-cli fan out。
 
-> ⚠️ **FE-12 上一波沒能開工不是它的錯。** 派工書給的前提「連得到 YC 就好」
-> 客觀上不存在——YC 上的服務只綁 loopback，開發機連不到，而三個 API Host
-> 從沒部署上去。綁 loopback 對正式機是**正確**的設定，錯的是那個假設。
-> 後端 BE-22 會在開發機自建一組（裝在 `D:\GreyGray`），那之後才解除。
+> 開工前提已滿足：後端 BE-22 已於第八波通過整合驗收（開發機 D:\GreyGray
+> 上 PG＋Garnet＋三個 Host 都起得來）。但那組環境目前是停著的——
+> 第八波整合驗收為了解開 build 的檔案鎖用 stop-dev-environment.ps1 收掉了
+> （資料保留，只是 stop，沒有 rm）。派這包之前，要先在後端樹跑
+> ops\start-dev-hosts.ps1 -InstallRoot 'D:\GreyGray' -Configuration 'Debug'，
+> 確認三個 /health 都回 200，FE-12 才真的開得了工。
 
-> ⚠️ **自驗報告是檔案**：`.dispatch/reports/<包名>.md`，三個標頭缺一不可，
+> 已知會踩到、不是 FE-12 要修的：後端 BE-23／BE-24（docs/21，同一輪在
+> 後端樹跑）修的是「結帳付款會炸 23514」與「migration 重放非冪等」兩個既有
+> bug。建議兩包先跑完再開 FE-12，或至少確認 BE-23 已通過再走到前台付款那
+> 一步——不然 FE-12 §5 第 3 點「前台走一條完整的：…→ 付款 →…」在第一次
+> 結帳付款就會踩到那個已知洞。
+
+> 自驗報告是檔案：`.dispatch/reports/<包名>.md`，三個標頭缺一不可，
 > `audit-dispatch.sh` 第 ⑧ 項會擋。規格見 `.dispatch/reports/README.md`。
-> **不准把工作丟背景後結束**——這件事已經發生 5 次，其中 3 次是在規則寫進 prompt 之後。
+> 不准把工作丟背景後結束。
 
 ---
 
@@ -83,15 +90,12 @@ allow: frontend/apps/storefront/app/(checkout)/
 
 ---
 
-<!--
 派工 FE-12：關掉 mock、對真後端跑一遍　·　docs/18-前端第五波派工書.md
-⏸ 等後端 BE-22 通過整合驗收（開發機上 PG＋Garnet＋三個 Host 都起得來）。
 
 package: FE-12
 doc: docs/18-前端第五波派工書.md
 allow: frontend/apps/admin/.env.local
 allow: frontend/apps/storefront/.env.local
--->
 
 ---
 
