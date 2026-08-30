@@ -1,9 +1,9 @@
 # 啟動 prompt
 
-**你只開一個 terminal，當 Leader。** 五包由 Leader 用 ai-cli fan out 出去。
+**你只開一個 terminal，當 Leader。** 三包由 Leader 用 ai-cli fan out 出去。
 
-這個檔案兩棵 worktree 各一份、內容相同，所以 Leader 開在哪一棵都能派全部五包
-（ai-cli 的 `run` 有 `workFolder`，跨樹派工靠它）。
+兩棵 worktree 各一份、內容相同，Leader 開在哪一棵都能派全部三包
+（ai-cli 的 `run` 有 `workFolder`）。
 
 ---
 
@@ -15,7 +15,7 @@
 GG_ROLE=leader
 
 你是 GreyGray Platform 的 Leader。讀 .dispatch/PROMPTS.md 與 .dispatch/ACTIVE.md，
-把現在生效的五包用 mcp__ai-cli__run 派出去，然後等它們回來做整合驗收。
+把現在生效的三包用 mcp__ai-cli__run 派出去，然後等它們回來做整合驗收。
 
 派工規則：
   - 每個子代理的 prompt 用本檔案「工作包」那一節的原文，一字不改。
@@ -24,12 +24,16 @@ GG_ROLE=leader
   - workFolder 要指對：
       後端 BE-*  → D:\WorkSpace\01_開發中_wip\GreyGray_Platform
       前端 FE-*  → D:\WorkSpace\01_開發中_wip\GreyGray_Platform-fe
-  - 先派 FE-12——環境剛通，它是 D 階段的第一步，而且它的產出會決定後面做什麼。
-  - BE-17／BE-18／BE-19 三包都會跑 ops/test.ps1，要排開不要同時跑
-    （同時 build 會搶 NuGet 資料夾，症狀是 NuGet.targets(198,5) 檔案已存在，那是競態）。
+  - 先派 BE-22——它解的是 D 階段的阻塞，而且 FE-12 在等它。
+  - BE-21 會跑 ops/test.ps1（淨執行約 10 分鐘），BE-22 不會，兩者不搶 build。
+
+★ 收子代理的回報時，先看 .dispatch/reports/<包名>.md 在不在、三個標頭齊不齊。
+  不齊就用同一個 session_id 接回去要它補完——不要自己幫它補，
+  也不要因為 exit code 是 0 就當成完成（這件事已經誤判過 5 次）。
 
 你自己不寫原始碼。你寫得了的是 .dispatch/、.claude/、.codex/、docs/ 與 GreyGray_PM。
 子代理回來之後由你做整合驗收：自己重跑 build 與測試複驗，不要只轉述它們的自述。
+驗收完先 commit，再撤包——順序反過來會讓未提交的交付變成無主檔案，閘門會判成越界。
 ```
 
 > **不要把 `GG_ROLE=leader` 放進子代理的 prompt。** 就算不小心放了也升不了級——
@@ -40,173 +44,125 @@ GG_ROLE=leader
 ## 排程
 
 ```
-先派，產出會決定後面      FE-12
-接著可以同時派            BE-17   BE-18   BE-19   FE-16
-BE-18 ＋ BE-19 都過之後   BE-21（帶回→待出貨接線）
-再往後                    BE-20（部分買到）
-                          （BE-20／BE-21 目前在 ACTIVE.md 裡都是註解掉的）
+可同時開            BE-22   BE-21   FE-17
+BE-22 過了才開      FE-12（前端，關掉 mock 對真後端跑一遍）
+BE-21 過了才開      BE-20（部分買到）
+                    （FE-12／BE-20 目前在 ACTIVE.md 裡都是註解掉的）
 ```
+
+---
+
+## 兩條這一波開始機械檢查的規則
+
+**① 自驗報告是檔案，不是對話。**
+每包要寫 `.dispatch/reports/<包名>.md`，三個標頭一字不差：
+`## 指令與輸出`、`## 逐條自驗`、`## 我發現但沒做的事`。
+缺任何一個，`audit-dispatch.sh` 第 ⑧ 項會擋下 Leader 收工。
+
+**② 不准把測試丟背景、不准排程 wakeup。**
+`ops/test.ps1` 實測淨執行 **584 秒（9.7 分）**，前景跑得完。
+headless 子代理的行程一結束就沒了，通知不會來而 exit code 還是 0——
+這件事已經發生 **5 次**，其中 3 次是在規則寫進 prompt 之後。所以現在改成檔案檢查。
 
 ---
 
 ## 工作包（以下每一段就是子代理的 prompt，原文照抄）
 
-### FE-12　關掉 mock，對真後端跑一遍　🔴 先派這包
+### BE-22　本機開發環境（`D:\GreyGray`）　🔴 先派這包
 
 ```
-GG_PACKAGE=FE-12
+GG_PACKAGE=BE-22
 
-你是 GreyGray Platform 的 FE-12。讀 docs/18-前端第五波派工書.md，
-§1 §2 §3 全部要看，然後照 §5 的 FE-12 那一節做。
+你是 GreyGray Platform 的 BE-22。讀 docs/19-後端第八波派工書.md，
+§1 §2 §3 全部要看，然後照 §5 的 BE-22 那一節做。
+再讀 .dispatch/reports/README.md（自驗報告的格式）。
 
-前端十五包全部通過了，但沒有一行前端程式對真後端跑過——「在 mock 下是對的」
-證明過很多次，「接上真後端是對的」一次都沒有。D 階段現在 0/7，你是第一步。
+D 階段 0/7，而 FE-12（前端對真後端跑一遍）是它的第一步，
+FE-12 從第三波等到現在還是開不了工——因為 YC 上的服務只綁 loopback
+（那對正式機是正確的設定），開發機連不到，而三個 API Host 從沒部署上去。
+老闆拍板：在開發機自建一組。
 
-環境已就緒：2026-08-30 BE-13 修好 YC 上的 sc start 錯誤 5（根因是 nssm.exe 的 ACL），
-PostgreSQL 與 Garnet 重開機後 9 秒自動起來。
+★ 裝在 D:\GreyGray，不要用 C 槽。install-environment.ps1 的
+InstallRoot／PostgreSqlDataRoot／PostgreSqlWalRoot 本來就是參數，指過去就好。
+不要改腳本的預設值——正式機 YC 仍然用 C:\GreyGray，那是對的。
+如果腳本裡還有別的地方把 C:\GreyGray 寫死（沒走參數），那就是 bug，
+修它並在自驗報告列出改了哪幾行。
 
-這一包不是寫功能是驗證。預期產出多半是「發現了什麼」而不是新程式碼——
-如果你交出一堆新程式碼，多半代表你在修不該你修的東西。不要修後端。
+要跑到：PG 17 與 Garnet 起來、migrations 0001_~0014_ 全套上、
+三個 Host 的 /health 回得了。第三件是 FE-12 能不能開工的判準。
 
-兩件已知缺口，遇到就記下來，不是你要修的：
-  一、已付款訂單的取消退款現在必定失敗（ADR-024，綠界退款 API 還沒做）
-  二、訂單簽收後不會變成 Completed（ADR-025，鑑賞期 Timer 還沒做）
-
-主要產出是一份「哪些頁對真後端是好的、哪些壞了、壞在哪」的清單。
-自驗照 §5 逐條貼實際指令與實際輸出，然後停下來等整合驗收。
+不要動正式機 YC 的任何設定。不要把密碼放進命令列。
+自驗寫進 .dispatch/reports/BE-22.md，三個標頭一字不差。
 ```
 
-### BE-17　綠界原路退款 API
+### BE-21　帶回→待出貨接線 ＋ `OrderLineId` 改必填
 
 ```
-GG_PACKAGE=BE-17
+GG_PACKAGE=BE-21
 
-你是 GreyGray Platform 的 BE-17。讀 docs/17-後端第七波派工書.md，
-§1 §2 全部要看，然後照 §5 的 BE-17 那一節做。再讀 docs/00-decisions.md 的 ADR-024。
+你是 GreyGray Platform 的 BE-21。讀 docs/19-後端第八波派工書.md，
+§1 §2 §3 全部要看，然後照 §5 的 BE-21 那一節做。
+再讀 .dispatch/reports/README.md（自驗報告的格式）。
 
-這是現在最擋 M1b 的一件。已付款訂單的取消退款走不通——
-Payment/OrderingEventHandlers.cs:43 對 OriginalPaymentMethod 直接
-throw NotSupportedException「不得把退款要求標成成功」。
+兩件事，都很小，但第二件是帳務相關的：
 
-★ 那個 throw 是對的，不要只是把它拿掉。拿掉而沒有真的退款，系統會把「錢已退」
-記進 Ledger 而客人根本沒收到錢——那比現在的失敗嚴重得多。
-要做的是讓它真的能退，然後才把 throw 換成真實結果。
+一、接線。第六波驗收發現「帶回入庫後訂單轉待出貨」這條線是斷的，
+    第七波 BE-19 已經讓 GoodsReceived.v1 帶出 OrderLineId，但沒有人訂閱它。
+    IOrderingGoodsReceipt.RecordGoodsReceivedAsync 已存在、已實作、已 DI 註冊，
+    全 repo 沒有任何呼叫點。在 Ordering.Infra 加一個
+    IIntegrationEventHandler<GoodsReceived> 呼叫既有的 port，
+    比照 Inventory.Infra/ModuleRegistration.cs 的 AddIdempotentIntegrationEventHandler。
+    不必改 Ordering.Core——那個 port 已經夠用，而且 Core 不在你的 allow。
 
-地基已經在了：EcpayGateway.cs 有 CheckMacValue 與 Payment:ECPay:* 組態，
-你是擴充它，不是從零寫綠界整合。退款要冪等，重送不可重複退。
+二、GoodsReceived.OrderLineId 從可選參數（= default）改成必填。
+    現在漏傳會靜默送空值而且照樣編得過。這個事件從沒上過正式機，
+    現在改沒有相容性成本，之後才改就要發 v2。
+    ★ 這是帳務相關的欄位：漏傳的後果是訂單永遠不會轉待出貨，而且不會報錯。
+    改成必填之後編譯器會列出所有建構點，逐一補上。
 
-★ E3（正式商店代號與金鑰）老闆還在辦。這一包用綠界測試環境做到能實際發動一次退款
-並貼出回應；不可以宣稱「可上線」，交付說明要明寫「已對測試環境驗證，正式憑證未到位」。
-如果測試環境不支援退款，停下來回報，不要用 mock 假裝驗過。
-
-自驗照 §5，然後停下來等整合驗收。
+★ ops/test.ps1 要前景跑（淨執行約 10 分鐘），不准丟背景、不准排程 wakeup。
+自驗寫進 .dispatch/reports/BE-21.md，三個標頭一字不差。
+端對端測試要用真 PostgreSQL（Testcontainers），而且要有
+「兩條預購 line 只帶回一條時不轉待出貨」那條。
 ```
 
-### BE-18　Ordering：StoredValue 擋 ＋ 鑑賞期 Saga Timer
+### FE-17　前台運費文案改從契約來
 
 ```
-GG_PACKAGE=BE-18
+GG_PACKAGE=FE-17
 
-你是 GreyGray Platform 的 BE-18。讀 docs/17-後端第七波派工書.md，
-§1 §2 §3 全部要看，然後照 §5 的 BE-18 那一節做。
-再讀 docs/00-decisions.md 的 ADR-024 與 ADR-025。
+你是 GreyGray Platform 的 FE-17。讀 docs/20-前端第六波派工書.md，
+§1 §2 §3 全部要看，然後照 §5 的 FE-17 那一節做。
+再讀 .dispatch/reports/README.md（自驗報告的格式）。
 
-兩件事，都在 Ordering：
+apps/storefront/app/(checkout)/_lib/labels.ts:13-14 把運費寫死成
+「一口價 NT$60／NT$120」。那是 ADR-010 的舊硬編碼、第二波就有了，
+FE-16 回報但不在它的所有權。
 
-一、StoredValue 在 M1b 要回可預期的業務失敗（Result，不是例外），訊息說
-    「儲值金退款要到 M3 才開放」。這條 ADR-023 決定二整個 repo 沒有任何地方實作，
-    前端只擋在 UI，API 層仍收得下。加在 CancelAdminAsync／CancelLineAsync。
-    不得默認任何一種去向。M3 要開時只需拿掉守衛，所以用組態旗標或明確常數。
+運費金額一旦調整，畫面會跟實際收的不一致而且不會報錯；
+M3 的運費規則引擎一上來這兩行就會變成陳年錯誤，而到時候沒人記得它在那裡。
 
-二、鑑賞期 Saga Timer。訂閱 fulfillment.ShipmentDelivered.v1，簽收後排 timer，
-    7 天（做成組態不要寫死）屆滿轉 Completed。
-    用 ISagaTimerScheduler<OrderingDbContext> 泛型版，讓 timer 與業務資料同交易。
-    ★ 一張訂單可能對應多個出貨單（N:M），全部簽收之後才起算鑑賞期，
-      不是第一個簽收就起算。這條容易做錯。
+改成從契約來：shippingFee 後端會回，用 formatMoney() 渲染。
+★ 不要自己算、不要自己拼字串。formatMoney() 現在對 TWD 已經會輸出 NT$
+（ADR-028 已落地），所以不要再手動加前綴。
+「超商／宅配」的方法說明可以是靜態文案，金額不行。
 
-★ Ordering 整個模組都是你的，BE-19 完全不碰。ShipmentDelivered 的 handler 與
-saga scheduler 都註冊在 Ordering.Infra/ModuleRegistration.cs（比照
-Procurement.Infra/ModuleRegistration.cs:67），那個檔是你的，而且你不必動 Worker——
-Worker 只掛通用的 dispatcher。
+契約沒有回運費的地方（例如結帳前的購物車）不要自己猜 60／120——
+那就是契約缺口，停下來回報。
 
-你的 migration 編號是 0013_。自驗照 §5，然後停下來等整合驗收。
-```
-
-### BE-19　契約與事件形狀異動
-
-```
-GG_PACKAGE=BE-19
-
-你是 GreyGray Platform 的 BE-19。讀 docs/17-後端第七波派工書.md，
-§1 §2 §3 全部要看，然後照 §5 的 BE-19 那一節做。
-再讀 docs/00-decisions.md 的 ADR-027。
-
-三個契約異動，一起做因為共用同一次 codegen：
-
-一、GoodsReceived.v1 加 OrderLineId。第六波驗收發現「帶回入庫後訂單轉待出貨」
-    這條線是斷的——事件只帶 CampaignId+SkuId+Quantity+UnitCost+Source，
-    而 IOrderingGoodsReceipt 已經存在、已實作、已 DI 註冊卻沒有任何呼叫點。
-    事件是一個採購品項發一則，PurchaseItem 本來就帶 OrderLineId，值就在手上。
-    ★ 這是改 v1 wire shape，一般 ADR-018 不允許，但這個事件是第六波才新增、
-      從沒上過正式機，現在改沒有相容性成本。老闆已拍板改 v1。
-二、新增 GET /v1/shipments/{id}。現在前端撈 limit:100 列表再過濾，
-    出貨單超過 100 張之後點詳情會白頁而且不報錯。
-三、AdminCampaignInput 加漲價詢問逾時欄位（ADR-027，每團可設）。
-    沒填保留 2 小時當預設，但要在契約 description 寫明那是預設值。
-★ 接線不是你的。你只負責讓 GoodsReceived 帶出 OrderLineId；
-真正訂閱它的 handler 是另一包（BE-21），等你和 BE-18 都落地才開。
-你完全不碰 Ordering。
-
-你的 migration 編號是 0014_。GET /v1/shipments/{id} 用既有的
-IFulfillmentQuery.GetAsync（已確認存在），你不需要改 Fulfillment 模組。
-自驗要用真 PostgreSQL 跑一次帶回，把 outbox 那則事件的 payload 撈出來，
-證明 OrderLineId 真的帶出去了。
-自驗照 §5，然後停下來等整合驗收。
-```
-
-### FE-16　金額 `NT$`、拿掉 KPI 假數字、開團逾時欄位、出貨詳情端點
-
-```
-GG_PACKAGE=FE-16
-
-你是 GreyGray Platform 的 FE-16。讀 docs/18-前端第五波派工書.md，
-§1 §2 §3 全部要看，然後照 §5 的 FE-16 那一節做。
-再讀 docs/00-decisions.md 的 ADR-027 與 ADR-028。
-
-四件事，前兩件現在就能做，後兩件等後端 BE-19 的契約落地：
-
-① 金額顯示統一 NT$（ADR-028）。只改 packages/api-client/src/money.ts 一處——
-   那個檔的註解早就寫了「改這裡一處即可，不要在呼叫端自己加前綴」。
-   外幣維持 ICU 既有行為（US$、HK$）不要動。
-   改完跑全部測試看哪些斷言紅了：你所有權內的自己修，
-   別包的測試檔列清單回報，不要自己改。
-② 後台首頁 KPI 拿掉假數字。常數在 (dash)/_lib/dashboardMock.ts:49。
-   營運會相信後台上的數字，佔位值放在正式環境比沒有更危險。
-   不要自己發明彙總端點，也不要用列表 API 在前端加總——列表有分頁，
-   加出來的是「這一頁的合計」而且違反鐵則 2。
-③ ⏸ 開團表單加漲價詢問逾時欄位。等 BE-19。沒填預設 2 小時，
-   文案要讓營運看得懂後果：逾時就自動視為照買，花的是客人的錢。
-④ ⏸ 出貨詳情改打 GET /v1/shipments/{id}。等 BE-19。
-
-③④ 若因為 BE-19 未落地而沒做，明講「未做，等 BE-19」，不要假裝做了。
-自驗照 §5，然後停下來等整合驗收。
+驗收條件之一：grep -rn 'NT[$]' apps/storefront 應為 0 筆（前綴只准在 money.ts 裡加）。
+自驗寫進 .dispatch/reports/FE-17.md，三個標頭一字不差。
 ```
 
 ---
 
-## 五包都適用的四件事
+## 三包都適用的四件事
 
-1. **子代理不可以自己宣告通過。** 只做自驗，逐條貼出**實際指令與實際輸出**。
-   整合驗收是 Leader 的事，而且 Leader 要自己重跑複驗，不採信自述。
+1. **子代理不可以自己宣告通過。** 自驗報告寫成檔案，貼**實際指令與實際輸出**。
+   整合驗收是 Leader 的事，而且 Leader 要自己重跑複驗。
 2. **遇到契約缺口或平台缺口就停下來回報**，不要自己補一個看起來合理的預設值。
-   這個專案已經有七次這樣的回報，七次都對，五次直接變成 ADR。
-3. **你只有這一輪。** 不要排程 wakeup、不要說「等背景跑完再回報」然後結束——
-   headless 子代理的行程一結束就沒了，那個通知**不會來**，而 exit code 還是 0，
-   從外面看像成功。需要等待就在這一輪內輪詢等待；真的無法在這一輪完成，
-   就**明講做不到與原因**，不要說「稍後繼續」。
-   （2026-08-30 實測：八包裡 BE-13／BE-9／BE-11 三包都踩到，都沒交出自驗報告，
-   由整合者接回 session 才補完。BE-13 差一點就以「未驗證重開機」的狀態被當成通過，
-   而重開機正是那一包寫明「沒做等於整包沒做」的判準。）
+   這個專案已經有八次這樣的回報，八次都對，六次直接變成 ADR。
+3. **你只有這一輪。** 不准排程 wakeup、不准把工作丟背景後結束。
+   `ops/test.ps1` 前景跑得完（584 秒）。無法完成就**明講做不到與原因**。
 4. **不要碰整個工作區的 git 指令**（`git stash`／`reset --hard`／`clean`／
-   `checkout -- .`／`commit`）。stash stack 是跨 worktree 共用的，
-   FE-10 曾經用 `git stash` 把 FE-9 未提交的交付整個掃走。
+   `checkout -- .`／`commit`）。stash stack 是跨 worktree 共用的。

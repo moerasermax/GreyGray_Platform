@@ -51,55 +51,48 @@ Leader 要明講。
 
 ---
 
-**第五波已生效（2026-08-30）。** 兩包同時開，`GG_PACKAGE` 不是可選的。
+**第六波已生效（2026-08-30）。** 一包現在能做，一包等後端。
 
 | 包 | 主題 | 派工書 |
 |---|---|---|
-| FE-12 | **關掉 mock，對真後端跑一遍** 🔴 D 階段的第一步 | `docs/18` |
-| FE-16 | 老闆拍板的四件前端跟進（ADR-027／028 等） | `docs/18` |
+| FE-17 | 前台運費文案改從契約來（拿掉寫死的 `NT$60`／`NT$120`） | `docs/20` |
+| FE-12 | 關掉 mock 對真後端跑一遍 ⏸ **等後端 BE-22** | `docs/18` §5（開工前提已更正） |
 
 **啟動 prompt 在 `.dispatch/PROMPTS.md`**，Leader 用 ai-cli fan out。
 
-> **FE-12 從第三波等到現在**，等的就是後端環境。2026-08-30 BE-13 修好
-> `sc start` 錯誤 5（根因是 `nssm.exe` 的 ACL），YC 上兩個服務重開機後 9 秒自動起來，
-> **這一包終於解除阻塞**。
->
-> **FE-16 的後兩件（開團逾時欄位、出貨詳情端點）等後端 BE-19 的契約落地**，
-> 前兩件（`NT$`、拿掉 KPI 假數字）現在就能做。
+> ⚠️ **FE-12 上一波沒能開工不是它的錯。** 派工書給的前提「連得到 YC 就好」
+> 客觀上不存在——YC 上的服務只綁 loopback，開發機連不到，而三個 API Host
+> 從沒部署上去。綁 loopback 對正式機是**正確**的設定，錯的是那個假設。
+> 後端 BE-22 會在開發機自建一組（裝在 `D:\GreyGray`），那之後才解除。
+
+> ⚠️ **自驗報告是檔案**：`.dispatch/reports/<包名>.md`，三個標頭缺一不可，
+> `audit-dispatch.sh` 第 ⑧ 項會擋。規格見 `.dispatch/reports/README.md`。
+> **不准把工作丟背景後結束**——這件事已經發生 5 次，其中 3 次是在規則寫進 prompt 之後。
 
 ---
 
+派工 FE-17：前台運費文案改從契約來　·　docs/20-前端第六波派工書.md
+
+package: FE-17
+doc: docs/20-前端第六波派工書.md
+allow: frontend/apps/storefront/app/(checkout)/
+
+---
+
+<!--
 派工 FE-12：關掉 mock、對真後端跑一遍　·　docs/18-前端第五波派工書.md
+⏸ 等後端 BE-22 通過整合驗收（開發機上 PG＋Garnet＋三個 Host 都起得來）。
 
 package: FE-12
 doc: docs/18-前端第五波派工書.md
 allow: frontend/apps/admin/.env.local
 allow: frontend/apps/storefront/.env.local
-
-派工 FE-16：金額 NT$、拿掉 KPI 假數字、開團逾時欄位、出貨詳情端點　·　docs/18-前端第五波派工書.md
-
-package: FE-16
-doc: docs/18-前端第五波派工書.md
-allow: frontend/packages/api-client/src/money.ts
-allow: frontend/packages/api-client/src/__tests__/
-allow: frontend/apps/admin/app/(dash)/page.tsx
-allow: frontend/apps/admin/app/(dash)/_lib/dashboardMock.ts
-allow: frontend/apps/admin/app/(dash)/campaigns/new/
-allow: frontend/apps/admin/app/(dash)/shipments/_lib/api.ts
-allow: frontend/apps/admin/app/(dash)/shipments/[shipmentId]/
-
----
-
-> **`money.ts` 是例外授權。** 那個檔平常在「沒有人擁有」的清單裡，
-> 這次明確劃給 FE-16——因為 ADR-028 的正確做法**就是只改這一處**，
-> 在呼叫端各自加前綴會變成散在幾十個元件裡的字串拼接。
->
-> 改 `formatMoney()` 會影響**每一個顯示金額的地方**，包含別包的測試斷言。
-> FE-16 只准修自己所有權內的測試；**別包的測試檔要列清單回報，不要自己改**。
+-->
 
 ---
 
 ## 已經通過、不再生效的（保留軌跡）
 
 FE-1～FE-8（前兩波 ＋ 技術債收尾 `631e7bc`）· FE-9／FE-10／FE-11（第三波 `bbce5e1`）·
-**第四波 FE-13／FE-14／FE-15（`e8156e6`，admin 60 條＋storefront 44 條全過）**
+第四波 FE-13／FE-14／FE-15（`e8156e6`）·
+**第五波 FE-16（`6165419`）——同一波的 FE-12 未完成，環境前提不成立**

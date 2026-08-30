@@ -203,6 +203,36 @@ else
 fi
 
 
+say "⑧ 每個生效包都留下自驗報告"
+# 子代理提前結束累計 5 次，其中 3 次是在「你只有這一輪」寫進 PROMPTS.md 之後。
+# 最危險的一次：BE-18 結束時手上有一條失敗的測試沒交代，而 exit code 是 0。
+# 光加 prompt 規則沒用——所以改成機械判準：報告是檔案，寫不完就看得到。
+# ★ 只在「這一包真的動過檔案」時才要求報告。
+# 派工當下每包都還沒跑，這時候報缺報告是必然的誤報——
+# 而必然的誤報會訓練所有人忽略這個檢查。有交付才查。
+rep_missing=""
+for pkg in $pkgs; do
+  delivered="$(GG_PACKAGE="$pkg" gg_allow_list | while IFS= read -r pre; do
+      [ -n "$pre" ] || continue
+      git -C "$GG_ROOT" -c core.quotepath=false status --porcelain -- "$pre" 2>/dev/null
+    done | grep -c . || true)"
+  [ "${delivered:-0}" -gt 0 ] || continue
+  f="$GG_ROOT/.dispatch/reports/${pkg}.md"
+  if [ ! -f "$f" ]; then
+    rep_missing="${rep_missing}${rep_missing:+、}${pkg}(有交付但無報告)"
+    continue
+  fi
+  for h in "## 指令與輸出" "## 逐條自驗" "## 我發現但沒做的事"; do
+    grep -qF "$h" "$f" || rep_missing="${rep_missing}${rep_missing:+、}${pkg}(缺 ${h})"
+  done
+done
+if [ -n "$rep_missing" ]; then
+  bad "自驗報告不完整：${rep_missing}（規格見 .dispatch/reports/README.md）"
+else
+  ok "有交付的包都有完整的自驗報告（沒動過檔案的包不要求）"
+fi
+
+
 say ""
 if [ "$FAIL" -eq 0 ]; then
   say "稽核通過。"
