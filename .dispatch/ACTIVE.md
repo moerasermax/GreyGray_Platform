@@ -51,22 +51,19 @@ Leader 要明講。
 
 ---
 
-**第八波已生效（2026-08-30）。** 兩包同時開，另兩包排在後面。
+**第九波已生效（2026-08-30）。** 兩包同時開，都是修 bug，不涉及新決定。
 
 | 包 | 主題 | 派工書 |
 |---|---|---|
-| BE-22 | **本機開發環境（裝在 `D:\GreyGray`，不壓 C 槽）** 🔴 解 FE-12 的阻塞 | `docs/19` |
-| BE-21 | 帶回→待出貨接線 ＋ `OrderLineId` 改必填 | `docs/19` |
-| FE-17 | 前台運費文案改從契約來（拿掉寫死的 `NT$60`／`NT$120`） | `docs/20`（前端樹） |
-| FE-12 | 關掉 mock 對真後端跑一遍 ⏸ **等 BE-22** | `docs/18`（前端樹） |
-| BE-20 | 部分買到（ADR-026）⏸ **等 BE-21** | `docs/19` |
+| BE-23 | `Order.cs:206` 誤設 `RefundedCurrency` ＋ EF model 補三條 `orders_*` 約束 🔴 FE-12 付款會踩到 | `docs/21` |
+| BE-24 | `0003_channel_seams.sql` 對 `ledger.account` 的 seed 重放非冪等 | `docs/21` |
+| FE-12 | 關掉 mock 對真後端跑一遍（開工前先跑 `ops/start-dev-hosts.ps1`） | `docs/18`（前端樹） |
 
 **啟動 prompt 在 `.dispatch/PROMPTS.md`**，Leader 用 ai-cli fan out。
 
-> ⚠️ **BE-20 為什麼不能跟 BE-21 平行**：BE-20 放寬部分買到幾乎必然要改
-> `ProcurementContracts`（帶短缺數量），而那正是 BE-21 要動的檔；
-> BE-21 把 `GoodsReceived.OrderLineId` 改必填也會逼所有建構點跟著改。
-> 檔案層級看起來不重疊，模組層級會撞。
+> ⚠️ **為什麼這兩包跟上一波無關卻要現在修**：兩個都是 BE-21／BE-22
+> 在自己的自驗過程中、在自己 allow 之外撞到的既有 bug，當時正確地沒有動它們。
+> 兩個都不需要新決定，是機械可派的修正。
 
 > ⚠️ **自驗報告是檔案，不是對話。** 每包要寫 `.dispatch/reports/<包名>.md`，
 > 三個固定標頭缺一不可，`audit-dispatch.sh` 第 ⑧ 項會擋。
@@ -74,6 +71,29 @@ Leader 要明講。
 >
 > ⚠️ **不准把測試丟背景。** `ops/test.ps1` 實測淨執行 584 秒（9.7 分），
 > 前景跑得完。用長 timeout 同步跑。
+
+---
+
+派工 BE-23：`CapturePayment` 誤設 `RefundedCurrency` ＋ EF model 補約束　·　docs/21-後端第九波派工書.md
+
+package: BE-23
+doc: docs/21-後端第九波派工書.md
+allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Core/Order.cs
+allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Infra/OrderingDbContext.cs
+allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
+allow: tests/GreyGray.M1a.Migrations.Tests/OrderingAppraisalMigrationTests.cs
+
+---
+
+派工 BE-24：`0003_channel_seams.sql` 的 `ledger.account` seed 非冪等　·　docs/21-後端第九波派工書.md
+
+package: BE-24
+doc: docs/21-後端第九波派工書.md
+note: 修訂既有檔——`0003_channel_seams.sql` 已在 HEAD 裡，這一包刻意改動它本身
+  （不是新增編號）。老闆已核准：專案還沒上線，沒有正式資料依賴舊版 `0003` 的行為，
+  理由與範圍見 `docs/21` §5 BE-24。
+allow: db/migrations/0003_channel_seams.sql
+allow: tests/GreyGray.M1a.Migrations.Tests/M1aCoreMigrationTests.cs
 
 ---
 

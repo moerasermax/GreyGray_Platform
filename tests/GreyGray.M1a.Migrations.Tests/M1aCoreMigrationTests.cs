@@ -293,6 +293,42 @@ public sealed class M1aCoreMigrationTests : IAsyncLifetime
             """, cancellationToken);
     }
 
+    [Fact(DisplayName = "0001→0014 之後單獨重放 0003，ledger.account 的 seed 不會炸")]
+    public async Task Replaying_channel_seams_after_full_chain_keeps_ledger_account_seed_idempotent()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var migrations = Path.Combine(FindRepositoryRoot(), "db", "migrations");
+        var connectionString = await CreateDatabaseAsync(cancellationToken);
+        var channelSeams = Path.Combine(migrations, "0003_channel_seams.sql");
+
+        await ExecuteMigrationChainAsync(connectionString, migrations, 14, cancellationToken);
+
+        // 全新資料庫套完整鏈之後的基準：0005 的 seed 共 15 個科目（1200 由 0003 先插入，
+        // 0005 對它走 ON CONFLICT DO UPDATE 補上 id/type），之後沒有任何 migration 再動科目表。
+        (await ScalarAsync<int>(connectionString, """
+            SELECT count(*)::int FROM ledger.account;
+            """, cancellationToken)).ShouldBe(15);
+
+        // ops/invoke-migrations.ps1 沒有「已套用就跳過」的追蹤，deploy.ps1 每次重新部署
+        // 都會把全套檔案再送一次，所以「對已經套過 0005 的資料庫重放 0003」是常態而不是邊角案例。
+        // 0003 的 seed 若寫成 INSERT ... VALUES ... ON CONFLICT DO NOTHING，PostgreSQL 會在
+        // 建構候選列時就先檢查 0005 加上的 NOT NULL id，早於判斷衝突，直接噴 23502。
+        var replayFailure = await Record.ExceptionAsync(() =>
+            ExecuteScriptAsync(connectionString, channelSeams, cancellationToken));
+        replayFailure.ShouldBeNull();
+
+        // 重放不得漏插、不得重複，也不得把 0005 補上的 id/type 洗掉。
+        (await ScalarAsync<int>(connectionString, """
+            SELECT count(*)::int FROM ledger.account;
+            """, cancellationToken)).ShouldBe(15);
+        (await ScalarAsync<string>(connectionString, """
+            SELECT id::text || ':' || type::text || ':' || name
+            FROM ledger.account
+            WHERE tenant_id = '00000000-0000-0000-0000-000000000001'::uuid
+              AND code = '1200';
+            """, cancellationToken)).ShouldBe("10000000-0000-0000-0000-000000001200:1:通路應收帳款");
+    }
+
     private static async Task AssertTenantAndValueConstraintsAsync(
         string connectionString,
         CancellationToken cancellationToken)

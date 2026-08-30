@@ -24,8 +24,11 @@ GG_ROLE=leader
   - workFolder 要指對：
       後端 BE-*  → D:\WorkSpace\01_開發中_wip\GreyGray_Platform
       前端 FE-*  → D:\WorkSpace\01_開發中_wip\GreyGray_Platform-fe
-  - 先派 BE-22——它解的是 D 階段的阻塞，而且 FE-12 在等它。
-  - BE-21 會跑 ops/test.ps1（淨執行約 10 分鐘），BE-22 不會，兩者不搶 build。
+  - BE-23／BE-24 可以同時派，兩包不相交。
+  - FE-12 開工前，先在後端樹跑
+    `ops\start-dev-hosts.ps1 -InstallRoot 'D:\GreyGray' -Configuration 'Debug'`，
+    確認三個 /health 都回 200；建議等 BE-23 先過，前台付款那一步才不會把
+    「已知洞」跟「新發現」混在一起。
 
 ★ 收子代理的回報時，先看 .dispatch/reports/<包名>.md 在不在、三個標頭齊不齊。
   不齊就用同一個 session_id 接回去要它補完——不要自己幫它補，
@@ -44,10 +47,8 @@ GG_ROLE=leader
 ## 排程
 
 ```
-可同時開            BE-22   BE-21   FE-17
-BE-22 過了才開      FE-12（前端，關掉 mock 對真後端跑一遍）
-BE-21 過了才開      BE-20（部分買到）
-                    （FE-12／BE-20 目前在 ACTIVE.md 裡都是註解掉的）
+可同時開            BE-23   BE-24
+兩包過了才開        FE-12（前端，關掉 mock 對真後端跑一遍）
 ```
 
 ---
@@ -68,90 +69,83 @@ headless 子代理的行程一結束就沒了，通知不會來而 exit code 還
 
 ## 工作包（以下每一段就是子代理的 prompt，原文照抄）
 
-### BE-22　本機開發環境（`D:\GreyGray`）　🔴 先派這包
+### BE-23　`CapturePayment` 誤設 `RefundedCurrency` ＋ EF model 補約束　🔴
 
 ```
-GG_PACKAGE=BE-22
+GG_PACKAGE=BE-23
 
-你是 GreyGray Platform 的 BE-22。讀 docs/19-後端第八波派工書.md，
-§1 §2 §3 全部要看，然後照 §5 的 BE-22 那一節做。
+你是 GreyGray Platform 的 BE-23。讀 docs/21-後端第九波派工書.md，
+§1 §2 §3 全部要看，然後照 §5 的 BE-23 那一節做。
 再讀 .dispatch/reports/README.md（自驗報告的格式）。
 
-D 階段 0/7，而 FE-12（前端對真後端跑一遍）是它的第一步，
-FE-12 從第三波等到現在還是開不了工——因為 YC 上的服務只綁 loopback
-（那對正式機是正確的設定），開發機連不到，而三個 API Host 從沒部署上去。
-老闆拍板：在開發機自建一組。
+FE-12 對真後端跑的第一個結帳付款，現在必定在真的資料庫上炸 23514——
+Order.cs:206 的 CapturePayment 誤設了 RefundedCurrency（RefundedAmountMinor
+還是 0），違反 db/migrations/0006_m1a_core.sql:611-615 的
+orders_refunded_consistent 約束。172 條測試沒有一條抓到，因為
+OrderingDbContext.cs 的 ConfigureOrder 只宣告了 4 條 check constraint，
+沒有 orders_currency_consistent／orders_paid_consistent／orders_refunded_consistent
+這三條——EnsureCreatedAsync() 建的測試 schema 裡根本沒有它們。
 
-★ 裝在 D:\GreyGray，不要用 C 槽。install-environment.ps1 的
-InstallRoot／PostgreSqlDataRoot／PostgreSqlWalRoot 本來就是參數，指過去就好。
-不要改腳本的預設值——正式機 YC 仍然用 C:\GreyGray，那是對的。
-如果腳本裡還有別的地方把 C:\GreyGray 寫死（沒走參數），那就是 bug，
-修它並在自驗報告列出改了哪幾行。
-
-要跑到：PG 17 與 Garnet 起來、migrations 0001_~0014_ 全套上、
-三個 Host 的 /health 回得了。第三件是 FE-12 能不能開工的判準。
-
-不要動正式機 YC 的任何設定。不要把密碼放進命令列。
-自驗寫進 .dispatch/reports/BE-22.md，三個標頭一字不差。
-```
-
-### BE-21　帶回→待出貨接線 ＋ `OrderLineId` 改必填
-
-```
-GG_PACKAGE=BE-21
-
-你是 GreyGray Platform 的 BE-21。讀 docs/19-後端第八波派工書.md，
-§1 §2 §3 全部要看，然後照 §5 的 BE-21 那一節做。
-再讀 .dispatch/reports/README.md（自驗報告的格式）。
-
-兩件事，都很小，但第二件是帳務相關的：
-
-一、接線。第六波驗收發現「帶回入庫後訂單轉待出貨」這條線是斷的，
-    第七波 BE-19 已經讓 GoodsReceived.v1 帶出 OrderLineId，但沒有人訂閱它。
-    IOrderingGoodsReceipt.RecordGoodsReceivedAsync 已存在、已實作、已 DI 註冊，
-    全 repo 沒有任何呼叫點。在 Ordering.Infra 加一個
-    IIntegrationEventHandler<GoodsReceived> 呼叫既有的 port，
-    比照 Inventory.Infra/ModuleRegistration.cs 的 AddIdempotentIntegrationEventHandler。
-    不必改 Ordering.Core——那個 port 已經夠用，而且 Core 不在你的 allow。
-
-二、GoodsReceived.OrderLineId 從可選參數（= default）改成必填。
-    現在漏傳會靜默送空值而且照樣編得過。這個事件從沒上過正式機，
-    現在改沒有相容性成本，之後才改就要發 v2。
-    ★ 這是帳務相關的欄位：漏傳的後果是訂單永遠不會轉待出貨，而且不會報錯。
-    改成必填之後編譯器會列出所有建構點，逐一補上。
-
+★ 只刪 Order.cs:206 那一行，PaidAmountMinor／PaidCurrency 兩行是對的不要動。
+★ 把缺的三條約束逐字補進 OrderingDbContext.cs，要跟 0006 的定義一致。
+★ 至少一條測試要在真的套過 migration 的 schema 上完成付款，不能只靠
+  EnsureCreatedAsync()——可以比照 GreyGray.M1a.Migrations.Tests 現成的
+  ExecuteMigrationChainAsync helper 起 Testcontainers Postgres、套 0001~0006。
 ★ ops/test.ps1 要前景跑（淨執行約 10 分鐘），不准丟背景、不准排程 wakeup。
-自驗寫進 .dispatch/reports/BE-21.md，三個標頭一字不差。
-端對端測試要用真 PostgreSQL（Testcontainers），而且要有
-「兩條預購 line 只帶回一條時不轉待出貨」那條。
+自驗寫進 .dispatch/reports/BE-23.md，三個標頭一字不差。
 ```
 
-### FE-17　前台運費文案改從契約來
+### BE-24　`0003_channel_seams.sql` 對 `ledger.account` 的 seed 非冪等
 
 ```
-GG_PACKAGE=FE-17
+GG_PACKAGE=BE-24
 
-你是 GreyGray Platform 的 FE-17。讀 docs/20-前端第六波派工書.md，
-§1 §2 §3 全部要看，然後照 §5 的 FE-17 那一節做。
+你是 GreyGray Platform 的 BE-24。讀 docs/21-後端第九波派工書.md，
+§1 §2 §3 全部要看，然後照 §5 的 BE-24 那一節做。
 再讀 .dispatch/reports/README.md（自驗報告的格式）。
 
-apps/storefront/app/(checkout)/_lib/labels.ts:13-14 把運費寫死成
-「一口價 NT$60／NT$120」。那是 ADR-010 的舊硬編碼、第二波就有了，
-FE-16 回報但不在它的所有權。
+★ 修訂既有檔：這一包刻意改動已經在 HEAD 裡的 0003_channel_seams.sql
+  本身（不是新增編號）。老闆已核准：專案還沒上線，沒有正式資料依賴
+  舊版 0003 的行為。`.dispatch/ACTIVE.md` 的 block 裡已經標明「修訂既有檔」，
+  audit-dispatch.sh 第②項認得這個標記，不會誤判撞號。
 
-運費金額一旦調整，畫面會跟實際收的不一致而且不會報錯；
-M3 的運費規則引擎一上來這兩行就會變成陳年錯誤，而到時候沒人記得它在那裡。
+0003 對 ledger.account 的 seed 用 INSERT ... ON CONFLICT (tenant_id, code)
+DO NOTHING，但 0005_m1a_payment_ledger.sql:143-145 後來把 id 欄位設成
+NOT NULL 且無預設值。PostgreSQL 檢查 NOT NULL 在建構候選列時，早於
+ON CONFLICT 判斷衝突，所以對已經套過 0005 的資料庫重放 0003 會噴
+「null value in column "id"」。ops/invoke-migrations.ps1 沒有任何
+「已套用就跳過」的追蹤，deploy.ps1 每次重新部署都可能把全套檔案再傳一次。
 
-改成從契約來：shippingFee 後端會回，用 formatMoney() 渲染。
-★ 不要自己算、不要自己拼字串。formatMoney() 現在對 TWD 已經會輸出 NT$
-（ADR-028 已落地），所以不要再手動加前綴。
-「超商／宅配」的方法說明可以是靜態文案，金額不行。
+把 seed INSERT 改成 WHERE NOT EXISTS 導引的 INSERT ... SELECT，
+只改這一段，0003 其他部分不要動。加一條迴歸測試：在
+tests/GreyGray.M1a.Migrations.Tests/M1aCoreMigrationTests.cs 套完整鏈
+0001~0014，再單獨重放一次 0003，斷言不噴 PostgresException（修之前要能
+重現這個錯誤，修之後轉綠，兩次實際輸出都要貼在自驗報告）。
 
-契約沒有回運費的地方（例如結帳前的購物車）不要自己猜 60／120——
-那就是契約缺口，停下來回報。
+★ ops/test.ps1 要前景跑，不准丟背景、不准排程 wakeup。
+自驗寫進 .dispatch/reports/BE-24.md，三個標頭一字不差。
+```
 
-驗收條件之一：grep -rn 'NT[$]' apps/storefront 應為 0 筆（前綴只准在 money.ts 裡加）。
-自驗寫進 .dispatch/reports/FE-17.md，三個標頭一字不差。
+### FE-12　關掉 mock，對真後端跑一遍　⏸ 等 BE-23／BE-24 跑完
+
+```
+GG_PACKAGE=FE-12
+
+你是 GreyGray Platform 的 FE-12。讀 docs/18-前端第五波派工書.md §5，
+§1 也要看（既成事實表）。再讀 .dispatch/reports/README.md（自驗報告的格式）。
+
+開工前提：後端 BE-22 已通過整合驗收（開發機 D:\GreyGray 上 PG＋Garnet＋
+三個 Host 都起得來），但那組環境會被整合驗收的 build 流程 stop 掉
+（資料保留，只是 stop）。開工前先確認三個 Host 的 /health 都回 200；
+沒回應就跟 Leader 回報，不要自己去裝環境，那是 BE-22 的事。
+
+★ 已知會踩到、不是你要修的：後端 BE-23 修的是「結帳付款會炸 23514」。
+  如果 BE-23 這時候還沒過，你在 §5 第 3 點「前台走一條完整的……→ 付款」
+  會在第一次結帳付款就踩到——那是已知洞，照樣記下來，不要當成自己的
+  新發現，也不要想辦法繞過去。
+
+不要修後端。發現後端問題就記下來回報。不要為了畫面好看在前端補資料。
+自驗寫進 .dispatch/reports/FE-12.md，三個標頭一字不差。
 ```
 
 ---
@@ -161,8 +155,7 @@ M3 的運費規則引擎一上來這兩行就會變成陳年錯誤，而到時�
 1. **子代理不可以自己宣告通過。** 自驗報告寫成檔案，貼**實際指令與實際輸出**。
    整合驗收是 Leader 的事，而且 Leader 要自己重跑複驗。
 2. **遇到契約缺口或平台缺口就停下來回報**，不要自己補一個看起來合理的預設值。
-   這個專案已經有八次這樣的回報，八次都對，六次直接變成 ADR。
-3. **你只有這一輪。** 不准排程 wakeup、不准把工作丟背景後結束。
+3. **你只有這一輪。** 不准排程 wakeup，不准把工作丟背景後結束。
    `ops/test.ps1` 前景跑得完（584 秒）。無法完成就**明講做不到與原因**。
 4. **不要碰整個工作區的 git 指令**（`git stash`／`reset --hard`／`clean`／
    `checkout -- .`／`commit`）。stash stack 是跨 worktree 共用的。

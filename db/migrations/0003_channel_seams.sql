@@ -61,14 +61,27 @@ CREATE TABLE IF NOT EXISTS ledger.account (
         category IN ('ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE'))
 );
 
+-- 用 WHERE NOT EXISTS 而不是 ON CONFLICT DO NOTHING：0005 之後 ledger.account 多了
+-- NOT NULL 且無預設值的 id 欄位，而 PostgreSQL 檢查 NOT NULL 是在建構候選列時，
+-- 早於判斷 ON CONFLICT，所以對已經套過 0005 的資料庫重放這個檔案會先噴
+-- 23502 null value in column "id"。NOT EXISTS 是在插入之前就決定要不要插，
+-- 資料列已存在時整條 INSERT 根本不會產生候選列。全新資料庫上（id 欄位還不存在）
+-- 行為與原本的 ON CONFLICT DO NOTHING 完全相同。
+-- ops/invoke-migrations.ps1 沒有「已套用就跳過」的追蹤，deploy.ps1 每次重新部署
+-- 都會把全套檔案再送一次，所以「重放」是常態而不是邊角案例。
 INSERT INTO ledger.account (tenant_id, code, name, category, is_active)
-VALUES (
+SELECT
     '00000000-0000-0000-0000-000000000001'::uuid,
     '1200',
     '通路應收帳款',
     'ASSET',
-    false)
-ON CONFLICT (tenant_id, code) DO NOTHING;
+    false
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM ledger.account
+    WHERE tenant_id = '00000000-0000-0000-0000-000000000001'::uuid
+      AND code = '1200'
+);
 
 COMMENT ON TABLE ledger.account IS
     'M0 只初始化通路擴充需要的科目接縫；完整科目表與分錄規則屬於 M1。';

@@ -203,7 +203,6 @@ internal sealed class Order
 
         PaidAmountMinor = amount.AmountMinor;
         PaidCurrency = amount.Currency;
-        RefundedCurrency = amount.Currency;
         LastPaymentFailureCode = null;
 
         var readyToShip = _lines.All(line => line.Mode == FulfillmentMode.Stock);

@@ -44,12 +44,35 @@ internal sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> opti
                     "ck_orders_totals_non_negative",
                     "goods_total_amount_minor >= 0 AND shipping_fee_amount_minor >= 0 " +
                     "AND grand_total_amount_minor >= 0");
+                // 以下三條與 db/migrations/0006_m1a_core.sql:598-615 逐字一致。
+                // 補進 EF model 的理由：所有 Ordering 整合測試都用 EnsureCreatedAsync() 建 schema，
+                // 少宣告一條，測試資料庫就少守一條——`Order.CapturePayment` 誤設 RefundedCurrency
+                // 這個 bug 活過 172 條測試，正是因為 orders_refunded_consistent 只存在於 migration。
+                table.HasCheckConstraint(
+                    "orders_currency_consistent",
+                    "goods_total_currency = shipping_fee_currency " +
+                    "AND goods_total_currency = grand_total_currency " +
+                    "AND goods_total_currency IN " +
+                    "('TWD', 'JPY', 'USD', 'KRW', 'EUR', 'HKD', 'CNY', 'THB', 'GBP', 'SGD')");
                 table.HasCheckConstraint(
                     "ck_orders_paid_non_negative",
                     "paid_amount_minor IS NULL OR paid_amount_minor >= 0");
                 table.HasCheckConstraint(
+                    "orders_paid_consistent",
+                    "(paid_amount_minor IS NULL AND paid_currency IS NULL) " +
+                    "OR (paid_amount_minor IS NOT NULL " +
+                    "AND paid_currency IS NOT NULL " +
+                    "AND paid_amount_minor >= 0 " +
+                    "AND paid_currency = grand_total_currency)");
+                table.HasCheckConstraint(
                     "ck_orders_refunded_non_negative",
                     "refunded_amount_minor >= 0");
+                table.HasCheckConstraint(
+                    "orders_refunded_consistent",
+                    "(refunded_amount_minor = 0 AND refunded_currency IS NULL) " +
+                    "OR (refunded_amount_minor > 0 " +
+                    "AND refunded_currency IS NOT NULL " +
+                    "AND refunded_currency = grand_total_currency)");
             });
         entity.HasKey(order => order.Id);
         entity.Property(order => order.Id)
