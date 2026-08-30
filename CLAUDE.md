@@ -2,13 +2,14 @@
 
 代購業務系統（出國採購開團 ＋ 本地批發現貨）。模組化單體，.NET 10，14 個限界上下文。
 
-**現在的狀態（2026-08-30，第十一波後）**：C 階段 40/44（前端十七包全部完成、M0～M1b 大致完成）；
+**現在的狀態（2026-08-30，第十二波後）**：C 階段 40/44（前端十七包全部完成、M0～M1b 大致完成）；
 第九波 FE-12 第一次對真後端做端對端測試，第十波 BE-25 補上機密投遞機制，第十一波 BE-26
-補上員工帳號 bootstrap 工具與四筆種子帳號——**開發環境的登入現在真的走得通了**（`Identity:DataProtectionKey`
-缺口與「沒有帳號可登」兩個阻塞都已解除）。**D 階段仍是 0/7**，卡在：admin BFF 三組端點永久
-掛住不回應、綠界（ECPay）測試憑證仍是空的、前端 `middleware.ts`／CORS 兩項只有真瀏覽器才會
-踩到還沒驗。詳見 `GreyGray_PM/00-進度總表.md`「現在卡在哪」與知識庫 `GreyGray_Platform`
-namespace 的「現況 2026-08-30」條目。
+補上員工帳號 bootstrap 工具與四筆種子帳號，第十二波 BE-27 修掉 Ordering ↔ Fulfillment
+循環相依——**開發環境的登入走得通、admin BFF 三組端點（orders／campaigns／shipments）
+也不再永久掛住了**。**D 階段仍是 0/7**，「現在卡在哪」只剩兩個 ★（都在前端樹：`middleware.ts`
+正式機導向失效、storefront Host 沒有 CORS）與 E3（綠界正式／測試商店代號，老闆要辦的事）。
+詳見 `GreyGray_PM/00-進度總表.md`「現在卡在哪」與知識庫 `GreyGray_Platform` namespace 的
+「現況 2026-08-30」條目。
 **程式走了一大半，但整合與測試（D）與上線（E）幾乎是空的**——程式寫完不等於能上線。
 
 跨 worktree 的單一事實來源是 `GreyGray_PM/00-進度總表.md`，**刻意放在 worktree 之外**。
