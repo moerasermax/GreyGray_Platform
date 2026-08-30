@@ -126,7 +126,7 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {DASHBOARD_KPIS.map((kpi) => (
-          <KpiTile key={kpi.key} label={kpi.label} value={kpi.value} hint={kpi.hint} />
+          <KpiTile key={kpi.key} label={kpi.label} value="尚未提供" hint={kpi.hint} />
         ))}
       </div>
 

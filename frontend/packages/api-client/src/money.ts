@@ -53,12 +53,20 @@ export function minorUnitDigits(currency: Currency): number {
 
 const formatterCache = new Map<string, Intl.NumberFormat>();
 
+/**
+ * ADR-028：台幣顯示統一加 `NT$` 前綴。
+ *
+ * `zh-TW` locale 對 TWD 的 ICU 行為是不帶國別前綴的 `$`（本地語系的正確行為，不是 bug）。
+ * `en-US` locale 對 TWD 剛好會輸出 `NT$` 前綴、千分位與小數點分隔符號與 `zh-TW` 相同，
+ * 所以只有 TWD 換 locale，其餘幣別維持 `zh-TW`（`US$`、`HK$` 這些既有前綴不變）。
+ */
 function getFormatter(currency: Currency, showDecimals: boolean): Intl.NumberFormat {
   const key = `${currency}:${showDecimals}`;
   let formatter = formatterCache.get(key);
   if (!formatter) {
     const digits = showDecimals ? minorUnitDigits(currency) : 0;
-    formatter = new Intl.NumberFormat('zh-TW', {
+    const locale = currency === 'TWD' ? 'en-US' : 'zh-TW';
+    formatter = new Intl.NumberFormat(locale, {
       style: 'currency',
       currency,
       minimumFractionDigits: digits,
@@ -87,16 +95,16 @@ export interface FormatMoneyOptions {
  * 把 `Money` 轉成畫面上的字串。
  *
  * ```ts
- * formatMoney({ amountMinor: 18000, currency: 'TWD' })  // "$180"
- * formatMoney({ amountMinor: 18050, currency: 'TWD' }, { showDecimals: true })  // "$180.50"
+ * formatMoney({ amountMinor: 18000, currency: 'TWD' })  // "NT$180"
+ * formatMoney({ amountMinor: 18050, currency: 'TWD' }, { showDecimals: true })  // "NT$180.50"
  * formatMoney({ amountMinor: 1000, currency: 'JPY' })   // "¥1,000"  ← 不是 ¥10
  * formatMoney({ amountMinor: 78000, currency: 'USD' })  // "US$780"
  * ```
  *
- * **台幣是 `$` 不是 `NT$`。** zh-TW 是台幣的本地語系，ICU 就給不加前綴的 `$`；
- * 外幣才會帶國別前綴（`US$`、`HK$`），所以同一個畫面上兩者仍然分得出來。
- * 若之後決定台幣也要顯示成 `NT$`（例如帳務報表要寄給國外會計），
- * 改這裡一處即可，不要在呼叫端自己加前綴。
+ * **台幣統一顯示 `NT$`（ADR-028，2026-08-30）。** `zh-TW` locale 對 TWD 的 ICU 行為
+ * 本來是不帶前綴的 `$`（本地語系的正確行為，不是 bug），但老闆決定統一成 `NT$`；
+ * 外幣的既有前綴（`US$`、`HK$`）不受影響。實作只換了 TWD 的 formatter locale，
+ * 不要在呼叫端自己加前綴。
  */
 export function formatMoney(money: Money, options: FormatMoneyOptions = {}): string {
   const digits = minorUnitDigits(money.currency);

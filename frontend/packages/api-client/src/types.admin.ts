@@ -1065,6 +1065,7 @@ export interface paths {
                 content: {
                     "application/json": {
                         reason: string;
+                        /** @description 客人自己選的退款去向，不是營運代選（ADR-023）。 */
                         refundTo: components["schemas"]["RefundDestination"];
                     };
                 };
@@ -1118,6 +1119,7 @@ export interface paths {
                 content: {
                     "application/json": {
                         reason: string;
+                        /** @description 客人自己選的退款去向，不是營運代選（ADR-023）。 */
                         refundTo: components["schemas"]["RefundDestination"];
                     };
                 };
@@ -1415,6 +1417,50 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shipments/{shipmentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 出貨單詳情（第七波，BE-19）
+         * @description **第七波新增。** 契約原本只有列表／建立／`dispatch`／`deliver` 四條，
+         *     沒有單筆查詢——前端只能撈 `limit:100` 的列表再自己過濾，
+         *     出貨單超過 100 張之後點詳情會白頁而且不報錯。這條補上單筆查詢。
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    shipmentId: components["schemas"]["Id"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AdminShipment"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1788,6 +1834,7 @@ export interface components {
         ShipmentStatus: "Draft" | "Packed" | "Dispatched" | "InTransit" | "ArrivedAtStore" | "Delivered" | "Returned" | "Lost";
         /**
          * @description `StoredValue` 完全不動金流、零手續費。優先建議客人選這個。
+         *     M1b 期間 `StoredValue` 不開放，選了會回可預期的業務失敗（Result，不是例外）；M3 開啟。
          * @enum {string}
          */
         RefundDestination: "OriginalPaymentMethod" | "StoredValue";
@@ -1862,6 +1909,12 @@ export interface components {
              * @description 到這個時間 Saga Timer 會自動截團。
              */
             closesAt: string;
+            /**
+             * @description 現場漲價詢問的逾時分鐘數（ADR-027，每團可設）。
+             *     **不填的話用 120（2 小時）當預設值**——這是技術預設值，不是業務規則；
+             *     日本藥妝店與精品店現場的節奏不一樣，才開放每團指定。
+             */
+            priceInquiryTimeoutMinutes?: number | null;
             description?: string | null;
             coverImageUrl?: string | null;
         };

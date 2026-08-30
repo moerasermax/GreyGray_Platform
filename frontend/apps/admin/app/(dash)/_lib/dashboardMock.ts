@@ -7,8 +7,10 @@
  *   - `GET /v1/ledger/liability-vs-cash` → {@link LiabilityVsCash}
  *   - `GET /v1/ledger/entries`（`sourceModule` / `from` / `to` 篩選）→ 分錄列表
  *
- * KPI 那四塊（使用中開團／待處理訂單／待採購／今日已出貨）**契約裡沒有對應的彙總端點**，
- * 這裡先用假數字撐版面——交付時已列入「契約有問題的地方」，不是默默補的技術債。
+ * KPI 那四塊（使用中開團／待處理訂單／待採購／今日已出貨）**契約裡沒有對應的彙總端點**。
+ * 曾經用假數字撐版面，2026-08-30 拔掉了——營運會相信後台上的數字，
+ * 佔位值放在正式環境比沒有更危險。現在顯示「尚未提供」，不猜也不用列表 API 在前端加總
+ * （列表有分頁，加出來的只是這一頁的合計，而且違反鐵則 2）。等後端補彙總端點再串。
  */
 import type { Money } from '@greygray/api-client';
 import type { components } from '@greygray/api-client/admin';
@@ -42,15 +44,14 @@ export const LIABILITY_VS_CASH_FIXTURE: LiabilityVsCash = {
 export interface DashboardKpi {
   readonly key: string;
   readonly label: string;
-  readonly value: string;
   readonly hint: string;
 }
 
 export const DASHBOARD_KPIS: readonly DashboardKpi[] = [
-  { key: 'open-campaigns', label: '使用中的開團', value: '4', hint: 'Open ＋ TripInProgress' },
-  { key: 'pending-orders', label: '待處理訂單', value: '23', hint: 'AwaitingPayment ＋ PaidAwaitingClose' },
-  { key: 'pending-purchase', label: '待採購項目', value: '57', hint: '尚未標記已購/缺貨' },
-  { key: 'shipped-today', label: '今日已出貨', value: '12', hint: '過去 24 小時內 dispatch' },
+  { key: 'open-campaigns', label: '使用中的開團', hint: 'Open ＋ TripInProgress，等後端提供彙總端點' },
+  { key: 'pending-orders', label: '待處理訂單', hint: 'AwaitingPayment ＋ PaidAwaitingClose，等後端提供彙總端點' },
+  { key: 'pending-purchase', label: '待採購項目', hint: '尚未標記已購/缺貨，等後端提供彙總端點' },
+  { key: 'shipped-today', label: '今日已出貨', hint: '過去 24 小時內 dispatch，等後端提供彙總端點' },
 ];
 
 export const LEDGER_ENTRIES_FIXTURE: readonly LedgerEntryRow[] = [
