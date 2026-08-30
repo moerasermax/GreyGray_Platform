@@ -77,6 +77,9 @@ Leader 要明講。
 
 ---
 
+<!--
+★ 2026-08-30 已通過整合驗收並提交（後端 ad72f69），撤包。原文保留供追溯。
+
 派工 BE-22：本機開發環境（D:\GreyGray）　·　docs/19-後端第八波派工書.md
 
 package: BE-22
@@ -92,6 +95,8 @@ allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Infra/
 allow: src/Modules/Procurement/GreyGray.Modules.Procurement.Contracts/
 allow: src/Modules/Procurement/GreyGray.Modules.Procurement.Core/
 allow: tests/
+
+-->
 
 ---
 
@@ -117,6 +122,9 @@ allow: tests/
 ---
 
 ## 已經通過、不再生效的（保留軌跡）
+
+- **BE-22** 本機開發環境（`D:\GreyGray`）　·　2026-08-30 通過　·　`ad72f69`
+- **BE-21** 帶回→待出貨接線 ＋ `OrderLineId` 改必填　·　2026-08-30 通過　·　`ad72f69`
 
 BE-1～BE-8（M0）· BE-10（`2c05c99`）· BE-12（`dbec9cd`）·
 第六波 BE-13／BE-9／BE-11／BE-14／BE-15（`de3a022`，157 條）·
