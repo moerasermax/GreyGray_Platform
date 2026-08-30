@@ -51,22 +51,14 @@ Leader 要明講。
 
 ---
 
-**第十波已生效（2026-08-30）。** 純基礎建設，一包，不涉及業務模組。
+**沒有生效中的派工（2026-08-30）。** 整合者模式：原始碼一律不准寫。
 
-| 包 | 主題 | 派工書 |
-|---|---|---|
-| BE-25 | 開發環境與正式機的機密投遞機制（`Identity:DataProtectionKey` ＋ `ConnectionStrings:*`） | `docs/22` |
-
-**啟動 prompt 在 `.dispatch/PROMPTS.md`**，Leader 用 ai-cli fan out。
-
-> ⚠️ **自驗報告是檔案，不是對話。** `.dispatch/reports/BE-25.md`，
-> 三個固定標頭缺一不可，`audit-dispatch.sh` 第 ⑧ 項會擋。
-> 規格見 `.dispatch/reports/README.md`。
->
-> ⚠️ **不准把測試丟背景。** `ops/test.ps1` 實測淨執行已超過 10 分鐘單次呼叫上限
-> （BE-24 實測 12 專案合計約 796 秒，加建置會超），分批前景跑完，不准背景、不准排程 wakeup。
+**啟動 prompt 在 `.dispatch/PROMPTS.md`**，下一波派工前 Leader 用 ai-cli fan out。
 
 ---
+
+<!--
+★ 2026-08-30 已通過整合驗收並提交（後端 bd616ea），撤包。原文保留供追溯。
 
 派工 BE-25：開發環境與正式機的機密投遞機制　·　docs/22-後端第十波派工書.md
 
@@ -76,6 +68,7 @@ allow: ops/lib/Secrets.ps1
 allow: ops/install-dev-environment.ps1
 allow: ops/start-dev-hosts.ps1
 allow: ops/deploy.ps1
+-->
 
 ---
 
@@ -151,6 +144,7 @@ allow: tests/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **BE-25** 開發環境與正式機的機密投遞機制　·　2026-08-30 通過　·　`bd616ea`
 - **BE-24** `0003_channel_seams.sql` 的 `ledger.account` seed 非冪等　·　2026-08-30 通過　·　`22061a4`
 - **BE-23** `CapturePayment` 誤設 `RefundedCurrency` ＋ EF model 補約束　·　2026-08-30 通過　·　`22061a4`
 - **BE-22** 本機開發環境（`D:\GreyGray`）　·　2026-08-30 通過　·　`ad72f69`
