@@ -51,28 +51,25 @@ Leader 要明講。
 
 ---
 
-**第九波已生效（2026-08-30）。** 兩包同時開，都是修 bug，不涉及新決定。
+**第九波：後端兩包已通過，FE-12 生效中（2026-08-30）。**
 
 | 包 | 主題 | 派工書 |
 |---|---|---|
-| BE-23 | `Order.cs:206` 誤設 `RefundedCurrency` ＋ EF model 補三條 `orders_*` 約束 🔴 FE-12 付款會踩到 | `docs/21` |
-| BE-24 | `0003_channel_seams.sql` 對 `ledger.account` 的 seed 重放非冪等 | `docs/21` |
 | FE-12 | 關掉 mock 對真後端跑一遍（開工前先跑 `ops/start-dev-hosts.ps1`） | `docs/18`（前端樹） |
 
 **啟動 prompt 在 `.dispatch/PROMPTS.md`**，Leader 用 ai-cli fan out。
-
-> ⚠️ **為什麼這兩包跟上一波無關卻要現在修**：兩個都是 BE-21／BE-22
-> 在自己的自驗過程中、在自己 allow 之外撞到的既有 bug，當時正確地沒有動它們。
-> 兩個都不需要新決定，是機械可派的修正。
 
 > ⚠️ **自驗報告是檔案，不是對話。** 每包要寫 `.dispatch/reports/<包名>.md`，
 > 三個固定標頭缺一不可，`audit-dispatch.sh` 第 ⑧ 項會擋。
 > 規格見 `.dispatch/reports/README.md`。
 >
-> ⚠️ **不准把測試丟背景。** `ops/test.ps1` 實測淨執行 584 秒（9.7 分），
-> 前景跑得完。用長 timeout 同步跑。
+> ⚠️ **不准把測試丟背景。** `ops/test.ps1` 實測淨執行已超過 10 分鐘單次呼叫上限
+> （BE-24 實測 12 專案合計約 796 秒，加建置會超），分批前景跑完，不准背景、不准排程 wakeup。
 
 ---
+
+<!--
+★ 2026-08-30 已通過整合驗收並提交（後端 22061a4），撤包。原文保留供追溯。
 
 派工 BE-23：`CapturePayment` 誤設 `RefundedCurrency` ＋ EF model 補約束　·　docs/21-後端第九波派工書.md
 
@@ -83,8 +80,6 @@ allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Infra/OrderingDbContext.cs
 allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
 allow: tests/GreyGray.M1a.Migrations.Tests/OrderingAppraisalMigrationTests.cs
 
----
-
 派工 BE-24：`0003_channel_seams.sql` 的 `ledger.account` seed 非冪等　·　docs/21-後端第九波派工書.md
 
 package: BE-24
@@ -94,6 +89,8 @@ note: 修訂既有檔——`0003_channel_seams.sql` 已在 HEAD 裡，這一包�
   理由與範圍見 `docs/21` §5 BE-24。
 allow: db/migrations/0003_channel_seams.sql
 allow: tests/GreyGray.M1a.Migrations.Tests/M1aCoreMigrationTests.cs
+
+-->
 
 ---
 
@@ -143,6 +140,8 @@ allow: tests/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **BE-24** `0003_channel_seams.sql` 的 `ledger.account` seed 非冪等　·　2026-08-30 通過　·　`22061a4`
+- **BE-23** `CapturePayment` 誤設 `RefundedCurrency` ＋ EF model 補約束　·　2026-08-30 通過　·　`22061a4`
 - **BE-22** 本機開發環境（`D:\GreyGray`）　·　2026-08-30 通過　·　`ad72f69`
 - **BE-21** 帶回→待出貨接線 ＋ `OrderLineId` 改必填　·　2026-08-30 通過　·　`ad72f69`
 
