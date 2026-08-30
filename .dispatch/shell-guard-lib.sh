@@ -24,7 +24,7 @@ gg_dangerous_shell_reason() {
     *"git reset --hard"*|*"git reset"*"--hard"*)
       printf '%s' "git reset --hard 會丟掉工作區裡所有人未提交的變更，不只你的。要撤銷自己的檔案請指名檔案：git checkout -- <你這一包的檔案>。"
       return 0 ;;
-    *"git checkout -- ."*|*"git checkout ."|*"git restore ."*|*"git restore -- ."*)
+    *"git checkout -- ."*|*"git checkout ."*|*"git restore ."*|*"git restore -- ."*)
       printf '%s' "整個工作區的還原會蓋掉別包未提交的交付。請指名到檔案，只還原你這一包 allow 清單裡的路徑。"
       return 0 ;;
     *"git clean"*)
