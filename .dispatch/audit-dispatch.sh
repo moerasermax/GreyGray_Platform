@@ -11,9 +11,50 @@ set -u
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 FAIL=0
-say()  { printf '%s\n' "$1"; }
-bad()  { printf '  ✗ %s\n' "$1"; FAIL=1; }
+NFILE="$GG_ROOT/.dispatch/.audit-n"; : > "$NFILE"; CFAIL=0
+# 用 trap 清，不要在收尾手動 rm——第一版就是那樣寫的，而收尾最後一句
+# say "稽核通過。" 會再把檔案建回來（say 會歸零計數），於是每跑一次
+# .dispatch/ 底下就留一個未追蹤檔，看起來像有誰動了閘門。
+trap 'rm -f "$NFILE"' EXIT
+say()  { printf '%s
+' "$1"; : > "$NFILE" 2>/dev/null || true; CFAIL=0; }
+bad()  { printf '  ✗ %s
+' "$1"; FAIL=1; CFAIL=1; }
 ok()   { printf '  ✓ %s\n' "$1"; }
+
+# 每一項結尾都要落一句話。「一個對象都沒查到」不是「通過」——
+# ① ② 曾經在沒東西可查時完全不出聲，讀的人分不出是查過沒事、還是解析壞了。
+seen() { printf x >> "$NFILE"; }
+
+# 把派工書裡的檔案引用解成真實路徑（0 筆＝找不到，1 筆＝明確，2 筆以上＝模糊）。
+# ④ 與 ⑤ 必須共用這一支：分開寫的那一版，④ 會解簡寫而 ⑤ 不會，
+# 於是 ⑤ 把 Order.cs:326 這種引用整個無聲跳過——它唯一該擋的就是那種。
+# 比對用 basename 全等，不用 grep -F：後者會讓 Order.cs 對到 PurchaseOrder.cs，
+# 把「唯一」誤判成「模糊」。
+gg_resolve_ref() {
+  ( cd "$GG_ROOT" || return
+    all="$(git ls-files)"
+    # 先嚴：完整路徑，或以「/<引用>」結尾（路徑段全等）
+    exact="$(printf '%s\n' "$all" | while IFS= read -r g; do
+               case "$g" in "$1"|*/"$1") printf '%s\n' "$g" ;; esac
+             done)"
+    if [ -n "$exact" ]; then printf '%s\n' "$exact" | head -5; return; fi
+    # 再鬆：子字串。派工書寫 Inventory.Infra/ModuleRegistration.cs 指的是
+    # GreyGray.Modules.Inventory.Infra/ModuleRegistration.cs——那樣寫好讀，
+    # 而且只要唯一就不算模糊。順序不能顛倒：先鬆的話 Order.cs 會對到
+    # PurchaseOrder.cs，把「唯一」誤判成「模糊」。
+    printf '%s\n' "$all" | grep -F -- "$1" | head -5 )
+}
+tally() {   # tally "<有查到且沒事時的話>" "<一項都沒查到時的話>"
+  # 已經印過 ✗ 就不要再說「都沒事」；而「一項都沒查到」也不是通過——
+  # ① ② 曾經在沒東西可查時完全不出聲，讀的人分不出是查過沒事、還是解析壞了。
+  _n="$(wc -c < "$NFILE" | tr -d " ")"; : > "$NFILE"
+  if   [ "${_n:-0}" -eq 0 ];  then printf '  ⚠ %s
+' "$2"
+  elif [ "$CFAIL" -eq 1 ];    then :
+  else ok "$1（查了 ${_n} 項）"; fi
+  CFAIL=0
+}
 
 # 這一行標明「這是還不存在的東西」，稽核就不該報它不存在
 # 這一行標明「這個引用在這棵樹上本來就查不到」，稽核就不該報它。
@@ -31,6 +72,20 @@ fi
 
 pkgs="$(gg_active_packages)"
 
+# 解析還活著嗎。包別解不出來、或 allow 一條都解不出來的話，
+# 底下每一項都會「跑完、什麼都沒查到、然後看起來像通過」——
+# ① ② 就是這樣沉默了一整輪才被發現。所以先擋在這裡。
+_tot=0
+for pkg in $pkgs; do
+  _tot=$(( _tot + $(GG_PACKAGE="$pkg" gg_allow_list | grep -c . || true) ))
+done
+if [ -z "$pkgs" ] || [ "$_tot" -eq 0 ]; then
+  bad "ACTIVE.md 解析不出包別或 allow 前綴（包：${pkgs:-無}／前綴 $_tot 條）——底下的檢查會全部無聲通過"
+  exit 1
+fi
+say "  （生效包：$(echo $pkgs | tr "
+" " ")／allow 前綴共 $_tot 條）"
+
 # ── 1. allow 路徑要真的存在（新檔除外）──────────────────────────
 say "① allow 路徑存在性"
 for pkg in $pkgs; do
@@ -39,6 +94,7 @@ for pkg in $pkgs; do
     case "$prefix" in
       db/migrations/*) continue ;;   # 編號前綴，第 2 條另外查
     esac
+    seen
     if [ -e "$GG_ROOT/$prefix" ]; then continue; fi
     # 目錄前綴：只要父目錄在就算合理（新子目錄）
     parent="$(dirname "$GG_ROOT/$prefix")"
@@ -51,6 +107,7 @@ for pkg in $pkgs; do
 $(GG_PACKAGE="$pkg" gg_allow_list)
 EOF
 done
+tally "allow 路徑都存在（或父目錄在，屬新檔）" "沒有任何可查的 allow 路徑——解析可能壞了"
 
 # ── 2. migration 編號沒被用過 ───────────────────────────────────
 say "② migration 編號未被佔用"
@@ -58,6 +115,7 @@ for pkg in $pkgs; do
   while IFS= read -r prefix; do
     case "$prefix" in
       db/migrations/*)
+        seen
         num="${prefix#db/migrations/}"
         # 「已被佔用」要分兩種，否則交付後必然誤判：
         #   ·  HEAD 裡就有 → 前面的波次用掉了，這一包會撞號（真的要擋）
@@ -79,6 +137,7 @@ for pkg in $pkgs; do
 $(GG_PACKAGE="$pkg" gg_allow_list)
 EOF
 done
+tally "migration 編號都沒撞號" "這一波沒有任何包拿到 migration 編號（正常，但不是「查過沒事」）"
 
 # ── 3. 兩個包不得擁有同一條 allow 前綴（tests/ 例外，已知並由驗收把關）──
 say "③ 包與包之間的 allow 不重疊"
@@ -90,6 +149,7 @@ overlap=0
 for a in $pkgs; do
   for b in $pkgs; do
     [ "$a" = "$b" ] && continue
+    seen
     while IFS= read -r pa; do
       [ -n "$pa" ] || continue
       [ "$pa" = "tests/" ] && continue
@@ -100,7 +160,7 @@ for a in $pkgs; do
         case "$pb" in
           "$pa"*)
             if [ "$pa" = "$pb" ]; then
-              bad "$a 與 $b 都擁有 $pa"
+              [ "$a" \< "$b" ] && bad "$a 與 $b 都擁有 $pa"   # 對稱，只報一次
             else
               bad "$b 的 $pb 落在 $a 的 $pa 底下——兩包會搶同一個檔"
             fi
@@ -114,7 +174,7 @@ $(GG_PACKAGE="$a" gg_allow_list)
 EOF
   done
 done
-[ "$overlap" -eq 0 ] && ok "沒有重疊（tests/ 是已知的共用，由總驗收逐檔看 diff）"
+tally "沒有重疊（tests/ 是已知的共用，由總驗收逐檔看 diff）" "只有一包生效，無從重疊——這一項這一波沒有意義"
 
 
 say "④ 派工書引用的檔案存在"
@@ -122,10 +182,13 @@ docs="$(gg_active_docs | sort -u)"
 for d in $docs; do
   [ -f "$GG_ROOT/$d" ] || { bad "派工書本身不存在：$d"; continue; }
   # 反引號裡、看起來像原始碼路徑的 token
-  grep -oE '`[A-Za-z0-9_./-]+\.(cs|ts|tsx|sql|ps1|yaml|yml|json|sh)`' "$GG_ROOT/$d" \
+  # 字元類要含括號：Next.js 的 route group 目錄長 (checkout)、(dash) 這樣，
+  # 少了括號會把 (checkout)/_lib/labels.ts 切成 /_lib/labels.ts，
+  # 而那個殘段對到六個檔——本來明確的引用被自己的抓取切成「模糊」。
+  grep -oE '`[A-Za-z0-9_./()-]+\.(cs|ts|tsx|sql|ps1|yaml|yml|json|sh)`' "$GG_ROOT/$d" \
     | tr -d '`' | sort -u | while IFS= read -r f; do
       [ -n "$f" ] || continue
-      case "$f" in */*) ;; *) continue ;; esac        # 只查有路徑的
+      seen
       [ -e "$GG_ROOT/$f" ] && continue
       # 那一行有沒有標明是新檔
       if grep -F -- "$f" "$GG_ROOT/$d" | grep -qE "$NEWMARK"; then continue; fi
@@ -134,7 +197,7 @@ for d in $docs; do
       # 簡寫路徑：只要能「唯一」對到一個真檔就算數。
       # 派工書寫 Ordering.Infra/ModuleRegistration.cs 比寫完整路徑好讀，
       # 但前提是它指得明確——對到兩個以上就是模糊，agent 要猜，那就是問題。
-      hits="$(cd "$GG_ROOT" && git ls-files | grep -F -- "$f" | head -5)"
+      hits="$(gg_resolve_ref "$f")"
       cnt="$(printf '%s' "$hits" | grep -c . || true)"
       if [ "${cnt:-0}" -eq 1 ]; then continue; fi
       if [ "${cnt:-0}" -gt 1 ]; then
@@ -147,26 +210,43 @@ for d in $docs; do
       echo "AUDIT_FAIL" >> "$GG_ROOT/.dispatch/.audit-flag"
     done
 done
-[ -f "$GG_ROOT/.dispatch/.audit-flag" ] && { FAIL=1; rm -f "$GG_ROOT/.dispatch/.audit-flag"; } || ok "沒有引用不存在的檔"
+if [ -f "$GG_ROOT/.dispatch/.audit-flag" ]; then FAIL=1; CFAIL=1; rm -f "$GG_ROOT/.dispatch/.audit-flag"; fi
+tally "沒有引用不存在的檔" "派工書裡一個檔案引用都沒抓到——抓取用的正規表示式可能失效了"
 
 # ── 5. `檔案:行號` 的引用，行數要夠 ─────────────────────────────
 say "⑤ 行號引用不超出檔案長度"
 for d in $docs; do
   [ -f "$GG_ROOT/$d" ] || continue
-  grep -oE '`?[A-Za-z0-9_./-]+\.(cs|ts|tsx|sql|ps1|yaml)`?:[0-9]+' "$GG_ROOT/$d" \
+  grep -oE '`?[A-Za-z0-9_./()-]+\.(cs|ts|tsx|sql|ps1|yaml)`?:[0-9]+' "$GG_ROOT/$d" \
     | tr -d '`' | sort -u | while IFS= read -r ref; do
       f="${ref%:*}"; n="${ref##*:}"
       p=""
       [ -f "$GG_ROOT/$f" ] && p="$GG_ROOT/$f"
       [ -z "$p" ] && [ -f "$GG_ROOT/frontend/$f" ] && p="$GG_ROOT/frontend/$f"
-      [ -n "$p" ] || continue
+      # 簡寫也要查。派工書寫 Order.cs:326 比寫完整路徑好讀，而 ④ 早就會解簡寫；
+      # ⑤ 卻在解不出來時直接 continue——結果是它唯一該擋的那種引用剛好全被跳過，
+      # 而且跳得無聲無息，看起來跟「查過都沒事」一模一樣。
+      if [ -z "$p" ]; then
+        hits="$(gg_resolve_ref "$f")"
+        cnt="$(printf '%s' "$hits" | grep -c . || true)"
+        [ "${cnt:-0}" -eq 1 ] && p="$GG_ROOT/$hits"
+      fi
+      seen
+      if [ -z "$p" ]; then
+        # 標明是新檔的就不算（跟 ④ 同一套豁免）
+        grep -F -- "$f" "$GG_ROOT/$d" | grep -qE "$NEWMARK" && continue
+        printf '  ✗ %s 引用 %s，但那個檔在這棵樹上找不到（或簡寫對到多個檔）\n' "$d" "$ref"
+        echo "AUDIT_FAIL" >> "$GG_ROOT/.dispatch/.audit-flag"
+        continue
+      fi
       lines="$(wc -l < "$p")"
       [ "$n" -le "$lines" ] && continue
       printf '  ✗ %s 引用 %s，但那個檔只有 %s 行\n' "$d" "$ref" "$lines"
       echo "AUDIT_FAIL" >> "$GG_ROOT/.dispatch/.audit-flag"
     done
 done
-[ -f "$GG_ROOT/.dispatch/.audit-flag" ] && { FAIL=1; rm -f "$GG_ROOT/.dispatch/.audit-flag"; } || ok "行號引用都在範圍內"
+if [ -f "$GG_ROOT/.dispatch/.audit-flag" ]; then FAIL=1; CFAIL=1; rm -f "$GG_ROOT/.dispatch/.audit-flag"; fi
+tally "行號引用都在範圍內" "派工書裡一個「檔案:行號」引用都沒抓到——抓取用的正規表示式可能失效了"
 
 # ── 6. 每個生效包都要有啟動 prompt ──────────────────────────────
 say "⑥ 每個生效包都有啟動 prompt"
@@ -191,15 +271,34 @@ if [ -z "$GG_SIBLING" ] || [ ! -d "$GG_SIBLING" ]; then
 '
 else
   shared_diverged=0
-  for f in docs/00-decisions.md docs/05-API契約.md            docs/api/openapi.admin.yaml docs/api/openapi.storefront.yaml; do
-    [ -f "$GG_ROOT/$f" ] && [ -f "$GG_SIBLING/$f" ] || continue
+  # 閘門本身也要比。這一輪為了改閘門，我手動 cp 到另一棵樹四次；
+  # 只要有一次忘了，兩棵樹的判斷規則就不一樣，而且沒有任何東西會說話。
+  # ★ .claude/settings.json 刻意不在這張清單裡——它帶各樹自己的
+  #   CLAUDE_PROJECT_DIR 後備路徑，那三行本來就該不同，不要去「同步」它。
+  for f in docs/00-decisions.md docs/05-API契約.md            docs/api/openapi.admin.yaml docs/api/openapi.storefront.yaml \
+           .dispatch/lib.sh .dispatch/shell-guard-lib.sh .dispatch/selftest.sh \
+           .dispatch/audit-dispatch.sh .dispatch/gate-fingerprint.sh .dispatch/check-progress.py \
+           .dispatch/PROMPTS.md .dispatch/reports/README.md \
+           .claude/hooks/dispatch-guard.sh .claude/hooks/stop-gate.sh \
+           .claude/hooks/session-brief.sh .claude/hooks/claim-package.sh \
+           .codex/hooks/dispatch-guard.sh .codex/hooks/stop-gate.sh \
+           .codex/hooks/session-brief.sh .codex/hooks/claim-package.sh .codex/hooks.json; do
+    seen
+    if [ ! -f "$GG_ROOT/$f" ] || [ ! -f "$GG_SIBLING/$f" ]; then
+      bad "$f 只存在於一棵樹——另一棵樹的閘門或文件缺這一份"
+      shared_diverged=1
+      continue
+    fi
     a="$(tr -d "\015" < "$GG_ROOT/$f" | md5sum | cut -d' ' -f1)"
     b="$(tr -d "\015" < "$GG_SIBLING/$f" | md5sum | cut -d' ' -f1)"
     [ "$a" = "$b" ] && continue
-    bad "$f 兩棵樹內容不同——契約／ADR 分岔，子代理會讀到不一樣的規則"
+    case "$f" in
+      docs/*) bad "$f 兩棵樹內容不同——契約／ADR 分岔，子代理會讀到不一樣的規則" ;;
+      *)      bad "$f 兩棵樹內容不同——閘門分岔，兩邊的判斷規則會不一樣" ;;
+    esac
     shared_diverged=1
   done
-  [ "$shared_diverged" -eq 0 ] && ok "共用文件兩棵樹一致（忽略換行）"
+  tally "共用文件與閘門兩棵樹一致（忽略換行）" "一個檔都沒比到——另一棵樹的路徑可能不對"
 fi
 
 
@@ -255,6 +354,42 @@ else
 ' "$prog_out" ;;
   esac
 fi
+
+say "⑩ 閘門改過就要重跑自我測試"
+# 為什麼要有這一項：前三次檢查閘門，每一次都還能再找到新的邏輯洞
+# （3 個 → 8 個 → 1 個）。靠「我記得要再看一遍」不會收斂。
+# selftest.sh 窮舉 125 項行為；這一項只確認「它跑過，而且是對現在這份閘門跑的」。
+if [ ! -f "$GG_ROOT/.dispatch/selftest.sh" ] || [ ! -f "$GG_ROOT/.dispatch/gate-fingerprint.sh" ]; then
+  printf '  · 找不到 selftest，跳過
+'
+else
+  . "$GG_ROOT/.dispatch/gate-fingerprint.sh"
+  fp_now="$(gg_gate_fingerprint "$GG_ROOT")"
+  stamp="$GG_ROOT/.dispatch/.selftest-stamp"
+  if [ ! -f "$stamp" ]; then
+    bad "閘門自我測試從未跑過（沒有 .selftest-stamp）。跑 bash .dispatch/selftest.sh"
+  else
+    # 兩個 agent 都要對得上。舊版只比一行、不看是誰跑的，
+    # 於是「只跑 claude」跟「兩個都跑」在這裡長得一模一樣——
+    # 這一項的訊息從第一天就寫著「兩個 agent 都要」，但它沒在查。
+    stale=""
+    for a in claude codex; do
+      line="$(grep "^${a} " "$stamp" 2>/dev/null | head -1)"
+      if [ -z "$line" ]; then
+        stale="${stale}${stale:+、}${a}(沒跑過)"
+      elif [ "$(printf '%s' "$line" | cut -d' ' -f2)" != "$fp_now" ]; then
+        stale="${stale}${stale:+、}${a}(對的是舊閘門)"
+      fi
+    done
+    fp_old="$fp_now"; [ -n "$stale" ] && fp_old="stale"
+    if [ "$fp_now" != "$fp_old" ]; then
+      bad "閘門自我測試沒跟上：${stale}。跑 bash .dispatch/selftest.sh --agent <claude|codex>"
+    else
+      ok "兩個 agent 的自我測試都對得上現在這份閘門（$(awk '{printf "%s %s 項 ", $1, $3}' "$stamp")）"
+    fi
+  fi
+fi
+
 
 say ""
 if [ "$FAIL" -eq 0 ]; then

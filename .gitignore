@@ -19,3 +19,8 @@ secrets/
 
 # 派工閘門的 per-session 包別標記，只在本機有意義
 .dispatch/.session/
+
+# 稽核跑到一半的計數檔。正常會自己清掉，但若稽核被 Ctrl-C 中斷就會留下，
+# 而一個未追蹤檔出現在 .dispatch/ 底下會讓人以為有誰動了閘門。
+.dispatch/.audit-n
+

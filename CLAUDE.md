@@ -62,6 +62,98 @@ pnpm api:generate     # 契約改了要重跑
 **架構測試擋下你的時候，那是它在做它該做的事。不要改測試去繞過。**
 真的認為規則錯了，停下來說明理由，不要自己改。
 
+## 只能照派工書開工
+
+**沒有派工書就不准寫原始碼。** 生效中的派工寫在 `.dispatch/ACTIVE.md`，
+由整合者維護，格式與範例都在那個檔案裡。四個 hook 一起守這條規則：
+
+| Hook | 做什麼 |
+|---|---|
+| `UserPromptSubmit` → `claim-package.sh` | 認出 prompt 裡的 `GG_PACKAGE=<包名>` 或 `GG_ROLE=leader`，綁到這個 session_id（給 ai-cli fan out 的子 agent 用） |
+| `SessionStart` → `session-brief.sh` | 一開場就把「你這一包能動哪些路徑」送進 context |
+| `PreToolUse`（Write／Edit）→ `dispatch-guard.sh` | 即時擋下派工範圍外的寫入 |
+| `Stop` → `stop-gate.sh` | 實作者：用 `git diff` 再查一次越界——**這一層不能省**，因為用 Bash（`sed -i`、heredoc、重導向）寫的檔案繞得過 `PreToolUse`，但繞不過 git。Leader：越界 ＋ **`audit-dispatch.sh` 派工書邏輯稽核** ＋ 每包都要有啟動 prompt ＋ `GreyGray_PM` 同步 |
+
+`docs/`、`management/`、`STATE.md`、`CLAUDE.md`、`AGENTS.md` 不受限——那是整合與 PM 的工作，不是「開工」。
+`ACTIVE.md` 沒有任何 `package:` 時是**整合者模式**：原始碼一律不准寫。
+閘門自己的檔案（`.dispatch/`、`.claude/`、`.codex/`）**只有宣告了 `GG_ROLE=leader` 的 session 能寫**——
+實作者能改 `ACTIVE.md` 的話，他就能自我擴權，那閘門只是建議。
+（判準不是「有沒有派工生效」：那會讓閘門在派工期間變成沒人能維護，
+而那正是要加派工、改 prompt、驗收後撤包的時機。）
+
+**改任何閘門檔之前先讀這一段，改完一定要跑 `bash .dispatch/selftest.sh`。**
+
+`selftest.sh` 窮舉「身分 × 工具 × 路徑類別 × 指令類別」共 137～141 項行為
+（項數依樹與 agent 而異：Codex 多兩條 argv payload，只有一包生效時跳過跨包那一段），
+兩個 agent（`--agent codex`）、兩棵樹**各跑一次，共四次**。**它是可執行的規格**——
+那張路徑類別表就是閘門該有的行為，不是註解。
+
+為什麼要有它：閘門被檢查過四次，每一次都還能再找到新的邏輯洞（3 → 8 → 1 → 6 個）。
+靠「再看一遍」不會收斂，因為手挑的樣本會剛好避開問題——
+第三次那個洞（身分不明繼承整波 allow 的聯集）之所以前兩次沒抓到，
+就是因為當時挑的樣本路徑剛好不在任何 allow 裡，擋下來是別的理由。
+
+第四次找到的六個是同一個家族：**「查了零個對象」看起來跟「查過都沒事」一模一樣**。
+①②在沒東西可查時完全不出聲；⑤把 `Order.cs:326` 這種簡寫無聲跳過（那正是它唯一該擋的）；
+⑩的訊息從第一天就寫著「兩個 agent 都要」，但它只比一行、不記是誰跑的。
+所以現在**每一項都必須落一句話**，而且「一個對象都沒查到」印 ⚠ 而不是 ✓。
+
+**稽核第 ⑩ 項會擋**：閘門檔的合併指紋與 `.selftest-stamp` 對不上，就代表
+「改過但沒重跑」，Leader 收不了工。`.selftest-stamp` **每個 agent 一行**，
+兩行都要對得上現在這份閘門。兩棵樹的指紋本來就不同（`settings.json` 裡的
+`CLAUDE_PROJECT_DIR` 後備路徑各指自己那一棵），所以**每棵樹各自跑、各自蓋章**。
+
+**派工書要通過 `bash .dispatch/audit-dispatch.sh` 才准收工。** 它查十件機械查得出來的事：
+① `allow` 路徑存在　② migration 編號沒被佔用　③ **兩包的 `allow` 不互相涵蓋**
+④ 派工書引用的檔案真的存在（簡寫要能唯一對到一個檔）　⑤ 行號沒超出檔案長度
+⑥ 每包都有啟動 prompt　⑦ **共用文件與閘門兩棵樹一致**　⑧ 有交付的包留下自驗報告
+⑨ 進度數字自洽（逐節相加 = 合計 = 儀表板）　⑩ 閘門改過就要重跑自我測試
+
+⑦ 除了 ADR 與契約，**也比閘門本身**——這一輪為了改閘門手動 `cp` 到另一棵樹四次，
+只要有一次忘了，兩棵樹的判斷規則就不一樣，而且沒有任何東西會說話。
+（`.claude/settings.json` 刻意不在那張清單裡，它那三行本來就該不同，不要去「同步」它。）
+
+為什麼要有它：第六波的派工書寫錯三個前提，第七波第一版又把事件 handler 的註冊檔
+劃給了錯的包——BE-18 要註冊 `ShipmentDelivered` handler，而那個檔被劃給 BE-19，
+它會直接做不完。**那幾個錯全都可以機械查出來，只是我沒查。**
+手審抓得到一次，抓不到每一次。
+
+第三條特別寫成「**前綴涵蓋**」而不是「字串相等」：一包拿 `src/Modules/Ordering/`、
+另一包拿 `.../Ordering.Infra/ModuleRegistration.cs`，兩個字串不同但實際重疊，
+用 `uniq -d` 完全抓不到——而那正是那次的洞。
+
+跨樹或還不存在的引用，在**同一行**寫上「新檔」「另一棵樹」「後端 worktree」之類的字就會豁免——
+刻意要求同一行，因為順手加一個詞就能關掉的檢查遲早會被關光。
+
+**只開一個 terminal 當 Leader。** Leader 用 ai-cli fan out 子代理，一包一個，
+不必一包一個 terminal。Leader 的啟動 prompt 與每包的原文都在 `.dispatch/PROMPTS.md`。
+
+**每個 session 都要宣告身分**，閘門分三種：
+
+| 身分 | 怎麼宣告 | 寫得了什麼 |
+|---|---|---|
+| **Leader** | prompt 開頭 `GG_ROLE=leader`（或 `GG_ROLE=leader <cli>`） | 閘門檔、`docs/`、`GreyGray_PM`。**不寫原始碼** |
+| **實作者** | prompt 開頭 `GG_PACKAGE=<包名>`（或 `GG_PACKAGE=<包名> <cli>`） | 只有該包 `allow:` 的路徑 |
+| **身分不明** | 沒宣告 | 有派工生效時**什麼都寫不了** |
+
+第三列是刻意的 fail-closed：**「忘記宣告的實作者」與「Leader」從外面看一模一樣**，
+不能用「沒綁包別」推定是 Leader，否則忘記宣告的人就擁有改閘門的權力。
+
+子代理只能靠 prompt 帶包別——ai-cli 的 `run` 沒有 env 參數，
+子行程繼承的是 MCP server 自己的環境，一個 server 行程 spawn 所有子代理，
+行程層級的環境變數本質上帶不了「每個子代理不同」的值，所以綁定走 session_id。
+**包別優先於角色**：子代理的 prompt 就算混進 `GG_ROLE=leader` 也升不了級（已實測）。
+包名拼錯一律擋下（fail-closed）。
+
+**Codex 也受同一套閘門管。** 它不讀 `.claude/`，讀的是 `.codex/hooks.json` 與 `AGENTS.md`，
+但判斷邏輯共用 `.dispatch/lib.sh`、狀態共用 `.dispatch/ACTIVE.md`——派工狀態只有一份。
+
+這一條要擋的是踩過的坑：**交付後不停手、自己往下做下一波**。
+子代理只做自己那包的「自驗」，逐條貼出實際指令與輸出，
+**不能自己宣告通過**；總驗收是整合者的事（`docs/13` §6 那十條）。
+
+現在的派工書：`docs/13-後端第五波派工書.md`（前端的在 `-fe` worktree 的 `docs/12`）。
+
 
 ### 不要碰整個工作區的 git 指令
 
@@ -87,82 +179,8 @@ pnpm api:generate     # 契約改了要重跑
 2. `00-進度總表.md` —— 階段狀態、基準 commit、「現在卡在哪」
 3. `web/dashboard.html` 最上面的 `DATA`，改完重新發布
 
-**撤包要在 commit 之後，不能在之前。** 驗收通過就想把包從 `ACTIVE.md` 撤掉是很自然的，
-但交付還沒進版控時撤包，那些檔案會瞬間變成「沒有主人」，`Stop` 的越界檢查就會擋下來——
-而且那個判斷是對的，它防的正是「有人把別人的工作從派工範圍裡移出去」。
-2026-08-30 第七波驗收實際撞到：撤包 → 越界檢查擋；還原 → 稽核擋（migration 編號被自己交付的檔佔住）。
-交付未提交時，兩個檢查不可能同時滿足。順序是**先提交、再撤包**。
-
 標 ✅ 之前一定要寫得出「怎麼驗的」：哪個指令、什麼輸出。**交付方不能自己標 ✅。**
-`.claude/hooks/stop-gate.sh` 在整合者模式下會比對這三個檔的修改時間，
-沒同步就擋下收工。誤判時 `touch` 較舊的那個檔案即可。
-
-## 只能照派工書開工
-
-**沒有派工書就不准寫原始碼。** 生效中的派工寫在 `.dispatch/ACTIVE.md`，
-由整合者維護，格式與範例都在那個檔案裡。四個 hook 一起守這條規則：
-
-| Hook | 做什麼 |
-|---|---|
-| `UserPromptSubmit` → `claim-package.sh` | 認出 prompt 裡的 `GG_PACKAGE=<包名>` 或 `GG_ROLE=leader`，綁到這個 session_id（給 ai-cli fan out 的子 agent 用） |
-| `SessionStart` → `session-brief.sh` | 一開場就把「你這一包能動哪些路徑」送進 context |
-| `PreToolUse`（Write／Edit）→ `dispatch-guard.sh` | 即時擋下派工範圍外的寫入 |
-| `Stop` → `stop-gate.sh` | 實作者：用 `git diff` 再查一次越界——**這一層不能省**，因為用 Bash（`sed -i`、heredoc、重導向）寫的檔案繞得過 `PreToolUse`，但繞不過 git。Leader：越界 ＋ **`audit-dispatch.sh` 派工書邏輯稽核** ＋ 每包都要有啟動 prompt ＋ `GreyGray_PM` 同步 |
-
-**派工書寫完就要給得出啟動 prompt。** 放在 `.dispatch/PROMPTS.md`，一包一段，
-可以直接複製貼上，不要讓人自己回去讀派工書再拼一段出來。
-`ACTIVE.md` 裡每個生效的 `package:` 都必須在 `PROMPTS.md` 找得到
-`GG_PACKAGE=<包名>`，否則 `Stop` 會擋下整合者收工。
-
-**閘門自己的檔案（`.dispatch/`、`.claude/`、`.codex/`）只有「沒有綁定包別」的 session 寫得了。**
-判準不是「有沒有派工生效」——那會讓閘門在派工期間變成沒人能維護，
-而那正是要加派工、改 prompt、驗收後撤包的時機。實作者一定綁了包別
-（prompt 都帶 `GG_PACKAGE=`），所以自我擴權那條路仍然堵死。
-
-**派工書要通過 `bash .dispatch/audit-dispatch.sh` 才准收工。** 它查六件機械查得出來的事：
-`allow` 路徑存在、migration 編號沒被佔用、**兩包的 allow 不互相涵蓋**、
-派工書引用的檔案真的存在（簡寫要能唯一對到一個檔）、行號沒超出檔案長度、每包都有啟動 prompt。
-
-為什麼要有它：第六波的派工書寫錯三個前提，第七波第一版又把事件 handler 的註冊檔
-劃給了錯的包——BE-18 要註冊 `ShipmentDelivered` handler，而那個檔被劃給 BE-19，
-它會直接做不完。**那幾個錯全都可以機械查出來，只是我沒查。**
-手審抓得到一次，抓不到每一次。
-
-跨樹或還不存在的引用，在**同一行**寫上「新檔」「另一棵樹」「後端 worktree」之類的字就會豁免——
-刻意要求同一行，因為順手加一個詞就能關掉的檢查遲早會被關光。
-
-`docs/`、`.claude/`、`management/`、`STATE.md`、`CLAUDE.md` 不受限——那是整合與 PM 的工作，不是「開工」。
-`ACTIVE.md` 沒有任何 `package:` 時是**整合者模式**：原始碼一律不准寫。
-整合者自己要動原始碼，也要先在 `ACTIVE.md` 開一筆 `package:` 留下軌跡。
-
-**只開一個 terminal 當 Leader。** Leader 用 ai-cli fan out 子代理，一包一個，
-不必一包一個 terminal。Leader 的啟動 prompt 與每包的原文都在 `.dispatch/PROMPTS.md`。
-
-**每個 session 都要宣告身分**，閘門分三種：
-
-| 身分 | 怎麼宣告 | 寫得了什麼 |
-|---|---|---|
-| **Leader** | prompt 開頭 `GG_ROLE=leader`（或 `GG_ROLE=leader <cli>`） | 閘門檔、`docs/`、`GreyGray_PM`。**不寫原始碼** |
-| **實作者** | prompt 開頭 `GG_PACKAGE=<包名>`（或 `GG_PACKAGE=<包名> <cli>`） | 只有該包 `allow:` 的路徑 |
-| **身分不明** | 沒宣告 | 有派工生效時**什麼都寫不了** |
-
-第三列是刻意的 fail-closed：**「忘記宣告的實作者」與「Leader」從外面看一模一樣**，
-不能用「沒綁包別」推定是 Leader，否則忘記宣告的人就擁有改閘門的權力。
-
-子代理只能靠 prompt 帶包別——ai-cli 的 `run` 沒有 env 參數，
-子行程繼承的是 MCP server 自己的環境，一個 server 行程 spawn 所有子代理，
-行程層級的環境變數本質上帶不了「每個子代理不同」的值，所以綁定走 session_id。
-**包別優先於角色**：子代理的 prompt 就算混進 `GG_ROLE=leader` 也升不了級（已實測）。
-包名拼錯一律擋下（fail-closed）。
-
-**Codex 也受同一套閘門管。** 它不讀 `.claude/`，讀的是 `.codex/hooks.json` 與 `AGENTS.md`，
-但判斷邏輯共用 `.dispatch/lib.sh`、狀態共用 `.dispatch/ACTIVE.md`——**派工狀態只有一份**。
-兩邊的差別只在介面：Codex 的 payload 從 argv 或 stdin 進來、寫檔走 `apply_patch`
-（路徑藏在 patch 內文的 `*** Add/Update/Delete File:` 標記裡，不是 `file_path`）、
-deny 是 `{"decision":"deny"}` 加 exit 2。
-
-派工書：前端 `docs/12-前端第三波派工書.md`、後端 `docs/13-後端第五波派工書.md`（在後端 worktree）。
-**子代理只做自己那包的「自驗」，不能自己宣告通過**；整合驗收是整合者的事。
+`stop-gate.sh` 在整合者模式下會比對這三個檔的修改時間，沒同步就擋下收工。
 
 ## 三個會咬人的地方
 
@@ -182,18 +200,9 @@ M1a 只做綠界（ADR-011）／多租戶只留欄位（ADR-006）／Payment 不
 支撐模組不被業務模組依賴、支撐之間可以（ADR-017）／JSON 線上格式（ADR-018）。
 
 歷史會員與訂單不遷移，客人重新註冊、之後補 Google 串接（ADR-019）。
+**舊平台沒有啟用過儲值金，餘額全是 0，沒有要遷的負債**——新系統的儲值金
+期初一律從 0 開始，不要自己假設要做遷移或對帳。
 
-## 沒有系統會提醒你的那一件
-
-**這一段 2026-08-30 已經解除警報，但保留下來記住為什麼曾經緊張。**
-
-原本寫的是：舊平台的儲值金餘額不會因為決定不遷移就消失，那是欠客人的負債，
-要在租約到期前搬過來或補償，**先把到期日寫下來**。
-
-兩件事讓它落地了：
-
-- ADR-019 更正（`0add0dc`）：老闆確認舊平台**從來沒啟用過儲值金，餘額全為 0**，沒有要搬的負債。
-- 2026-08-30：老闆確認**舊平台已經停用過期**，沒有到期日這回事。E5 取消。
-
-所以註冊頁與上線公告**不要**寫「舊訂單請到原平台查詢，期限到 ____」——
-那個管道已經不存在，要明講「舊平台已停用，歷史訂單無法查詢」。詳見 `docs/00-decisions.md` 的 ADR-019 更正。
+**舊平台已經停用過期（2026-08-30 確認）。** 所以上線公告與註冊頁**不要**寫
+「舊訂單請到原平台查詢，期限到 ____」——那個管道已經不存在，要明講無法查詢。
+原本掛著的 E5（查到期日）取消。見 `docs/00-decisions.md` 的 ADR-019 更正。

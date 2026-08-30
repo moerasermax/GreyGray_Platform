@@ -266,6 +266,20 @@ gg_path_allowed() {
       case "$rel" in "$prefix"*) return 0 ;; esac
     done
   fi
+  # ★ 沒綁包別就不繼承任何 allow。
+  #
+  # gg_allow_list 在沒設 GG_PACKAGE 時回傳「所有生效包的聯集」——那是給收工的
+  # 越界檢查用的（它要判「整波之外」）。但 PreToolUse 也走同一條路，
+  # 結果 Leader 與【身分不明】都繼承了整波的寫入權：
+  # 身分不明可以寫任何生效包的路徑，fail-closed 名存實亡。
+  #
+  # 上一輪的矩陣沒抓到，因為當時挑的樣本路徑剛好不在任何 allow 裡，
+  # 擋下來是因為別的理由——窮舉才看得到。
+  #
+  # 聯集只在收工檢查（GG_UNION=1）時才給。
+  if [ -z "${GG_PACKAGE:-}" ] && [ "${GG_UNION:-}" != "1" ]; then
+    return 1
+  fi
   local allowed=1
   while IFS= read -r prefix; do
     [ -n "$prefix" ] || continue
