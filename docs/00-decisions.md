@@ -54,6 +54,30 @@ watchdog ＋ RestartOnFailure 999）與 NSSM 管理，而且做得很紮實。�
 **技術更正**：ASP.NET Core 可直接跑 Windows Service（`UseWindowsService()`），不必硬套 NSSM。
 兩者擇一，**不要混用**。與既有 12 個服務一致的話用 NSSM 也合理。
 
+**適用範圍澄清（2026-08-30，老闆裁決）：本條約束的是「正式機 YC」，開發機不限。**
+
+上面每一條理由——YC 沒有 Hyper-V、記憶體只有那麼多、既有 12 個服務全是 native、
+不要讓兩套維運模型並存——**講的都是正式機**。開發機沒有任何一條成立。
+
+觸發這次澄清的是 BE-22：它要在開發機上架本機 PostgreSQL，實測發現 Windows 上的
+`postgres.exe` **內建拒絕以 Administrator 身分啟動 server**
+（`Execution of PostgreSQL by a user with administrative permissions is not permitted`），
+那是寫死的 `IsUserAnAdmin()` 檢查，不是設定問題。正式機用專屬非管理員帳號繞過；
+開發機要照做就得在老闆自己的機器上新建 Windows 帳號並調 ACL，代價比問題本身大。
+BE-22 改用 `postgres:17-alpine` 容器，**沒有先斬後奏**，標明「請整合者確認」後才交付。
+
+判斷依據：
+
+- **正式機那條路徑完全沒動**——`install-environment.ps1` 的原生安裝流程原封不動
+- **不是新引入的依賴**——這個 repo 的整合測試（`Testcontainers.PostgreSql`）本來
+  就在用同一顆 `postgres:17-alpine` 映像
+- 官方 ZIP binaries 仍然解壓，只是改當 `psql`／`pg_isready` **客戶端工具**用；
+  `ops/invoke-migrations.ps1` 一行都不用改（它只認 host/port）
+
+**所以：正式機部署不得引入 Docker（原文不變）；開發機用什麼跑相依服務不受本條約束。**
+寫下這一句是為了讓下一個人不必重新辯一次——他看到開發機有 Docker 容器時，
+應該在這裡讀到「是的，這是刻意的」，而不是以為有人違規。
+
 ---
 
 ## ADR-004　模組維持硬邊界（assembly ＋ schema ＋ DB role 三重分離）

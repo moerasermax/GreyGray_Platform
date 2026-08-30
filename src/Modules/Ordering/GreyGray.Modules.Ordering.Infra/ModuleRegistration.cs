@@ -117,6 +117,10 @@ internal sealed class OrderingModule : IModuleRegistration
             ShipmentDelivered,
             ShipmentDeliveredHandler,
             OrderingDbContext>();
+        services.AddIdempotentIntegrationEventHandler<
+            GoodsReceived,
+            GoodsReceivedHandler,
+            OrderingDbContext>();
 
         services.AddSagaTimeoutHandler<AppraisalPeriodTimeoutHandler>();
 

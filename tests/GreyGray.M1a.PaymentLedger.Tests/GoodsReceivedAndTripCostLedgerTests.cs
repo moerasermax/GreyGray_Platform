@@ -3,6 +3,7 @@ using GreyGray.Modules.Catalog.Contracts;
 using GreyGray.Modules.Inventory.Contracts;
 using GreyGray.Modules.Ledger.Contracts;
 using GreyGray.Modules.Ledger.Infra;
+using GreyGray.Modules.Ordering.Contracts;
 using GreyGray.Modules.Procurement.Contracts;
 using GreyGray.Platform.Abstractions.Messaging;
 using GreyGray.Platform.Messaging;
@@ -54,7 +55,8 @@ public sealed class GoodsReceivedAndTripCostLedgerTests : IAsyncLifetime
             SkuId.New(),
             5,
             Money.OfMajor(350, Currency.TWD),
-            LotSource.OverseasPurchase);
+            LotSource.OverseasPurchase,
+            OrderLineId.New());
 
         await DispatchAsync(provider, received, cancellationToken);
         await DispatchAsync(provider, received, cancellationToken);

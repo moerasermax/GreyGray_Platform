@@ -206,9 +206,7 @@ public sealed record GoodsReceived(
     int Quantity,
     Money UnitCost,
     LotSource Source,
-    // 放在最後且給預設值，是為了不讓既有的 Inventory／Ledger 測試（不在本包所有權內）跟著改動；
-    // 唯一真正發出這個事件的 Procurement 呼叫點一律明確帶入真實值，不會落到這個預設。
-    OrderLineId OrderLineId = default)
+    OrderLineId OrderLineId)
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "procurement.GoodsReceived.v1";

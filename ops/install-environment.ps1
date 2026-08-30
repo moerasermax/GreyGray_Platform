@@ -95,10 +95,17 @@ if ($ServiceCredential.UserName -notmatch '^\.\\(?<name>[^\\]+)$') {
 }
 $serviceUser = $Matches.name
 
-foreach ($path in @($InstallRoot, $PostgreSqlDataRoot, $PostgreSqlWalRoot)) {
+<#
+    ★ 這裡曾經硬寫 'C:\'，即使三個路徑都已經是參數也一樣會擋下——
+    指到別的磁碟會直接 throw，參數形同虛設（docs/19 §5 BE-22 抓到的 bug）。
+    改成「三者必須同一顆磁碟」：正式機三個參數預設都指 C:\，行為不變；
+    其他磁碟只要三個路徑彼此一致（例如全部指到 D:\GreyGray）就放行。
+#>
+$installRootDrive = [System.IO.Path]::GetPathRoot([System.IO.Path]::GetFullPath($InstallRoot))
+foreach ($path in @($PostgreSqlDataRoot, $PostgreSqlWalRoot)) {
     $full = [System.IO.Path]::GetFullPath($path)
-    if ([System.IO.Path]::GetPathRoot($full) -ne 'C:\') {
-        throw "M-1 要求 PostgreSQL 與 GreyGray runtime 位於 C 槽 NVMe：$full"
+    if ([System.IO.Path]::GetPathRoot($full) -ne $installRootDrive) {
+        throw "PostgreSQL data／WAL 必須與 InstallRoot 同一顆磁碟（藍圖要求同一顆 NVMe）：$full 應與 $InstallRoot 同磁碟"
     }
 }
 

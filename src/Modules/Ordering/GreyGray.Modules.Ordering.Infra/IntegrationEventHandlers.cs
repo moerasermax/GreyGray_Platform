@@ -121,3 +121,21 @@ internal sealed class ShipmentDeliveredHandler(IOrderingShipmentDelivery orderin
         }
     }
 }
+
+internal sealed class GoodsReceivedHandler(IOrderingGoodsReceipt ordering)
+    : IIntegrationEventHandler<GoodsReceived>
+{
+    public async Task HandleAsync(
+        GoodsReceived @event,
+        CancellationToken cancellationToken)
+    {
+        var result = await ordering.RecordGoodsReceivedAsync(
+            @event.OrderLineId,
+            cancellationToken);
+        if (result.IsFailure)
+        {
+            throw new InvalidOperationException(
+                $"GoodsReceived 無法更新訂單：{result.Error.Code} {result.Error.Message}");
+        }
+    }
+}
