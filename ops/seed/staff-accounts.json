@@ -1,0 +1,6 @@
+[
+  { "displayName": "老闆（種子帳號）", "email": "owner.seed@greygray.dev", "role": "Owner" },
+  { "displayName": "營運（種子帳號）", "email": "operator.seed@greygray.dev", "role": "Operator" },
+  { "displayName": "會計（種子帳號）", "email": "accountant.seed@greygray.dev", "role": "Accountant" },
+  { "displayName": "唯讀（種子帳號）", "email": "readonly.seed@greygray.dev", "role": "ReadOnly" }
+]

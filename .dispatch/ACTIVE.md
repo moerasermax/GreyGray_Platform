@@ -51,9 +51,17 @@ Leader 要明講。
 
 ---
 
-**沒有生效中的派工（2026-08-30）。** 整合者模式：原始碼一律不准寫。
+派工 BE-26：員工帳號 bootstrap 工具 ＋ 開發環境最小種子資料　·　docs/23-後端第十一波派工書.md
 
-**啟動 prompt 在 `.dispatch/PROMPTS.md`**，下一波派工前 Leader 用 ai-cli fan out。
+package: BE-26
+doc: docs/23-後端第十一波派工書.md
+allow: src/Tools/
+allow: GreyGray.slnx
+allow: tests/GreyGray.Architecture.Tests/ModuleBoundaryTests.cs
+allow: ops/seed/
+allow: ops/seed-dev-staff.ps1
+
+**啟動 prompt 在 `.dispatch/PROMPTS.md`**。
 
 ---
 

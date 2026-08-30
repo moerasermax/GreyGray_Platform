@@ -16,6 +16,9 @@
     <Project Path="src/Hosts/GreyGray.Api.Admin/GreyGray.Api.Admin.csproj" />
     <Project Path="src/Hosts/GreyGray.Worker/GreyGray.Worker.csproj" />
   </Folder>
+  <Folder Name="/src/Tools/">
+    <Project Path="src/Tools/GreyGray.Tools.StaffBootstrap/GreyGray.Tools.StaffBootstrap.csproj" />
+  </Folder>
   <Folder Name="/src/Modules/Identity/">
     <Project Path="src/Modules/Identity/GreyGray.Modules.Identity.Contracts/GreyGray.Modules.Identity.Contracts.csproj" />
     <Project Path="src/Modules/Identity/GreyGray.Modules.Identity.Core/GreyGray.Modules.Identity.Core.csproj" />

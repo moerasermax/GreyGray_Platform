@@ -34,7 +34,7 @@ public sealed class ModuleBoundaryTests
 
     private static readonly string[] Hosts =
     [
-        "GreyGray.Api.Storefront", "GreyGray.Api.Admin", "GreyGray.Worker",
+        "GreyGray.Api.Storefront", "GreyGray.Api.Admin", "GreyGray.Worker", "GreyGray.Tools.StaffBootstrap",
     ];
 
     /// <summary>Contracts 不該碰到的套件。出現任何一個都代表持久層或 Web 相依漏進了公開契約。</summary>
