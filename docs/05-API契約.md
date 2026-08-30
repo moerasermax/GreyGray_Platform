@@ -309,6 +309,7 @@ coverage gate 的唯一過濾來源，不再從 description 猜。
 | `POST` | `/v1/purchase-items/{purchaseItemId}/unavailable` | Operator | M1b | 標記缺貨 |
 | `POST` | `/v1/purchase-items/{purchaseItemId}/price-changed` | Operator | M1b | 回報現場漲價 |
 | `GET` | `/v1/shipments` | Operator | M1b | 出貨單列表 |
+| `GET` | `/v1/shipments/{shipmentId}` | Operator | M1b | 出貨單詳情（第七波 BE-19 加，索引由整合者補） |
 | `POST` | `/v1/shipments` | Operator | M1b | 建立出貨單 |
 | `POST` | `/v1/shipments/{shipmentId}/dispatch` | Operator | M1b | 交運 |
 | `POST` | `/v1/shipments/{shipmentId}/deliver` | Operator | M1b | 標記已送達 |

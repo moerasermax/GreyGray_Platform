@@ -40,6 +40,9 @@ internal sealed class CampaignAggregate
 
     public DateTimeOffset ClosesAt { get; private set; }
 
+    /// <summary>現場漲價詢問的逾時分鐘數（ADR-027）。<c>null</c> 表示這個團沒指定，讀取端要自己套用技術預設值。</summary>
+    public int? PriceInquiryTimeoutMinutes { get; private set; }
+
     public CampaignStatus Status { get; private set; }
 
     public string? Description { get; private set; }
@@ -359,6 +362,9 @@ internal sealed class CampaignAggregate
         new(Id, Title, Destination, DepartAt, ReturnAt, ClosesAt, Status)
         {
             TripCostTotal = TripCostTotal,
+            PriceInquiryTimeout = PriceInquiryTimeoutMinutes is { } minutes
+                ? TimeSpan.FromMinutes(minutes)
+                : null,
         };
 
     private static Result ValidateDraft(CampaignDraftInput input)
@@ -392,6 +398,13 @@ internal sealed class CampaignAggregate
                 "返國日不可早於出發日。");
         }
 
+        if (input.PriceInquiryTimeoutMinutes is { } timeoutMinutes && timeoutMinutes <= 0)
+        {
+            return Result.Failure(
+                "campaign.invalid-price-inquiry-timeout",
+                "現場漲價詢問的逾時分鐘數必須大於 0。");
+        }
+
         return Result.Success();
     }
 
@@ -411,6 +424,7 @@ internal sealed class CampaignAggregate
         DepartAt = input.DepartAt;
         ReturnAt = input.ReturnAt;
         ClosesAt = input.ClosesAt;
+        PriceInquiryTimeoutMinutes = input.PriceInquiryTimeoutMinutes;
         Description = input.Description;
         CoverImageUrl = input.CoverImageUrl;
         UpdatedAt = now;

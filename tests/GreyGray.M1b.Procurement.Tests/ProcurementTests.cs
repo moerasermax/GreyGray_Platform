@@ -522,10 +522,25 @@ internal sealed class FakeCampaignQuery(CampaignOffer primary) : ICampaignQuery
     public Dictionary<CampaignOfferId, CampaignOffer> Aliases { get; } =
         new() { [primary.Id] = primary };
 
+    /// <summary>ADR-027：這個團的漲價詢問逾時。<c>null</c> 表示沒指定，呼叫端要套用技術預設值。</summary>
+    public TimeSpan? PriceInquiryTimeout { get; set; }
+
     public Task<Result<CampaignSummary>> GetAsync(
         CampaignId id,
         CancellationToken cancellationToken) =>
-        Task.FromResult(Result<CampaignSummary>.Failure("campaign.not-found", "找不到開團。"));
+        Task.FromResult(id == primary.CampaignId
+            ? Result<CampaignSummary>.Success(new CampaignSummary(
+                primary.CampaignId,
+                "測試開團",
+                "測試地點",
+                new DateOnly(2026, 9, 1),
+                new DateOnly(2026, 9, 5),
+                new DateTimeOffset(2026, 9, 10, 0, 0, 0, TimeSpan.Zero),
+                CampaignStatus.Closed)
+            {
+                PriceInquiryTimeout = PriceInquiryTimeout,
+            })
+            : Result<CampaignSummary>.Failure("campaign.not-found", "找不到開團。"));
 
     public Task<Result<CampaignOffer>> GetOfferAsync(
         CampaignOfferId id,

@@ -161,6 +161,9 @@ internal sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> opti
         entity.Property(order => order.PaymentDueAt)
             .HasColumnName("payment_due_at")
             .HasColumnType("timestamp with time zone");
+        entity.Property(order => order.AppraisalDueAt)
+            .HasColumnName("appraisal_due_at")
+            .HasColumnType("timestamp with time zone");
         entity.Property(order => order.CancelledAt)
             .HasColumnName("cancelled_at")
             .HasColumnType("timestamp with time zone");

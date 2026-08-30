@@ -1,10 +1,12 @@
 using GreyGray.Modules.Campaign.Contracts;
 using GreyGray.Modules.Catalog.Contracts;
 using GreyGray.Modules.Checkout.Contracts;
+using GreyGray.Modules.Fulfillment.Contracts;
 using GreyGray.Modules.Identity.Contracts;
 using GreyGray.Modules.Ordering.Contracts;
 using GreyGray.Modules.Ordering.Core;
 using GreyGray.Modules.Pricing.Contracts;
+using GreyGray.Platform.Abstractions.Saga;
 using GreyGray.Shared.Kernel;
 using Shouldly;
 using Xunit;
@@ -97,7 +99,7 @@ public sealed class OrderingTests
         var cancelled = await fixture.Service.CancelAdminAsync(
             created.Value.Id,
             "團務異常",
-            RefundDestination.StoredValue,
+            RefundDestination.OriginalPaymentMethod,
             TestContext.Current.CancellationToken);
 
         cancelled.IsSuccess.ShouldBeTrue();
@@ -105,10 +107,68 @@ public sealed class OrderingTests
         fixture.Publisher.Published.Count.ShouldBe(2);
         var cancelledEvent = fixture.Publisher.Published.OfType<OrderCancelled>().Single();
         cancelledEvent.RefundAmount.ShouldBe(created.Value.GrandTotal);
-        cancelledEvent.RefundTo.ShouldBe(RefundDestination.StoredValue);
+        cancelledEvent.RefundTo.ShouldBe(RefundDestination.OriginalPaymentMethod);
         var refund = fixture.Publisher.Published.OfType<RefundRequested>().Single();
         refund.LineId.ShouldBeNull("整單取消的退款事件不可誤掛到單一品項。");
         refund.Amount.ShouldBe(created.Value.GrandTotal);
+    }
+
+    [Fact(DisplayName = "ADR-023／024：儲值金退款 M1b 尚未開放，Admin 整單取消回業務失敗且不改動訂單")]
+    public async Task Admin_cancel_rejects_stored_value_refund_until_m3()
+    {
+        var fixture = new OrderingFixture();
+        var created = await fixture.Service.CreateFromCheckoutAsync(
+            fixture.Checkout,
+            TestContext.Current.CancellationToken);
+        await fixture.Service.RecordPaymentCapturedAsync(
+            created.Value.Id,
+            created.Value.GrandTotal,
+            TestContext.Current.CancellationToken);
+        fixture.Publisher.Reset();
+        fixture.UnitOfWork.Reset();
+
+        var rejected = await fixture.Service.CancelAdminAsync(
+            created.Value.Id,
+            "團務異常",
+            RefundDestination.StoredValue,
+            TestContext.Current.CancellationToken);
+
+        rejected.IsFailure.ShouldBeTrue();
+        rejected.Error.Code.ShouldBe("ordering.stored-value-refund-not-available");
+        fixture.Publisher.Published.ShouldBeEmpty();
+        fixture.UnitOfWork.Saves.ShouldBe(0);
+        var detail = await fixture.Service.GetAdminAsync(
+            created.Value.Id,
+            TestContext.Current.CancellationToken);
+        detail.Value.Status.ShouldBe(OrderStatus.PaidAwaitingClose);
+    }
+
+    [Fact(DisplayName = "ADR-023／024：儲值金退款 M1b 尚未開放，Admin 缺貨整條 line 取消同樣回業務失敗")]
+    public async Task Line_cancel_rejects_stored_value_refund_until_m3()
+    {
+        var fixture = new OrderingFixture();
+        var created = await fixture.Service.CreateFromCheckoutAsync(
+            fixture.Checkout,
+            TestContext.Current.CancellationToken);
+        await fixture.Service.RecordPaymentCapturedAsync(
+            created.Value.Id,
+            created.Value.GrandTotal,
+            TestContext.Current.CancellationToken);
+        fixture.Publisher.Reset();
+        fixture.UnitOfWork.Reset();
+        var selected = created.Value.Lines[0];
+
+        var rejected = await fixture.Service.CancelLineAsync(
+            created.Value.Id,
+            selected.Id,
+            "現場缺貨",
+            RefundDestination.StoredValue,
+            TestContext.Current.CancellationToken);
+
+        rejected.IsFailure.ShouldBeTrue();
+        rejected.Error.Code.ShouldBe("ordering.stored-value-refund-not-available");
+        fixture.Publisher.Published.ShouldBeEmpty();
+        fixture.UnitOfWork.Saves.ShouldBe(0);
     }
 
     [Fact(DisplayName = "Admin 缺貨取消整條 line，退款 lineTotal 且其餘 line／訂單狀態不變")]
@@ -131,7 +191,7 @@ public sealed class OrderingTests
             created.Value.Id,
             selected.Id,
             "現場缺貨",
-            RefundDestination.StoredValue,
+            RefundDestination.OriginalPaymentMethod,
             TestContext.Current.CancellationToken);
 
         cancelled.IsSuccess.ShouldBeTrue();
@@ -185,6 +245,152 @@ public sealed class OrderingTests
         detail.Value.Status.ShouldBe(OrderStatus.Purchasing);
         detail.Value.Lines.Single().Status.ShouldBe(OrderLineStatus.Purchased);
         fixture.UnitOfWork.Saves.ShouldBe(1);
+    }
+
+    [Fact(DisplayName = "ADR-025：出貨單全部簽收才起算鑑賞期，屆滿轉 Completed")]
+    public async Task Appraisal_period_starts_after_full_delivery_and_completes_on_timeout()
+    {
+        var fixture = new OrderingFixture();
+        var order = await CreateReadyToShipOrderAsync(fixture);
+        fixture.FulfillmentQuery.SetShipments(order.Id, ShipmentStatus.Delivered);
+        fixture.Publisher.Reset();
+        fixture.UnitOfWork.Reset();
+
+        var delivered = await fixture.Service.RecordShipmentDeliveredAsync(
+            [order.Id],
+            TestContext.Current.CancellationToken);
+
+        delivered.IsSuccess.ShouldBeTrue();
+        var afterDelivery = await fixture.Service.GetAdminAsync(
+            order.Id,
+            TestContext.Current.CancellationToken);
+        afterDelivery.Value.Status.ShouldBe(OrderStatus.Shipped);
+        var timer = fixture.TimerScheduler.Scheduled.ShouldHaveSingleItem();
+        timer.SagaType.ShouldBe("ordering.appraisal-period");
+        timer.SagaId.ShouldBe(order.Id.ToString());
+        timer.FireAt.ShouldBe(fixture.Clock.UtcNow + fixture.AppraisalPeriod);
+        fixture.UnitOfWork.Saves.ShouldBe(1);
+
+        fixture.Clock.UtcNow = timer.FireAt;
+        await fixture.Service.ResolveAppraisalTimeoutAsync(
+            order.Id,
+            TestContext.Current.CancellationToken);
+
+        var completed = await fixture.Service.GetAdminAsync(
+            order.Id,
+            TestContext.Current.CancellationToken);
+        completed.Value.Status.ShouldBe(OrderStatus.Completed);
+        fixture.Publisher.Published.OfType<OrderCompleted>().ShouldHaveSingleItem();
+    }
+
+    [Fact(DisplayName = "ADR-025：一張訂單對應多個出貨單，只簽收一張時不起算鑑賞期")]
+    public async Task Appraisal_period_waits_for_all_shipments_to_be_delivered()
+    {
+        var fixture = new OrderingFixture();
+        var order = await CreateReadyToShipOrderAsync(fixture);
+        fixture.FulfillmentQuery.SetShipments(
+            order.Id,
+            ShipmentStatus.Delivered,
+            ShipmentStatus.Dispatched);
+        fixture.Publisher.Reset();
+        fixture.UnitOfWork.Reset();
+
+        var firstDelivery = await fixture.Service.RecordShipmentDeliveredAsync(
+            [order.Id],
+            TestContext.Current.CancellationToken);
+
+        firstDelivery.IsSuccess.ShouldBeTrue();
+        fixture.TimerScheduler.Scheduled.ShouldBeEmpty();
+        fixture.UnitOfWork.Saves.ShouldBe(0);
+        var stillReadyToShip = await fixture.Service.GetAdminAsync(
+            order.Id,
+            TestContext.Current.CancellationToken);
+        stillReadyToShip.Value.Status.ShouldBe(OrderStatus.ReadyToShip);
+
+        fixture.FulfillmentQuery.SetShipments(
+            order.Id,
+            ShipmentStatus.Delivered,
+            ShipmentStatus.Delivered);
+        var secondDelivery = await fixture.Service.RecordShipmentDeliveredAsync(
+            [order.Id],
+            TestContext.Current.CancellationToken);
+
+        secondDelivery.IsSuccess.ShouldBeTrue();
+        fixture.TimerScheduler.Scheduled.ShouldHaveSingleItem();
+        var nowShipped = await fixture.Service.GetAdminAsync(
+            order.Id,
+            TestContext.Current.CancellationToken);
+        nowShipped.Value.Status.ShouldBe(OrderStatus.Shipped);
+    }
+
+    [Fact(DisplayName = "ADR-025：鑑賞期內被取消，timer 屆滿不會把訂單拉回 Completed")]
+    public async Task Cancelled_order_is_not_pulled_back_to_completed_by_appraisal_timeout()
+    {
+        var fixture = new OrderingFixture();
+        var order = await CreateReadyToShipOrderAsync(fixture);
+        fixture.FulfillmentQuery.SetShipments(order.Id, ShipmentStatus.Delivered);
+        await fixture.Service.RecordShipmentDeliveredAsync(
+            [order.Id],
+            TestContext.Current.CancellationToken);
+        var timer = fixture.TimerScheduler.Scheduled.Single();
+
+        var cancelled = await fixture.Service.CancelAdminAsync(
+            order.Id,
+            "客訴退貨",
+            RefundDestination.OriginalPaymentMethod,
+            TestContext.Current.CancellationToken);
+        cancelled.IsSuccess.ShouldBeTrue();
+        cancelled.Value.Status.ShouldBe(OrderStatus.Cancelled);
+        fixture.Publisher.Reset();
+
+        fixture.Clock.UtcNow = timer.FireAt;
+        await fixture.Service.ResolveAppraisalTimeoutAsync(
+            order.Id,
+            TestContext.Current.CancellationToken);
+
+        var afterTimeout = await fixture.Service.GetAdminAsync(
+            order.Id,
+            TestContext.Current.CancellationToken);
+        afterTimeout.Value.Status.ShouldBe(OrderStatus.Cancelled);
+        fixture.Publisher.Published.OfType<OrderCompleted>().ShouldBeEmpty();
+    }
+
+    [Fact(DisplayName = "鑑賞期 timer 對應的訂單已不存在時安靜 no-op，不丟例外")]
+    public async Task Appraisal_timeout_for_missing_order_is_a_silent_noop()
+    {
+        var fixture = new OrderingFixture();
+
+        await Should.NotThrowAsync(() =>
+            fixture.Service.ResolveAppraisalTimeoutAsync(
+                OrderId.New(),
+                TestContext.Current.CancellationToken));
+
+        fixture.Publisher.Published.ShouldBeEmpty();
+    }
+
+    private static async Task<OrderView> CreateReadyToShipOrderAsync(OrderingFixture fixture)
+    {
+        var created = await fixture.Service.CreateFromCheckoutAsync(
+            fixture.Checkout,
+            TestContext.Current.CancellationToken);
+        await fixture.Service.RecordPaymentCapturedAsync(
+            created.Value.Id,
+            created.Value.GrandTotal,
+            TestContext.Current.CancellationToken);
+        var line = created.Value.Lines.Single();
+        await fixture.Service.RecordItemPurchasedAsync(
+            line.Id,
+            line.Quantity,
+            TestContext.Current.CancellationToken);
+        await fixture.Service.RecordGoodsReceivedAsync(
+            line.Id,
+            TestContext.Current.CancellationToken);
+
+        var readyToShip = await fixture.Service.GetAdminAsync(
+            created.Value.Id,
+            TestContext.Current.CancellationToken);
+        readyToShip.Value.Status.ShouldBe(OrderStatus.ReadyToShip);
+        return readyToShip.Value;
     }
 
     private sealed class OrderingFixture
@@ -245,13 +451,19 @@ public sealed class OrderingTests
             };
             UnitOfWork = new FakeUnitOfWork();
             Publisher = new FakeEventPublisher();
+            FulfillmentQuery = new FakeFulfillmentQuery();
+            TimerScheduler = new RecordingSagaTimerScheduler();
+            AppraisalPeriod = TimeSpan.FromDays(7);
             Service = new OrderingApplicationService(
                 new FakeOrderRepository(),
                 UnitOfWork,
                 Publisher,
                 Pricing,
                 Clock,
-                new FakeCorrelation());
+                new FakeCorrelation(),
+                FulfillmentQuery,
+                TimerScheduler,
+                AppraisalPeriod);
         }
 
         public CustomerId CustomerId { get; }
@@ -266,6 +478,72 @@ public sealed class OrderingTests
 
         public FakeEventPublisher Publisher { get; }
 
+        public FakeFulfillmentQuery FulfillmentQuery { get; }
+
+        public RecordingSagaTimerScheduler TimerScheduler { get; }
+
+        public TimeSpan AppraisalPeriod { get; }
+
         public OrderingApplicationService Service { get; }
     }
+}
+
+internal sealed class FakeFulfillmentQuery : IFulfillmentQuery
+{
+    private readonly Dictionary<OrderId, List<ShipmentSummary>> _byOrder = [];
+
+    /// <summary>設定某張訂單目前掛的全部出貨單狀態；覆蓋前一次設定。</summary>
+    public void SetShipments(OrderId orderId, params ShipmentStatus[] statuses) =>
+        _byOrder[orderId] = statuses
+            .Select(status => new ShipmentSummary(
+                ShipmentId.New(),
+                DeliveryMethod.ConvenienceStore,
+                status,
+                null,
+                [orderId],
+                status >= ShipmentStatus.Dispatched ? DateTimeOffset.UtcNow : null,
+                status == ShipmentStatus.Delivered ? DateTimeOffset.UtcNow : null))
+            .ToList();
+
+    public Task<Result<ShipmentSummary>> GetAsync(
+        ShipmentId id,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(Result<ShipmentSummary>.Failure(
+            "fulfillment.shipment-not-found",
+            "找不到指定的出貨單。"));
+
+    public Task<Result<IReadOnlyList<ShipmentSummary>>> GetByOrderAsync(
+        OrderId orderId,
+        CancellationToken cancellationToken) =>
+        Task.FromResult<Result<IReadOnlyList<ShipmentSummary>>>(
+            _byOrder.TryGetValue(orderId, out var shipments) ? shipments.ToArray() : []);
+
+    public Task<Result<ShipmentPage>> ListAsync(
+        AdminShipmentListRequest request,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(Result<ShipmentPage>.Success(new ShipmentPage([], null)));
+}
+
+internal sealed class RecordingSagaTimerScheduler : ISagaTimerScheduler
+{
+    public List<(string SagaType, string SagaId, DateTimeOffset FireAt)> Scheduled { get; } = [];
+
+    public Task<Guid> ScheduleAsync(
+        string sagaType,
+        string sagaId,
+        DateTimeOffset fireAt,
+        string payload,
+        TenantId tenantId,
+        CancellationToken cancellationToken)
+    {
+        Scheduled.Add((sagaType, sagaId, fireAt));
+        return Task.FromResult(Guid.CreateVersion7());
+    }
+
+    public Task CancelAsync(Guid timerId, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public Task CancelAllForSagaAsync(
+        string sagaType,
+        string sagaId,
+        CancellationToken cancellationToken) => Task.CompletedTask;
 }

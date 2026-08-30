@@ -49,6 +49,7 @@ public sealed class M1b3SeamsBusinessRuleTests
                 new DateOnly(2026, 9, 12),
                 Now.AddDays(5),
                 null,
+                null,
                 null),
             Now).Value;
         campaign.AddOffer(

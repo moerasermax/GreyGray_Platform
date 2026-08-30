@@ -125,6 +125,30 @@ public sealed class CampaignAndPricingTests
         reactivated.Value.IsActive.ShouldBeTrue();
     }
 
+    [Fact(DisplayName = "ADR-027：漲價詢問逾時每團可設，沒填就是 null，讓呼叫端自己套用技術預設值")]
+    public void Price_inquiry_timeout_is_optional_and_flows_into_summary()
+    {
+        var withoutOverride = CampaignAggregate.CreateDraft(
+            CampaignId.New(),
+            TenantId.Default,
+            ValidDraft() with { PriceInquiryTimeoutMinutes = null },
+            Now).Value;
+        withoutOverride.ToSummary().PriceInquiryTimeout.ShouldBeNull();
+
+        var withOverride = CampaignAggregate.CreateDraft(
+            CampaignId.New(),
+            TenantId.Default,
+            ValidDraft() with { PriceInquiryTimeoutMinutes = 90 },
+            Now).Value;
+        withOverride.ToSummary().PriceInquiryTimeout.ShouldBe(TimeSpan.FromMinutes(90));
+
+        CampaignAggregate.CreateDraft(
+            CampaignId.New(),
+            TenantId.Default,
+            ValidDraft() with { PriceInquiryTimeoutMinutes = 0 },
+            Now).Error.Code.ShouldBe("campaign.invalid-price-inquiry-timeout");
+    }
+
     [Theory]
     [InlineData(DeliveryMethod.ConvenienceStore, 6000)]
     [InlineData(DeliveryMethod.HomeDelivery, 12000)]
@@ -239,6 +263,7 @@ public sealed class CampaignAndPricingTests
             new DateOnly(2026, 10, 1),
             new DateOnly(2026, 10, 8),
             Now.AddDays(20),
+            null,
             "採購期間限定商品",
             "https://example.invalid/campaign.jpg");
 

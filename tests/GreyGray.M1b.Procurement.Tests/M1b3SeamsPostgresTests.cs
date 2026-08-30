@@ -18,6 +18,7 @@ using GreyGray.Shared.Kernel;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Shouldly;
+using System.Text.Json;
 using Testcontainers.PostgreSql;
 using Xunit;
 using FulfillmentMode = GreyGray.Modules.Catalog.Contracts.FulfillmentMode;
@@ -89,6 +90,16 @@ public sealed class M1b3SeamsPostgresTests : IAsyncLifetime
                 item => item.Id == firstId,
                 cancellationToken)).ReceivedAt.ShouldBe(Now);
 
+            // 第七波（BE-19）：GoodsReceived.v1 加了 OrderLineId，
+            // 這是「帶回入庫後訂單自動轉待出貨」斷線的接續前提——證明值真的帶出去了，
+            // 不是只在程式碼裡看起來會帶。
+            var goodsReceivedMessage = await dbContext.Set<OutboxMessage>().SingleAsync(
+                message => message.EventType == GoodsReceived.EventType,
+                cancellationToken);
+            using var payloadDocument = JsonDocument.Parse(goodsReceivedMessage.Payload);
+            payloadDocument.RootElement.GetProperty("orderLineId").GetString()
+                .ShouldBe(first.OrderLineId.Value.ToString("N"));
+
             await InstallRejectingOutboxTriggerAsync(
                 connectionString,
                 GoodsReceived.EventType,
@@ -130,6 +141,7 @@ public sealed class M1b3SeamsPostgresTests : IAsyncLifetime
                     new DateOnly(2026, 9, 10),
                     new DateOnly(2026, 9, 12),
                     Now.AddDays(5),
+                    null,
                     null,
                     null),
                 Now).Value;

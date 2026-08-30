@@ -1,9 +1,11 @@
 using GreyGray.Modules.Campaign.Contracts;
 using GreyGray.Modules.Checkout.Contracts;
+using GreyGray.Modules.Fulfillment.Contracts;
 using GreyGray.Modules.Identity.Contracts;
 using GreyGray.Modules.Ordering.Contracts;
 using GreyGray.Modules.Pricing.Contracts;
 using GreyGray.Platform.Abstractions.Messaging;
+using GreyGray.Platform.Abstractions.Saga;
 using GreyGray.Shared.Kernel;
 
 namespace GreyGray.Modules.Ordering.Core;
@@ -14,9 +16,21 @@ internal sealed class OrderingApplicationService(
     IEventPublisher eventPublisher,
     IPricingQuotation pricing,
     IClock clock,
-    ICorrelationContext correlationContext)
-    : IOrderingApplication, IOrderingGoodsReceipt, IOrderQuery
+    ICorrelationContext correlationContext,
+    IFulfillmentQuery? fulfillmentQuery = null,
+    ISagaTimerScheduler? timerScheduler = null,
+    TimeSpan appraisalPeriod = default)
+    : IOrderingApplication, IOrderingGoodsReceipt, IOrderQuery, IOrderingShipmentDelivery
 {
+    /// <summary>鑑賞期 Saga timer 的 saga type（ADR-025）。</summary>
+    internal const string AppraisalSagaType = "ordering.appraisal-period";
+
+    /// <summary>
+    /// 儲值金退款要到 M3 才開放（ADR-023 決定二／ADR-024 後半）。整條退款流程已經實作完成，
+    /// 缺的只有客人主動加值入口與到期規則；M3 開放時只需把這個常數改為 <c>true</c>。
+    /// </summary>
+    private const bool StoredValueRefundOpen = false;
+
     public async Task<Result<OrderView>> CreateFromCheckoutAsync(
         CheckoutCompleted checkout,
         CancellationToken cancellationToken)
@@ -181,6 +195,12 @@ internal sealed class OrderingApplicationService(
                 "取消原因必須是 1 到 200 個字元。");
         }
 
+        var storedValueGuard = GuardStoredValueRefund(refundTo);
+        if (storedValueGuard is not null)
+        {
+            return Result<OrderView>.Failure(storedValueGuard);
+        }
+
         var order = await orders.GetAsync(
             correlationContext.TenantId,
             orderId,
@@ -219,6 +239,12 @@ internal sealed class OrderingApplicationService(
             return Result<OrderView>.Failure(
                 "ordering.cancel-reason-invalid",
                 "取消原因必須是 1 到 200 個字元。");
+        }
+
+        var storedValueGuard = GuardStoredValueRefund(refundTo);
+        if (storedValueGuard is not null)
+        {
+            return Result<OrderView>.Failure(storedValueGuard);
         }
 
         var order = await orders.GetAsync(
@@ -456,6 +482,99 @@ internal sealed class OrderingApplicationService(
             cancellationToken);
         return found.Select(order => order.ToView()).ToArray();
     }
+
+    /// <summary>
+    /// Fulfillment 出貨單簽收後呼叫。一張訂單可能對應多個出貨單（N:M），
+    /// 必須全部簽收才起算鑑賞期，所以每次都要重新問 Fulfillment 那張訂單目前掛的全部出貨單。
+    /// </summary>
+    public async Task<Result> RecordShipmentDeliveredAsync(
+        IReadOnlyList<OrderId> orderIds,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(orderIds);
+        ArgumentNullException.ThrowIfNull(fulfillmentQuery);
+        ArgumentNullException.ThrowIfNull(timerScheduler);
+
+        var scheduled = false;
+        foreach (var orderId in orderIds.Distinct())
+        {
+            var order = await orders.GetAsync(correlationContext.TenantId, orderId, cancellationToken);
+            if (order is null)
+            {
+                continue;
+            }
+
+            var shipments = await fulfillmentQuery.GetByOrderAsync(orderId, cancellationToken);
+            if (shipments.IsFailure)
+            {
+                return Result.Failure(shipments.Error);
+            }
+
+            var allDelivered = shipments.Value.Count > 0
+                && shipments.Value.All(shipment => shipment.Status == ShipmentStatus.Delivered);
+            if (!allDelivered)
+            {
+                continue;
+            }
+
+            var appraisalDueAt = clock.UtcNow + appraisalPeriod;
+            var transition = order.RecordAllShipmentsDelivered(appraisalDueAt);
+            if (transition != ShipmentDeliveryTransition.AppraisalScheduled)
+            {
+                continue;
+            }
+
+            await timerScheduler.ScheduleAsync(
+                AppraisalSagaType,
+                order.Id.ToString(),
+                appraisalDueAt,
+                "{}",
+                order.TenantId,
+                cancellationToken);
+            scheduled = true;
+        }
+
+        if (scheduled)
+        {
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        return Result.Success();
+    }
+
+    /// <summary>鑑賞期 Saga timer 屆滿時呼叫；孤兒 timer（訂單不存在或狀態不對）安靜 no-op。</summary>
+    internal async Task ResolveAppraisalTimeoutAsync(
+        OrderId orderId,
+        CancellationToken cancellationToken)
+    {
+        var order = await orders.GetAsync(correlationContext.TenantId, orderId, cancellationToken);
+        if (order is null)
+        {
+            return;
+        }
+
+        var transition = order.CompleteAfterAppraisal();
+        if (transition != AppraisalTimeoutTransition.Completed)
+        {
+            return;
+        }
+
+        await eventPublisher.PublishAsync(
+            new OrderCompleted(
+                Guid.CreateVersion7(),
+                clock.UtcNow,
+                order.TenantId,
+                order.Id,
+                order.GoodsTotal,
+                order.ShippingFee),
+            cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+    }
+
+    private static Error? GuardStoredValueRefund(RefundDestination refundTo) =>
+        refundTo == RefundDestination.StoredValue && !StoredValueRefundOpen
+            ? new Error("ordering.stored-value-refund-not-available", "儲值金退款要到 M3 才開放，請改選原路退款。")
+            : null;
 
     private async Task PublishCancellationAsync(
         Order order,

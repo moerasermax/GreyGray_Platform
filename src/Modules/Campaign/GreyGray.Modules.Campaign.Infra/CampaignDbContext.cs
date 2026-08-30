@@ -59,6 +59,8 @@ internal sealed class CampaignDbContext(DbContextOptions<CampaignDbContext> opti
             .HasColumnName("closes_at")
             .HasColumnType("timestamp with time zone")
             .IsRequired();
+        entity.Property(campaign => campaign.PriceInquiryTimeoutMinutes)
+            .HasColumnName("price_inquiry_timeout_minutes");
         entity.Property(campaign => campaign.Status)
             .HasColumnName("status")
             .HasConversion<short>()

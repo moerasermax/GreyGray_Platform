@@ -1,8 +1,12 @@
+using System.Text.Json;
 using GreyGray.Modules.Ordering.Contracts;
 using GreyGray.Modules.Payment.Contracts;
 using GreyGray.Modules.Payment.Core;
+using GreyGray.Platform.Abstractions.Audit;
 using GreyGray.Platform.Abstractions.Messaging;
 using GreyGray.Shared.Kernel;
+using GreyGray.Shared.Kernel.Json;
+using PaymentEntity = GreyGray.Modules.Payment.Core.Payment;
 
 namespace GreyGray.Modules.Payment.Infra;
 
@@ -27,7 +31,9 @@ internal sealed class PaymentRequestedHandler : IIntegrationEventHandler<Payment
 internal sealed class RefundRequestedHandler(
     IPaymentRepository payments,
     IEventPublisher eventPublisher,
-    IClock clock) : IIntegrationEventHandler<RefundRequested>
+    IEcpayGateway ecpay,
+    IClock clock,
+    IAuditWriter? auditWriter) : IIntegrationEventHandler<RefundRequested>
 {
     public async Task HandleAsync(RefundRequested @event, CancellationToken cancellationToken)
     {
@@ -39,8 +45,8 @@ internal sealed class RefundRequestedHandler(
 
         if (@event.Destination == RefundDestination.OriginalPaymentMethod)
         {
-            throw new NotSupportedException(
-                "綠界原路退款尚未具備凍結的 provider API 與必要設定；不得把退款要求標成成功。");
+            await HandleOriginalPaymentMethodAsync(@event, payment, cancellationToken);
+            return;
         }
 
         if (@event.Destination != RefundDestination.StoredValue)
@@ -65,6 +71,122 @@ internal sealed class RefundRequestedHandler(
                 payment.Provider,
                 @event.Amount,
                 @event.Destination),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// 綠界原路退刷（ADR-024）。<b>累計上限要先在本地驗過才能呼叫綠界</b>——
+    /// 若順序反過來，綠界退了錢但本地 <see cref="PaymentEntity.Refund"/> 事後才拒絕，
+    /// 交易回滾會讓這筆訊息被重送，下一次又會再呼叫一次綠界，變成真的重複退款。
+    /// </summary>
+    private async Task HandleOriginalPaymentMethodAsync(
+        RefundRequested @event,
+        PaymentEntity payment,
+        CancellationToken cancellationToken)
+    {
+        var projectedRefundedMinor = checked(payment.RefundedAmountMinor + @event.Amount.AmountMinor);
+        if (@event.Amount.Currency != Currency.TWD ||
+            @event.Amount.IsNegative ||
+            @event.Amount.IsZero ||
+            projectedRefundedMinor > payment.Amount.AmountMinor)
+        {
+            await WriteAuditAsync(
+                @event,
+                payment,
+                succeeded: false,
+                rtnCode: null,
+                rtnMsg: "退款金額超過原付款可退餘額或金額無效，未呼叫綠界。",
+                rawResponse: null,
+                cancellationToken);
+            return;
+        }
+
+        if (payment.ProviderTransactionId is null)
+        {
+            // 不該發生：Captured／PartiallyRefunded 狀態下一定已經有綠界交易編號。
+            throw new InvalidOperationException(
+                $"付款 {payment.Id} 已收款但缺少綠界交易編號，無法發動退刷。");
+        }
+
+        var refundResult = await ecpay.RequestRefundAsync(
+            payment.MerchantTradeNo,
+            payment.ProviderTransactionId,
+            @event.Amount,
+            cancellationToken);
+
+        await WriteAuditAsync(
+            @event,
+            payment,
+            refundResult.Succeeded,
+            refundResult.RtnCode,
+            refundResult.RtnMsg,
+            refundResult.RawResponse,
+            cancellationToken);
+
+        if (!refundResult.Succeeded)
+        {
+            // 業務失敗（綠界拒絕退款）：已留痕待客服查證，不 throw——
+            // throw 會讓訊息無限重送，對一個綠界已經明確拒絕的退款沒有意義。
+            return;
+        }
+
+        if (!payment.Refund(@event.Amount))
+        {
+            return;
+        }
+
+        await eventPublisher.PublishAsync(
+            new PaymentRefunded(
+                Guid.CreateVersion7(),
+                clock.UtcNow,
+                @event.TenantId,
+                new RefundId(@event.EventId),
+                payment.Id,
+                @event.OrderId,
+                @event.LineId,
+                payment.Provider,
+                @event.Amount,
+                @event.Destination),
+            cancellationToken);
+    }
+
+    private async Task WriteAuditAsync(
+        RefundRequested @event,
+        PaymentEntity payment,
+        bool succeeded,
+        string? rtnCode,
+        string? rtnMsg,
+        string? rawResponse,
+        CancellationToken cancellationToken)
+    {
+        if (auditWriter is null)
+        {
+            return;
+        }
+
+        var payload = JsonSerializer.Serialize(
+            new
+            {
+                succeeded,
+                rtnCode,
+                rtnMsg,
+                rawResponse,
+                amountMinor = @event.Amount.AmountMinor,
+                currency = @event.Amount.Currency.ToString(),
+                merchantTradeNo = payment.MerchantTradeNo,
+                providerTransactionId = payment.ProviderTransactionId,
+            },
+            GreyGrayJson.Options);
+
+        await auditWriter.WriteAsync(
+            AuditCategory.ExternalIntegration,
+            succeeded ? "payment.ecpay.refund.succeeded" : "payment.ecpay.refund.failed",
+            "Payment",
+            payment.Id.ToString(),
+            actorId: null,
+            subjectId: null,
+            reason: @event.Reason,
+            payloadJson: payload,
             cancellationToken);
     }
 }

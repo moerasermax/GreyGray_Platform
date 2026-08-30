@@ -549,6 +549,7 @@ internal sealed class CampaignService(
             campaign.DepartAt,
             campaign.ReturnAt,
             campaign.ClosesAt,
+            campaign.PriceInquiryTimeoutMinutes,
             campaign.Status,
             orderCount,
             campaign.TripCostTotal,

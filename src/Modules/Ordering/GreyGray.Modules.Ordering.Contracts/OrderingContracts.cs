@@ -255,6 +255,18 @@ public interface IOrderingGoodsReceipt
         CancellationToken cancellationToken);
 }
 
+/// <summary>出貨單簽收 command 的最小 input port。</summary>
+public interface IOrderingShipmentDelivery
+{
+    /// <summary>
+    /// Fulfillment 出貨單簽收後呼叫。<paramref name="orderIds"/> 是該出貨單涵蓋的訂單——
+    /// 一張訂單可能對應多個出貨單（N:M），全部簽收之後才起算鑑賞期（ADR-025）。
+    /// </summary>
+    Task<Result> RecordShipmentDeliveredAsync(
+        IReadOnlyList<OrderId> orderIds,
+        CancellationToken cancellationToken);
+}
+
 // ── 對外事件 ─────────────────────────────────────────────────────────────
 
 public sealed record OrderPlaced(

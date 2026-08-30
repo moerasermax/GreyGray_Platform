@@ -318,8 +318,20 @@ internal sealed class EmptyOrderQuery : IOrderQuery
 
 internal sealed class EmptyCampaignQuery : ICampaignQuery
 {
+    /// <summary>
+    /// 這個測試不驗證漲價詢問逾時的來源，只需要 <c>ReportPriceChangedAsync</c> 查得到團——
+    /// 回傳沒有指定 <see cref="CampaignSummary.PriceInquiryTimeout"/> 的最小摘要，
+    /// 讓呼叫端照常落回技術預設值（ADR-027）。
+    /// </summary>
     public Task<Result<CampaignSummary>> GetAsync(CampaignId id, CancellationToken cancellationToken) =>
-        Task.FromResult(Result<CampaignSummary>.Failure("campaign.not-found", "找不到開團。"));
+        Task.FromResult(Result<CampaignSummary>.Success(new CampaignSummary(
+            id,
+            "測試開團",
+            "測試地點",
+            new DateOnly(2026, 9, 1),
+            new DateOnly(2026, 9, 5),
+            new DateTimeOffset(2026, 9, 10, 0, 0, 0, TimeSpan.Zero),
+            CampaignStatus.Closed)));
 
     public Task<Result<CampaignOffer>> GetOfferAsync(
         CampaignOfferId id,

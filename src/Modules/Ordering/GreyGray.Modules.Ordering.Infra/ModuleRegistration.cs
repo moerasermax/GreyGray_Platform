@@ -1,12 +1,15 @@
 using GreyGray.Modules.Checkout.Contracts;
 using GreyGray.Modules.Campaign.Contracts;
+using GreyGray.Modules.Fulfillment.Contracts;
 using GreyGray.Modules.Ordering.Contracts;
 using GreyGray.Modules.Ordering.Core;
 using GreyGray.Modules.Payment.Contracts;
 using GreyGray.Modules.Procurement.Contracts;
+using GreyGray.Platform.Abstractions.Saga;
 using GreyGray.Platform.Messaging;
 using GreyGray.Platform.Modules;
 using GreyGray.Platform.Outbox;
+using GreyGray.Platform.Saga;
 using GreyGray.Shared.Kernel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -52,6 +55,9 @@ internal sealed class OrderingModule : IModuleRegistration
             options.UseNpgsql(connectionString);
         });
 
+        var appraisalPeriod = TimeSpan.FromDays(
+            configuration.GetValue("Ordering:AppraisalPeriodDays", 7));
+
         services.TryAddSingleton<EventTypeRegistry>();
         services.AddScoped<OrderingApplicationService>(serviceProvider =>
         {
@@ -66,11 +72,22 @@ internal sealed class OrderingModule : IModuleRegistration
                 publisher,
                 serviceProvider.GetRequiredService<Modules.Pricing.Contracts.IPricingQuotation>(),
                 serviceProvider.GetRequiredService<IClock>(),
-                serviceProvider.GetRequiredService<ICorrelationContext>());
+                serviceProvider.GetRequiredService<ICorrelationContext>(),
+                // Storefront／Worker 目前不掛 Fulfillment 模組（Worker/Program.cs 明講
+                // 「Fulfillment 等後續 M1b 模組會在各自波次納入」），這裡不能用
+                // GetRequiredService——那會讓與鑑賞期無關的既有 Ordering 事件 handler
+                // （CheckoutCompleted、PaymentCaptured…）在那兩個 host 直接啟動失敗。
+                serviceProvider.GetService<IFulfillmentQuery>(),
+                new SagaTimerScheduler<OrderingDbContext>(
+                    dbContext,
+                    serviceProvider.GetRequiredService<IClock>()),
+                appraisalPeriod);
         });
         services.AddScoped<IOrderingApplication>(serviceProvider =>
             serviceProvider.GetRequiredService<OrderingApplicationService>());
         services.AddScoped<IOrderingGoodsReceipt>(serviceProvider =>
+            serviceProvider.GetRequiredService<OrderingApplicationService>());
+        services.AddScoped<IOrderingShipmentDelivery>(serviceProvider =>
             serviceProvider.GetRequiredService<OrderingApplicationService>());
         services.AddScoped<IOrderQuery>(serviceProvider =>
             serviceProvider.GetRequiredService<OrderingApplicationService>());
@@ -96,6 +113,12 @@ internal sealed class OrderingModule : IModuleRegistration
             ItemPurchased,
             ItemPurchasedHandler,
             OrderingDbContext>();
+        services.AddIdempotentIntegrationEventHandler<
+            ShipmentDelivered,
+            ShipmentDeliveredHandler,
+            OrderingDbContext>();
+
+        services.AddSagaTimeoutHandler<AppraisalPeriodTimeoutHandler>();
 
         return services;
     }

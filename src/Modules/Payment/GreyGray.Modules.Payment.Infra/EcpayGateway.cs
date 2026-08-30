@@ -10,7 +10,8 @@ namespace GreyGray.Modules.Payment.Infra;
 internal sealed class EcpayGateway(
     EcpaySettings settings,
     string hashKey,
-    string hashIv) : IEcpayGateway
+    string hashIv,
+    HttpClient httpClient) : IEcpayGateway
 {
     public IReadOnlyDictionary<string, string> CreateCheckoutFields(
         string merchantTradeNo,
@@ -49,6 +50,61 @@ internal sealed class EcpayGateway(
         var suppliedBytes = Encoding.ASCII.GetBytes(supplied.ToUpperInvariant());
         var expectedBytes = Encoding.ASCII.GetBytes(expected);
         return CryptographicOperations.FixedTimeEquals(suppliedBytes, expectedBytes);
+    }
+
+    public async Task<EcpayRefundResult> RequestRefundAsync(
+        string merchantTradeNo,
+        string providerTransactionId,
+        Money amount,
+        CancellationToken cancellationToken)
+    {
+        if (amount.Currency != Currency.TWD || amount.IsNegative || amount.IsZero)
+        {
+            throw new InvalidOperationException("退款金額必須是大於零的新台幣。");
+        }
+
+        var fields = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["MerchantID"] = settings.MerchantId,
+            ["MerchantTradeNo"] = merchantTradeNo,
+            ["TradeNo"] = providerTransactionId,
+            ["Action"] = "R",
+            ["TotalAmount"] = (amount.AmountMinor / Currency.TWD.MinorUnitsPerUnit())
+                .ToString(CultureInfo.InvariantCulture),
+        };
+        fields["CheckMacValue"] = ComputeCheckMacValue(fields, hashKey, hashIv);
+
+        using var response = await httpClient.PostAsync(
+            settings.CreditDetailUrl,
+            new FormUrlEncodedContent(fields),
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            // 非 2xx 是技術性失敗（連線、逾時、綠界端錯誤），不是業務失敗——
+            // 讓例外往外拋，交給 IdempotentIntegrationEventHandler 回滾＋讓訊息可重送。
+            throw new HttpRequestException(
+                $"綠界退刷 API 回應非 2xx 狀態碼：{(int)response.StatusCode}。內容：{body}");
+        }
+
+        var parsed = ParseFormEncodedResponse(body);
+        var rtnCode = parsed.GetValueOrDefault("RtnCode", string.Empty);
+        var rtnMsg = parsed.GetValueOrDefault("RtnMsg", string.Empty);
+        return new EcpayRefundResult(rtnCode == "1", rtnCode, rtnMsg, body);
+    }
+
+    private static IReadOnlyDictionary<string, string> ParseFormEncodedResponse(string body)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var pair in body.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = pair.Split('=', 2);
+            var key = Uri.UnescapeDataString(parts[0]);
+            result[key] = parts.Length > 1 ? Uri.UnescapeDataString(parts[1]) : string.Empty;
+        }
+
+        return result;
     }
 
     internal static string ComputeCheckMacValue(

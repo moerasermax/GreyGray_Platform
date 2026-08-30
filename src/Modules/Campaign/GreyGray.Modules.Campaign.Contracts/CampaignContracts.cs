@@ -69,6 +69,12 @@ public sealed record CampaignSummary(
 {
     /// <summary>已登錄的旅程成本合計。回國前是 0。</summary>
     public Money? TripCostTotal { get; init; }
+
+    /// <summary>
+    /// 現場漲價詢問的逾時（ADR-027，每團可設）。
+    /// <c>null</c> 表示這個團沒有指定，呼叫端要自己套用技術預設值（現在是 2 小時）。
+    /// </summary>
+    public TimeSpan? PriceInquiryTimeout { get; init; }
 }
 
 /// <summary>
@@ -114,12 +120,17 @@ public sealed record StorefrontCampaignDetail(
     IReadOnlyList<StorefrontCampaignOffer> Offers);
 
 /// <summary>後台建立或修改草稿的輸入。</summary>
+/// <param name="PriceInquiryTimeoutMinutes">
+/// 現場漲價詢問的逾時分鐘數（ADR-027，每團可設）。
+/// 沒填（<c>null</c>）就用技術預設值 2 小時——契約與 UI 都要把這件事講清楚。
+/// </param>
 public sealed record CampaignDraftInput(
     string Title,
     string Destination,
     DateOnly DepartAt,
     DateOnly ReturnAt,
     DateTimeOffset ClosesAt,
+    int? PriceInquiryTimeoutMinutes,
     string? Description,
     string? CoverImageUrl);
 
@@ -131,6 +142,7 @@ public sealed record AdminCampaignView(
     DateOnly DepartAt,
     DateOnly ReturnAt,
     DateTimeOffset ClosesAt,
+    int? PriceInquiryTimeoutMinutes,
     CampaignStatus Status,
     int OrderCount,
     Money? TripCostTotal,

@@ -1,4 +1,5 @@
 using GreyGray.Modules.Checkout.Contracts;
+using GreyGray.Modules.Fulfillment.Contracts;
 using GreyGray.Modules.Ordering.Contracts;
 using GreyGray.Modules.Payment.Contracts;
 using GreyGray.Modules.Procurement.Contracts;
@@ -99,6 +100,24 @@ internal sealed class ItemPurchasedHandler(IOrderingApplication ordering)
         {
             throw new InvalidOperationException(
                 $"ItemPurchased 無法更新訂單：{result.Error.Code} {result.Error.Message}");
+        }
+    }
+}
+
+internal sealed class ShipmentDeliveredHandler(IOrderingShipmentDelivery ordering)
+    : IIntegrationEventHandler<ShipmentDelivered>
+{
+    public async Task HandleAsync(
+        ShipmentDelivered @event,
+        CancellationToken cancellationToken)
+    {
+        var result = await ordering.RecordShipmentDeliveredAsync(
+            @event.OrderIds,
+            cancellationToken);
+        if (result.IsFailure)
+        {
+            throw new InvalidOperationException(
+                $"ShipmentDelivered 無法更新訂單：{result.Error.Code} {result.Error.Message}");
         }
     }
 }

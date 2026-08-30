@@ -43,6 +43,26 @@ internal static class M1bFulfillmentEndpoints
                 : BffHttp.Problem(result.Error);
         }).AddEndpointFilter(new M1aEndpoints.StaffRoleFilter(StaffRole.Operator));
 
+        // 單筆查詢（第七波，契約由 BE-19 加、接線由整合者代為套用：INT-5）。
+        // 沒有這一條時前端只能撈 limit:100 的列表再自己過濾，出貨單超過 100 張就會白頁。
+        api.MapGet("/shipments/{shipmentId}", async (
+            string shipmentId,
+            IFulfillmentQuery fulfillment,
+            CancellationToken cancellationToken) =>
+        {
+            if (!M1aEndpoints.TryId(shipmentId, out var parsed))
+            {
+                return BffHttp.Problem(new Error(
+                    "fulfillment.shipment-not-found",
+                    "找不到指定的出貨單。"));
+            }
+
+            var result = await fulfillment.GetAsync(new ShipmentId(parsed), cancellationToken);
+            return result.IsSuccess
+                ? Results.Ok(result.Value)
+                : BffHttp.Problem(result.Error);
+        }).AddEndpointFilter(new M1aEndpoints.StaffRoleFilter(StaffRole.Operator));
+
         api.MapPost("/shipments", async (
             CreateShipmentInput input,
             HttpContext context,

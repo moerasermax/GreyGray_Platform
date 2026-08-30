@@ -114,6 +114,9 @@ internal sealed class Order
 
     public DateTimeOffset? PaymentDueAt { get; private set; }
 
+    /// <summary>鑑賞期到期時間。訂單掛的出貨單全部簽收後才設定（ADR-025），屆滿轉 <see cref="OrderStatus.Completed"/>。</summary>
+    public DateTimeOffset? AppraisalDueAt { get; private set; }
+
     public DateTimeOffset? CancelledAt { get; private set; }
 
     public string? CancellationReason { get; private set; }
@@ -411,6 +414,42 @@ internal sealed class Order
         return GoodsReceivedTransition.ReadyToShip;
     }
 
+    /// <summary>
+    /// Fulfillment 回報「這張訂單掛的出貨單全部簽收」。一張訂單可能對應多個出貨單（N:M），
+    /// 呼叫端必須自己先確認全部簽收——這裡只負責狀態轉移與鑑賞期到期時間的冪等記錄。
+    /// </summary>
+    public ShipmentDeliveryTransition RecordAllShipmentsDelivered(DateTimeOffset appraisalDueAt)
+    {
+        if (AppraisalDueAt is not null)
+        {
+            return ShipmentDeliveryTransition.Ignored;
+        }
+
+        if (Status != OrderStatus.ReadyToShip)
+        {
+            return ShipmentDeliveryTransition.Ignored;
+        }
+
+        Status = OrderStatus.Shipped;
+        AppraisalDueAt = appraisalDueAt;
+        return ShipmentDeliveryTransition.AppraisalScheduled;
+    }
+
+    /// <summary>
+    /// 鑑賞期 Saga Timer 屆滿時呼叫。訂單若在鑑賞期內被取消，狀態已不是
+    /// <see cref="OrderStatus.Shipped"/>，這裡會安靜忽略，不會把它拉回 Completed。
+    /// </summary>
+    public AppraisalTimeoutTransition CompleteAfterAppraisal()
+    {
+        if (Status != OrderStatus.Shipped || AppraisalDueAt is null)
+        {
+            return AppraisalTimeoutTransition.Ignored;
+        }
+
+        Status = OrderStatus.Completed;
+        return AppraisalTimeoutTransition.Completed;
+    }
+
     public OrderView ToView() =>
         new(
             Id,
@@ -495,6 +534,18 @@ internal enum GoodsReceivedTransition
     AlreadyRecorded = 0,
     Recorded = 1,
     ReadyToShip = 2,
+}
+
+internal enum ShipmentDeliveryTransition
+{
+    Ignored = 0,
+    AppraisalScheduled = 1,
+}
+
+internal enum AppraisalTimeoutTransition
+{
+    Ignored = 0,
+    Completed = 1,
 }
 
 internal sealed class OrderLine

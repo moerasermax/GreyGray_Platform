@@ -26,9 +26,8 @@ internal sealed class ProcurementApplicationService(
         IProcurementQuery
 {
     /// <summary>
-    /// 現場漲價詢問的逾時期限。<b>業務沒有訂出具體時數</b>
-    /// （docs/02「逾期未付款 Saga Timer」的 N 小時同樣沒訂過），
-    /// 這是技術預設值，需要人拍板正式數字，不是已決定的業務規則。
+    /// 現場漲價詢問的逾時期限的技術預設值。ADR-027 已拍板改成每團可設，
+    /// 這個常數只在該團的 <see cref="CampaignSummary.PriceInquiryTimeout"/> 是 <c>null</c> 時使用。
     /// </summary>
     private static readonly TimeSpan PriceInquiryTimeout = TimeSpan.FromHours(2);
 
@@ -207,7 +206,8 @@ internal sealed class ProcurementApplicationService(
                 item.SkuId,
                 item.QuantityPurchased,
                 actualPaid.Booking,
-                LotSource.OverseasPurchase),
+                LotSource.OverseasPurchase,
+                item.OrderLineId),
             cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return await ToContractAsync(item, cancellationToken);
@@ -305,8 +305,14 @@ internal sealed class ProcurementApplicationService(
             return Result<Inquiry>.Failure(started.Error);
         }
 
+        var campaign = await campaigns.GetAsync(item.CampaignId, cancellationToken);
+        if (campaign.IsFailure)
+        {
+            return Result<Inquiry>.Failure(campaign.Error);
+        }
+
         var occurredAt = clock.UtcNow;
-        var timeoutAt = occurredAt + PriceInquiryTimeout;
+        var timeoutAt = occurredAt + (campaign.Value.PriceInquiryTimeout ?? PriceInquiryTimeout);
         var inquiry = InquiryAggregate.Open(
             InquiryId.New(),
             item.TenantId,

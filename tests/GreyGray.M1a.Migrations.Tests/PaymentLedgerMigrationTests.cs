@@ -233,6 +233,7 @@ public sealed class PaymentLedgerMigrationTests : IAsyncLifetime
     private static EcpaySettings Settings() => new(
         "3002607",
         new Uri("https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5"),
+        new Uri("https://payment-stage.ecpay.com.tw/CreditDetail/DoAction"),
         TimeSpan.FromMinutes(30),
         TimeSpan.FromMinutes(20),
         false);
@@ -350,6 +351,13 @@ public sealed class PaymentLedgerMigrationTests : IAsyncLifetime
             DateTimeOffset createdAt) => new Dictionary<string, string>();
 
         public bool VerifyCallback(IReadOnlyDictionary<string, string> fields) => true;
+
+        public Task<EcpayRefundResult> RequestRefundAsync(
+            string merchantTradeNo,
+            string providerTransactionId,
+            Money amount,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException("這個樁只涵蓋 migration 測試會用到的路徑，不涉及退款。");
     }
 
     private sealed class NoopPublisher : IEventPublisher

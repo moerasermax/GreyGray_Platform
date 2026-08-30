@@ -1,6 +1,7 @@
 using GreyGray.Modules.Payment.Contracts;
 using GreyGray.Modules.Payment.Core;
 using GreyGray.Modules.Ordering.Contracts;
+using GreyGray.Platform.Abstractions.Audit;
 using GreyGray.Platform.Abstractions.Messaging;
 using GreyGray.Platform.Messaging;
 using GreyGray.Platform.Modules;
@@ -47,10 +48,12 @@ internal sealed class PaymentModule : IModuleRegistration
 
         services.TryAddSingleton<EventTypeRegistry>();
         services.AddScoped<IPaymentRepository, PaymentRepository>();
+        services.AddHttpClient("Ecpay", client => client.Timeout = TimeSpan.FromSeconds(30));
         services.AddScoped<IEcpayGateway>(provider =>
         {
             var (settings, hashKey, hashIv) = ReadEcpaySettings(configuration);
-            return new EcpayGateway(settings, hashKey, hashIv);
+            var httpClient = provider.GetRequiredService<IHttpClientFactory>().CreateClient("Ecpay");
+            return new EcpayGateway(settings, hashKey, hashIv, httpClient);
         });
         services.AddScoped(provider => ReadEcpaySettings(configuration).Settings);
         services.AddScoped<PaymentApplicationService>(provider =>
@@ -81,7 +84,9 @@ internal sealed class PaymentModule : IModuleRegistration
                     dbContext,
                     provider.GetRequiredService<ICorrelationContext>(),
                     provider.GetRequiredService<EventTypeRegistry>()),
-                provider.GetRequiredService<IClock>());
+                provider.GetRequiredService<IEcpayGateway>(),
+                provider.GetRequiredService<IClock>(),
+                provider.GetService<IAuditWriter>());
         });
         services.AddIdempotentIntegrationEventHandler<
             PaymentRequested,
@@ -107,12 +112,23 @@ internal sealed class PaymentModule : IModuleRegistration
             throw new InvalidOperationException("Payment:ECPay:CheckoutUrl 必須是絕對網址。");
         }
 
+        // 退刷／關帳 API（DoAction）：正式站與 aio 導轉頁不同網域，要另一個設定鍵。
+        // 綠界官方文件明講測試環境「因無法提供實際授權，故無法使用此 API」——
+        // stage 網址只是給簽章／串接層面驗證用，不代表能在 stage 真的退成功。
+        var creditDetail = configuration["Payment:ECPay:CreditDetailUrl"] ??
+            "https://payment-stage.ecpay.com.tw/CreditDetail/DoAction";
+        if (!Uri.TryCreate(creditDetail, UriKind.Absolute, out var creditDetailUrl))
+        {
+            throw new InvalidOperationException("Payment:ECPay:CreditDetailUrl 必須是絕對網址。");
+        }
+
         var initiationMinutes = configuration.GetValue("Payment:ECPay:InitiationLifetimeMinutes", 30);
         var callbackAgeMinutes = configuration.GetValue("Payment:ECPay:CallbackMaxAgeMinutes", 20);
         var allowSimulated = configuration.GetValue("Payment:ECPay:AllowSimulatedPaid", false);
         return (new EcpaySettings(
             merchantId,
             checkoutUrl,
+            creditDetailUrl,
             TimeSpan.FromMinutes(initiationMinutes),
             TimeSpan.FromMinutes(callbackAgeMinutes),
             allowSimulated), hashKey, hashIv);

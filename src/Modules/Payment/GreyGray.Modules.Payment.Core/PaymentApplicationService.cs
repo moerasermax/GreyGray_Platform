@@ -9,9 +9,16 @@ namespace GreyGray.Modules.Payment.Core;
 internal sealed record EcpaySettings(
     string MerchantId,
     Uri CheckoutUrl,
+    Uri CreditDetailUrl,
     TimeSpan InitiationLifetime,
     TimeSpan CallbackMaxAge,
     bool AllowSimulatedPaid);
+
+/// <summary>
+/// 綠界信用卡退刷（<c>/CreditDetail/DoAction</c>，<c>Action=R</c>）的回應。
+/// <see cref="RawResponse"/> 保留原始回應內容，供失敗時留痕查證（客服會問）。
+/// </summary>
+internal sealed record EcpayRefundResult(bool Succeeded, string RtnCode, string RtnMsg, string RawResponse);
 
 internal interface IEcpayGateway
 {
@@ -23,6 +30,16 @@ internal interface IEcpayGateway
         DateTimeOffset createdAt);
 
     bool VerifyCallback(IReadOnlyDictionary<string, string> fields);
+
+    /// <summary>
+    /// 對已請款（關帳）的信用卡交易發動原路退刷。<b>綠界測試環境無法提供真實授權，
+    /// 因此這個 API 官方文件明講測試環境不可用</b>——呼叫端不要假設 stage 一定會退款成功。
+    /// </summary>
+    Task<EcpayRefundResult> RequestRefundAsync(
+        string merchantTradeNo,
+        string providerTransactionId,
+        Money amount,
+        CancellationToken cancellationToken);
 }
 
 internal sealed class PaymentApplicationService(
