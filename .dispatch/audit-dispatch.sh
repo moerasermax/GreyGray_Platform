@@ -233,6 +233,29 @@ else
 fi
 
 
+say "⑨ 進度數字要自洽（總表逐節相加 = 合計 = 儀表板）"
+# 邏輯在 .dispatch/check-progress.py（獨立檔，不要塞回這裡——
+# 巢狀 heredoc 會把跳脫吃掉，這棵樹上已經發生五次）。
+GG_PM=""
+for cand in "$GG_ROOT/../GreyGray_PM" "$GG_ROOT/../../GreyGray_PM"; do
+  [ -d "$cand" ] && { GG_PM="$cand"; break; }
+done
+if [ -z "$GG_PM" ]; then
+  printf '  · 找不到 GreyGray_PM，跳過
+'
+elif [ ! -f "$GG_ROOT/.dispatch/check-progress.py" ]; then
+  printf '  · 找不到 check-progress.py，跳過
+'
+else
+  prog_out="$(python "$GG_ROOT/.dispatch/check-progress.py" "$GG_PM" 2>&1)"
+  case "$prog_out" in
+    OK*)   ok "${prog_out#OK }" ;;
+    FAIL*) bad "${prog_out#FAIL }" ;;
+    *)     printf '  · %s
+' "$prog_out" ;;
+  esac
+fi
+
 say ""
 if [ "$FAIL" -eq 0 ]; then
   say "稽核通過。"
