@@ -51,9 +51,38 @@ Leader 要明講。
 
 ---
 
-**第九波已收工（2026-08-30）。** 目前沒有生效包，整合者模式：原始碼一律不准寫。
+**沒有生效中的派工（2026-08-31）。** 整合者模式：原始碼一律不准寫。
 
 **啟動 prompt 在 `.dispatch/PROMPTS.md`**，下一波派工前 Leader 用 ai-cli fan out。
+
+---
+
+<!--
+★ 2026-08-31 已通過整合驗收並提交（前端 ebdd36d），撤包。原文保留供追溯。
+修法（middleware 讀 x-forwarded-host／host 手動組 origin）即時驗證證實生效，
+見 .dispatch/reports/FE-19.md。
+
+派工 FE-19：middleware 改讀反向代理 header 手動組 origin，取代失敗的 trustHostHeader　·　docs/22-前端第八波派工書.md
+
+package: FE-19
+doc: docs/22-前端第八波派工書.md
+allow: frontend/apps/admin/next.config.ts
+allow: frontend/apps/admin/middleware.ts
+-->
+
+---
+
+<!--
+★ 2026-08-31 已通過整合驗收並提交（前端 83d2fda），撤包。原文保留供追溯。
+診斷性交付：修法對目前部署拓樸沒有效果，見 .dispatch/reports/FE-18.md。
+下一波 FE-19（docs/22）改用 middleware 讀反向代理 header 的做法接手。
+
+派工 FE-18：修 admin 正式機導向永遠指向 localhost　·　docs/21-前端第七波派工書.md
+
+package: FE-18
+doc: docs/21-前端第七波派工書.md
+allow: frontend/apps/admin/next.config.ts
+-->
 
 ---
 
@@ -89,6 +118,11 @@ allow: frontend/apps/storefront/app/(checkout)/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **FE-19** middleware 改讀反向代理 header 手動組 origin，取代失敗的 trustHostHeader　·　2026-08-31 通過　·　`ebdd36d`　·
+  修法生效，接手 FE-18 沒解決的部分，見 `.dispatch/reports/FE-19.md`
+- **FE-18** 修 admin 正式機導向永遠指向 localhost（診斷性交付）　·　2026-08-31 通過　·　`83d2fda`　·
+  修法（`experimental.trustHostHeader`）對目前部署拓樸沒有效果，見 `.dispatch/reports/FE-18.md`；
+  下一波 FE-19 改用 middleware 讀反向代理 header 接手
 - **FE-12** 關掉 mock、對真後端跑一遍　·　2026-08-30 執行　·　`d48acbe`　·
   §5 部分完成（mock 關閉、build/test/typecheck 全過），完整流程被後端環境缺口擋住，見自驗報告
 - **FE-17** 前台運費文案改從契約來　·　2026-08-30 通過　·　`50c314c`
