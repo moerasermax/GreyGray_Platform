@@ -33,25 +33,6 @@ const config: NextConfig = {
   output: 'standalone',
 
   poweredByHeader: false,
-
-  /*
-   * Next.js 內建設定，預設 false（見 node_modules/next/dist/server/config-shared.d.ts
-   * 的 ExperimentalConfig，這個欄位不在官方型別裡，是刻意用型別斷言繞過型別檢查啟用的）。
-   * ★ 2026-08-31 FE-18 即時驗證：這個 flag 對正式機的部署拓樸沒有效果，見
-   *   .dispatch/reports/FE-18.md「我發現但沒做的事」——`next-server.js` 的
-   *   `attachRequestMeta()` 在 `this.fetchHostname && this.port` 皆真時
-   *   （standalone `server.js` 只要吃到 `HOSTNAME` 環境變數就會是真，
-   *   正式機 `ops/deploy.ps1` 固定設 `HOSTNAME=127.0.0.1`）會直接短路，
-   *   永遠用 `HOSTNAME:PORT` 組 origin，根本不會讀到這個欄位。
-   *   而且 standalone build 產出的 `required-server-files.json`
-   *   在非 Vercel 環境下會被 Next 的 build 流程強制覆寫回 false
-   *   （`next/dist/build/index.js` 的 `trustHostHeader: _ciinfo.hasNextSupport`），
-   *   這裡設的 `true` 連寫進產物都寫不進去。留著這行只是保留診斷軌跡，
-   *   不代表症狀已解——見自驗報告，真正的修法還沒定案。
-   */
-  experimental: {
-    trustHostHeader: true,
-  } as NonNullable<NextConfig['experimental']>,
 };
 
 export default config;

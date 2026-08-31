@@ -32,6 +32,24 @@ function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
 }
 
+/**
+ * standalone server.js 固定帶 HOSTNAME 環境變數，導致 Next 內部一律用
+ * HOSTNAME:PORT 組 request.url 的 origin，完全不理會實際的反向代理 Host
+ * header（即使開了 experimental.trustHostHeader 也一樣，見 docs/22 §0）。
+ * 正式機用 cloudflared 反代，這裡改成自己讀 x-forwarded-host／host header
+ * 手動組 origin，不依賴 Next 那套機制。
+ *
+ * protocol 不受同一個問題影響（X-Forwarded-Proto 已經被 Next 正確反映在
+ * nextUrl.protocol 上，FE-18／FE-12 都驗證過），所以只覆寫 host 這一段。
+ */
+function resolveOrigin(request: NextRequest): string {
+  const forwardedHost = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+  if (!forwardedHost) {
+    return request.nextUrl.origin;
+  }
+  return `${request.nextUrl.protocol}//${forwardedHost}`;
+}
+
 export function middleware(request: NextRequest): NextResponse {
   const { pathname, search } = request.nextUrl;
 
@@ -43,7 +61,7 @@ export function middleware(request: NextRequest): NextResponse {
     return NextResponse.next();
   }
 
-  const loginUrl = new URL('/login', request.url);
+  const loginUrl = new URL('/login', resolveOrigin(request));
   loginUrl.searchParams.set('from', `${pathname}${search}`);
   return NextResponse.redirect(loginUrl);
 }
