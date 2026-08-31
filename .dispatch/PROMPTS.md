@@ -1,7 +1,6 @@
 # 啟動 prompt
 
-**你只開一個 terminal，當 Leader。** 這一波有兩包，檔案所有權互不重疊，
-由 Leader 用 ai-cli 同時 fan out 出去。
+**你只開一個 terminal，當 Leader。** 這一波只有一包。
 
 這一波前端樹沒有生效包，純同步用。
 
@@ -15,31 +14,26 @@
 GG_ROLE=leader
 
 你是 GreyGray Platform 的 Leader。讀 .dispatch/PROMPTS.md 與 .dispatch/ACTIVE.md，
-把現在生效的 BE-29、BE-30 用 mcp__ai-cli__run 同時派出去（兩包檔案所有權
-互不重疊，可以平行跑），然後等它們都回來做整合驗收。
+把現在生效的 BE-31 用 mcp__ai-cli__run 派出去，然後等它回來做整合驗收。
 
 派工規則：
-  - 每個子代理的 prompt 用本檔案「工作包」那一節對應的原文，一字不改。
-    開頭的 GG_PACKAGE=BE-29／GG_PACKAGE=BE-30 那一行一定要留著——ai-cli 的
-    run 沒有 env 參數，包別只能靠 prompt 帶進去，UserPromptSubmit 會把它
-    綁到那個子代理的 session_id。
-  - workFolder：兩包都是 D:\WorkSpace\01_開發中_wip\GreyGray_Platform（後端樹）。
+  - 子代理的 prompt 用本檔案「工作包」那一節的原文，一字不改。
+    開頭的 GG_PACKAGE=BE-31 那一行一定要留著——ai-cli 的 run 沒有 env 參數，
+    包別只能靠 prompt 帶進去，UserPromptSubmit 會把它綁到那個子代理的 session_id。
+  - workFolder：D:\WorkSpace\01_開發中_wip\GreyGray_Platform（後端樹）。
     這一波不涉及前端樹，不需要派任何前端子代理。
+  - 開工前先確認 git log 看得到 BE-29／BE-30 的提交（`dc0ea1f`），且
+    dotnet build／ops/test.ps1 在動手之前就是全綠的基準線，不成立就停下來回報。
 
-★ 收子代理的回報時，先看 .dispatch/reports/BE-29.md、.dispatch/reports/BE-30.md
-  在不在、三個標頭齊不齊。不齊就用同一個 session_id 接回去要它補完——
-  不要自己幫它補，也不要因為 exit code 是 0 就當成完成。
+★ 收子代理的回報時，先看 .dispatch/reports/BE-31.md 在不在、三個標頭齊不齊。
+  不齊就用同一個 session_id 接回去要它補完——不要自己幫它補，
+  也不要因為 exit code 是 0 就當成完成。
 
 你自己不寫原始碼。你寫得了的是 .dispatch/、.claude/、.codex/、docs/ 與 GreyGray_PM。
-子代理回來之後由你做整合驗收：自己重跑 build 與測試複驗，並且**親自啟動
-D:\GreyGray 的三個 Host、用種子帳號登入**：
-  - 對 GET /v1/orders 與 GET /v1/shipments 各送一次請求，確認從 500 變成 200/401
-    （docs/26 §5 BE-29）
-  - 對已付款訂單送一次「取消＋原路退款」的請求，確認不再是 422
-    （docs/26 §5 BE-30）
-不要只轉述自述。驗收完先 commit，再撤包——順序反過來會讓未提交的交付變成
-無主檔案，閘門會判成越界。兩包驗收獨立進行，其中一包先過就先 commit 那一包，
-不需要等另一包。
+子代理回來之後由你做整合驗收：自己重跑 build 與測試複驗，並且**親自對
+POST /v1/orders/{orderId}/lines/{lineId}/refund-shortfall 送真請求**，走一次
+「部分買到→退短缺款」的完整流程（docs/27 §5），不要只轉述自述。驗收完先
+commit，再撤包——順序反過來會讓未提交的交付變成無主檔案，閘門會判成越界。
 ```
 
 > **不要把 `GG_ROLE=leader` 放進子代理的 prompt。** 就算不小心放了也升不了級——
@@ -50,7 +44,7 @@ D:\GreyGray 的三個 Host、用種子帳號登入**：
 ## 排程
 
 ```
-BE-29 與 BE-30 同時派出，互不相依，檔案所有權互不重疊（見 docs/26 §3）。
+只有一包：BE-31（相依 BE-29／BE-30 已提交，見 docs/27 §1）
 ```
 
 ---
@@ -58,7 +52,7 @@ BE-29 與 BE-30 同時派出，互不相依，檔案所有權互不重疊（見 
 ## 兩條這一波開始機械檢查的規則
 
 **① 自驗報告是檔案，不是對話。**
-`.dispatch/reports/<包名>.md`，三個標頭一字不差：
+`.dispatch/reports/BE-31.md`，三個標頭一字不差：
 `## 指令與輸出`、`## 逐條自驗`、`## 我發現但沒做的事`。
 缺任何一個，`audit-dispatch.sh` 第 ⑧ 項會擋下 Leader 收工。
 
@@ -68,147 +62,85 @@ BE-29 與 BE-30 同時派出，互不相依，檔案所有權互不重疊（見 
 
 ---
 
-## 工作包（以下兩段就是各自子代理的 prompt，原文照抄）
+## 工作包（以下這一段就是子代理的 prompt，原文照抄）
 
-### BE-29　修正三處 `.ThenBy(x => x.Id.Value)` 導致的 admin 列表端點 500
+### BE-31　支援部分買到（ADR-026）
 
 ```
-GG_PACKAGE=BE-29
+GG_PACKAGE=BE-31
 
-你是 GreyGray Platform 的 BE-29。讀 docs/26-後端第十四波派工書.md，
-§0.1 §1 全部要看，然後照 §5 的 BE-29 那一節做。
+你是 GreyGray Platform 的 BE-31。讀 docs/27-後端第十五波派工書.md，
+§0 §1 全部要看，然後照 §5 的 BE-31 那一節做。
 再讀 .dispatch/reports/README.md（自驗報告的格式）。
 
-這一波要解的問題：admin 後台的訂單列表（GET /v1/orders）與出貨列表
-（GET /v1/shipments）對真 Postgres 資料庫全部回 500。Leader 這一輪第一次
-用瀏覽器＋種子帳號完整走過真後端登入流程才發現——之前每一波要嘛卡在
-更前面的環境問題，要嘛用 fake repository 測試，從沒有人真的對一個有資料的
-Postgres 打過這兩個端點。
+開工前先確認 git log 看得到 BE-29／BE-30 的提交（dc0ea1f），且 dotnet build／
+ops/test.ps1 在你動手之前就是全綠的基準線，不成立就停下來回報。
 
-根因：三個檔案裡各有一行同一個手誤——
-`OrderingRepository.cs:128`：`.ThenByDescending(order => order.Id.Value)`
-`FulfillmentRepository.cs:67`：`.ThenByDescending(shipment => shipment.Id.Value)`
-`ProcurementRepository.cs:36`：`.ThenBy(item => item.Id.Value)`
-（Procurement 這一處這一輪沒有真資料可以端到端重現，但程式碼形狀跟另外
-兩個已經實測壞掉的一模一樣，高度懷疑同樣會壞，你的驗收要用真資料親自證實。）
+這一波要做的事：ADR-026 支援部分買到。契約已拍板：買到的數量照常出貨，
+短缺的數量退款。相依的 ADR-024（綠界退款 API）已完成。現在
+PurchaseItemAggregate.MarkPurchased 與 Order.RecordItemPurchased 都刻意拒絕
+部分買到（quantityPurchased != 需求／訂購數量一律回業務失敗），那是 M1b-1
+當時正確的 fail-closed，現在退款去向已經拍板，要放寬。
 
-用 `.Value` 拆開強型別 ID（OrderId／ShipmentId／PurchaseItemId 這種 wrapper）
-再排序，EF Core 的值轉換器在 ThenBy 這個位置不知道怎麼翻譯成 SQL。
-`CampaignRepository.cs:56` 與 `LedgerQuery.cs:134` 已經證明「直接排序整個
-ID 型別，不要 .Value」這條路是通的。
+設計方向（已經定死，不要重新設計，細節見 docs/27 §0）：
+- Fulfillment／Shipment 完全不記錄數量，這一包不影響出貨模組，範圍只在
+  Procurement 與 Ordering 兩邊，Ledger 不用新增任何程式碼——短缺的退款直接
+  重用既有的 RefundRequested 事件與下游 Payment／Ledger 消費者。
+- 沿用 M1b-2「決策延後」模式：標記買到當下不問退款去向，短缺數量掛著，
+  之後另一個獨立端點問客人要退到哪裡才真的退款。
+- Procurement 側：PurchaseItemAggregate.MarkPurchased 放寬部分買到即可，
+  不需要新欄位。
+- Ordering 側：OrderLine 新增 QuantityShortfall（int，migration 0015_），
+  MarkPurchased 改收 quantityPurchased 參數並計算短缺；新增
+  Order.RefundLineShortfallByAdmin(OrderLineId) 回傳 Result<Money>（比照既有
+  CancelLineByAdmin 的形狀）；重用既有 RefundedAmountMinor／RefundedCurrency
+  欄位記錄短缺退款金額，退款完成時才把 Quantity 減下去。
+- 新增 IOrderingApplication.RefundLineShortfallAsync 介面方法與
+  OrderingApplicationService 實作，重用既有 GuardStoredValueRefund
+  （StoredValue 一樣要擋到 M3）。
+- 新開檔案 src/Hosts/GreyGray.Api.Admin/M1bShortfallRefundEndpoints.cs
+  （不要改 M1aEndpoints.cs 的既有端點邏輯，比照 M1bCompensationEndpoints.cs
+  的寫法），新增 POST /v1/orders/{orderId}/lines/{lineId}/refund-shortfall，
+  Program.cs 掛一行。
+- 契約異動：openapi.admin.yaml 新增這個 operation（完全比照既有的
+  /v1/orders/{orderId}/lines/{lineId}/cancel 抄一份）、AdminOrderLine 加
+  quantityShortfall 欄位；OpenApiComponents.cs 的 IdempotentEndpoints 補一行；
+  M1aEndpoints.cs 這一波只准動 AdminOrderLineResponse 這一個 DTO 與組裝它的
+  那一行，其餘不准動——這個檔案 BE-30 剛提交過，先用 git log 確認你看到的是
+  最新版本，行號自己重新搜尋。
 
-修法：三處都拿掉 `.Value`。這是完整修法，不要另外發明 client-evaluation
-（AsEnumerable／ToList 提前物化）繞過去，那會讓分頁在資料庫層失去效果。
-
-★ 每一處都要補一條用 testcontainers 起真 Postgres 的迴歸測試，塞 2 筆以上
-  讓主排序鍵刻意相同、逼查詢真的用到 ThenBy 的第二鍵，先紅後綠。
-
-★ 順手 `grep -rn "\.Id\.Value)" src/` 掃一次全 repo，逐一判斷是不是對
-  IQueryable 做 OrderBy/ThenBy/Where。CatalogServices.cs:389 與
-  StockReservationPlan.cs:46 這兩處 Leader 初步看像是 LINQ-to-Objects
-  （不會有 SQL 翻譯問題），但你要自己確認，不要照抄 Leader 的判斷。
+明確不做：前端 UI（獨立下一波，不跨樹去改）、不新增 Procurement 契約欄位或
+事件、不動 Fulfillment、不處理「退款之後反悔」這種情境。
 
 你自己不能宣告這一包通過或修完收工，你只能做完並交付、寫自驗報告，
 由 Leader 做整合驗收與最終判斷。
 
-檔案所有權（只准改這些路徑，見 docs/26 §3）：
-  src/Modules/Ordering/GreyGray.Modules.Ordering.Infra/OrderingRepository.cs
-  src/Modules/Fulfillment/GreyGray.Modules.Fulfillment.Infra/FulfillmentRepository.cs
-  src/Modules/Procurement/GreyGray.Modules.Procurement.Infra/ProcurementRepository.cs
-  tests/GreyGray.M1a.CheckoutOrdering.Tests/（僅限新增排序相關測試，
-    不要動 AdminCancelLineEndpointTests.cs，那是另一個同時在跑的
-    BE-30 的所有權，不要碰）
-  tests/GreyGray.M1b.Fulfillment.Tests/
-  tests/GreyGray.M1b.Procurement.Tests/
-  .dispatch/reports/BE-29.md（你的自驗報告）
+檔案所有權（只准改這些路徑，見 docs/27 §3）：
+  src/Modules/Procurement/GreyGray.Modules.Procurement.Core/PurchaseItemAggregate.cs
+  src/Modules/Ordering/GreyGray.Modules.Ordering.Core/Order.cs
+  src/Modules/Ordering/GreyGray.Modules.Ordering.Contracts/OrderingContracts.cs
+  src/Hosts/GreyGray.Api.Admin/M1bShortfallRefundEndpoints.cs（新檔）
+  src/Hosts/GreyGray.Api.Admin/Program.cs（只加一行）
+  src/Hosts/GreyGray.Api.Admin/OpenApiComponents.cs（只加一行）
+  src/Hosts/GreyGray.Api.Admin/M1aEndpoints.cs（只准動 AdminOrderLineResponse
+    這一個 DTO 與組裝它的那一行，其餘不准動）
+  docs/api/openapi.admin.yaml
+  db/migrations/0015_*.sql
+  tests/
+  .dispatch/reports/BE-31.md（你的自驗報告）
   docs/、management/、STATE.md、CLAUDE.md、AGENTS.md（任何一包都寫得了）
-
-★ 這一波同時有另一個子代理在跑 BE-30，改的是
-  src/Hosts/GreyGray.Api.Admin/M1aEndpoints.cs 與
-  tests/GreyGray.M1a.CheckoutOrdering.Tests/AdminCancelLineEndpointTests.cs，
-  跟你的所有權不重疊，兩邊互不相依，不用互相等待。dotnet build／ops/test.ps1
-  如果出現看不懂的短暫錯誤先重跑一次再回報，不要立刻假設是自己的程式碼錯了。
-
-如果 grep 掃描發現所有權範圍以外的檔案也有同一個手誤，把發現的檔案清單
-寫進自驗報告的「我發現但沒做的事」，不要自己擴大所有權去改。
 
 不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
 git checkout -- .、以及 git commit。stash stack 是跨 worktree 共用的。
 
-自驗完成後，把結果寫進 .dispatch/reports/BE-29.md，三個標頭一字不差：
-## 指令與輸出
-## 逐條自驗
-## 我發現但沒做的事
+自驗要包含：build 0/0；ops/test.ps1 全綠且前景分批跑完（不准丟背景、不准
+排程 wakeup）；端對端測試證明「5 件訂 3 件」的情境下 QuantityShortfall==2、
+Quantity 暫時仍是 5（退款決定前）、退款後 Quantity 變 3 且 RefundedAmount
+等於 2 件單價、Order 總額正確減少；冪等測試（同一筆 RecordItemPurchased
+送兩次不重複、RefundLineShortfallAsync 對同一條 line 送兩次不重複退款）；
+不同內容重送要回業務失敗不能覆寫；StoredValue 仍被擋在 M1b。
 
-寫完就停下來，等 Leader 做整合驗收。你不可以自己宣告通過。
-```
-
-### BE-30　拿掉兩處過期守衛，讓已付款訂單的「原路退款」真的打得到
-
-```
-GG_PACKAGE=BE-30
-
-你是 GreyGray Platform 的 BE-30。讀 docs/26-後端第十四波派工書.md，
-§0.2 §1 全部要看，然後照 §5 的 BE-30 那一節做。
-再讀 .dispatch/reports/README.md（自驗報告的格式）。
-
-這一波要解的問題：master 進度表認為「已付款訂單取消不了」已經被 BE-17 解決，
-但那句話只對了一半。BE-17／BE-18 把「呼叫綠界真退刷 API」「儲值金退款擋到
-M3」在 OrderingApplicationService 這一層做完、測完了（該檔案 :29-30 的註解
-自己寫著「整條退款流程已經實作完成」），但沒有人拿掉 admin HTTP 端點更早、
-更舊的一層守衛——那個守衛寫在 M1a-6（比 BE-17 早好幾波，當時綠界退刷 API
-真的還沒做，是合理的 fail-closed），現在變成一個沒人記得要拆的路障。
-
-src/Hosts/GreyGray.Api.Admin/M1aEndpoints.cs 兩處一模一樣（:204-210 整張
-訂單取消、:290-296 單一品項取消）：
-
-  if (input.RefundTo == RefundDestination.OriginalPaymentMethod &&
-      existing.Value.PaidAmount is { IsZero: false })
-  {
-      return Result<AdminOrderResponse>.Failure(
-          "payment.original-refund-not-configured",
-          "綠界原路退款尚未完成 provider API 設定，訂單未取消；可改選退款至儲值金。");
-  }
-
-兩處都在呼叫 ordering.CancelAdminAsync／ordering.CancelLineAsync 之前，只要
-訂單有付款金額、退款去向選原路退款，就直接回 422，根本不會呼叫到 application
-service，BE-17 蓋好的綠界退款路徑完全沒有機會被觸發。
-
-有一條既有測試明確鎖死這個行為：
-tests/GreyGray.M1a.CheckoutOrdering.Tests/AdminCancelLineEndpointTests.cs:66-87
-建一筆已付款訂單，用 OriginalPaymentMethod 呼叫取消，斷言回應是 422 且
-ordering.CancelLineCalls.ShouldBe(0)。176 條測試全過的原因是這條測試本身
-就在幫這個過期行為背書，這條測試要照新行為改寫，不是刪掉。
-
-必做：
-1. 拿掉 M1aEndpoints.cs 兩處守衛。不要另外加任何新守衛去「補償」——
-   StoredValue 已經由 GuardStoredValueRefund 在 application service 層
-   擋到 M3，那一層不用你動，也不要動。
-2. 改寫 AdminCancelLineEndpointTests.cs:66-87，驗證新行為：
-   ordering.CancelLineCalls 應該變成 1（真的呼叫到 application service），
-   照這個檔案既有的 fake 慣例寫，不要新增一整套 mock framework。
-3. 真的對 D:\GreyGray 開發環境跑一次原路退款驗證路徑通了；如果環境裡沒有
-   現成已付款訂單，退而求其次直接呼叫 OrderingApplicationService.CancelAdminAsync
-   或寫一條新整合測試證明會發布 RefundRequested 事件，在自驗報告寫清楚
-   你用的是哪一種驗證方式。
-
-你自己不能宣告這一包通過或修完收工，你只能做完並交付、寫自驗報告，
-由 Leader 做整合驗收與最終判斷。
-
-檔案所有權（只准改這些路徑，見 docs/26 §3）：
-  src/Hosts/GreyGray.Api.Admin/M1aEndpoints.cs
-  tests/GreyGray.M1a.CheckoutOrdering.Tests/AdminCancelLineEndpointTests.cs
-  .dispatch/reports/BE-30.md（你的自驗報告）
-  docs/、management/、STATE.md、CLAUDE.md、AGENTS.md（任何一包都寫得了）
-
-★ 這一波同時有另一個子代理在跑 BE-29，改的是三個模組的 Repository 檔案，
-  跟你的所有權不重疊，兩邊互不相依，不用互相等待。dotnet build／ops/test.ps1
-  如果出現看不懂的短暫錯誤先重跑一次再回報，不要立刻假設是自己的程式碼錯了。
-
-不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
-git checkout -- .、以及 git commit。stash stack 是跨 worktree 共用的。
-
-自驗完成後，把結果寫進 .dispatch/reports/BE-30.md，三個標頭一字不差：
+自驗完成後，把結果寫進 .dispatch/reports/BE-31.md，三個標頭一字不差：
 ## 指令與輸出
 ## 逐條自驗
 ## 我發現但沒做的事
