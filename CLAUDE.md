@@ -69,8 +69,7 @@ pnpm api:generate     # 契約改了要重跑
 
 | Hook | 做什麼 |
 |---|---|
-| `UserPromptSubmit` → `claim-package.sh` | 認出 prompt 裡的 `GG_PACKAGE=<包名>` 或 `GG_ROLE=leader`，綁到這個 session_id（給 ai-cli fan out 的子 agent 用） |
-| `SessionStart` → `session-brief.sh` | 一開場就把「你這一包能動哪些路徑」送進 context |
+| `UserPromptSubmit` → `claim-package.sh` | 認出 prompt 裡的 `GG_PACKAGE=<包名>` 或 `GG_ROLE=leader`，綁到這個 session_id（給 ai-cli fan out 的子 agent 用）；**2026-08-31 起也把原本 `session-brief.sh`（SessionStart）的工作併進來**，這個 session 第一次呼叫時把「你這一包能動哪些路徑」送進 context——理由：使用者層級 `~/.claude/settings.json` 另外註冊了 `tkflyc-planner` 的 SessionStart hook，兩個 hook 疊在 SessionStart 上時 additionalContext 合併語意 undefined（官方文件沒定義），實測本地那支會被蓋掉；UserPromptSubmit 全域沒有其他 hook，改到這裡完全避開，`session-brief.sh` 已刪除 |
 | `PreToolUse`（Write／Edit）→ `dispatch-guard.sh` | 即時擋下派工範圍外的寫入 |
 | `Stop` → `stop-gate.sh` | 實作者：用 `git diff` 再查一次越界——**這一層不能省**，因為用 Bash（`sed -i`、heredoc、重導向）寫的檔案繞得過 `PreToolUse`，但繞不過 git。Leader：越界 ＋ **`audit-dispatch.sh` 派工書邏輯稽核** ＋ 每包都要有啟動 prompt ＋ `GreyGray_PM` 同步 |
 
