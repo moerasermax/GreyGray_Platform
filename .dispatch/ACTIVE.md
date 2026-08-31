@@ -51,13 +51,33 @@ Leader 要明講。
 
 ---
 
-## 生效中
-
-**BE-34 是查證包，不是修正包。** 交付物是證據（可執行的迴歸測試 ＋ 33 個
-`ExecuteIdempotentAsync` 呼叫點的分類表 ＋ 修法選項分析），不是修法。
-唯一准動的生產程式碼是「把 `/cart/checkout` 的 inline lambda 機械抽成靜態
-方法」，行為必須一模一樣（抽完 187 條測試要全綠）。冪等邏輯、交易行為、
-Checkout／Ordering 模組行為一律不准改——修法方向由 Leader 看完報告再拍板。
+<!--
+★ 2026-09-01 已通過整合驗收並提交（後端 cb0d2f0），撤包。原文保留供追溯。
+查證包，不含修法。**核心結論是推翻既有文件**：`00-進度總表.md` #22 與
+`04-交接書.md` 第四節寫的「同一把 Idempotency-Key 重試會建出第二張訂單」
+是錯的——測試證實回 201、訂單總數維持 1、回原本那一張，因為 Checkout 與
+Ordering 兩個模組各自都綁在同一把 checkout 冪等鍵上做冪等，BFF 的 key 被
+abandon 只是讓可重入的業務邏輯重跑一次。實際成立的是三條較輕的：
+(A′) 幽靈訂單（訂單與 PaymentRequested 都已產生，客人拿到 422）、
+(A″) 換一把 key 走進死路、(B) 購物車結案卻沒訂單（同 key 重試自癒，
+且 outbox 會非同步補建——這條自癒路徑交接書與派工書都沒提到）。
+**必做 5 找到一個之前沒人發現的 ★ 重複風險：`POST /v1/shipments`**
+（`M1bFulfillmentEndpoints.cs:72`）——`CreateAsync` 每次 `ShipmentId.New()`、
+不改訂單狀態、唯一鍵擋不到「同一批訂單建成兩張出貨單」，一層冪等都沒有。
+觸發條件比 checkout 窄（commit 之後、`CompleteAsync` 之前的基礎設施故障），
+後果嚴重得多（重複那張會被撿貨、被 dispatch、重複入帳物流成本）。
+另找到四個同款幽靈（S12／A3／A4／A20，退款事件已送出但畫面顯示失敗、
+且重試回不了成功）與第 34 個手寫冪等呼叫點（綠界回呼，分類安全但修法要同步）。
+Leader 獨立複驗：build 0/0、12 個測試專案逐一前景執行合計 195（基準 187＋8）
+0 Errors 0 Failed Skipped 3、必做 5 表格抽樣四個對照點全吻合、A16 的 ★ 另行
+獨立讀原始碼確認、audit-dispatch.sh 十一項通過。複驗退回一次（兩個被編輯的檔
+長出 UTF-8 BOM，根因是 Python 以 utf-8-sig 寫檔），已修正並確認 diff 除少掉
+BOM 外完全相同、行尾未變動。
+子代理兩次正確拒絕 stop-gate 要它還原整合者派工前寫的三個 `.dispatch/` 檔——
+還原 `ACTIVE.md` 等於刪掉自己的授權、還原 `.selftest-stamp` 會讓稽核 ⑩ 由綠
+轉紅。**根因是閘門盲點**：`stop-gate.sh` 用 `git diff` 對 HEAD 比，分不出
+「實作者改的」與「session 開始前就髒的」。下一波派工前，Leader 應該先把閘門檔
+commit 掉再派工。詳見 `.dispatch/reports/BE-34.md` 與 `GreyGray_PM/03-驗收紀錄.md`。
 
 派工 BE-34：查證「現在卡在哪」#22 checkout 幽靈訂單／冪等 abandon　·　docs/30-後端第十八波派工書.md
 
@@ -65,6 +85,7 @@ package: BE-34
 doc: docs/30-後端第十八波派工書.md
 allow: src/Hosts/GreyGray.Api.Storefront/M1aEndpoints.cs
 allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
+-->
 
 ---
 
@@ -309,6 +330,9 @@ allow: tests/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **BE-34** 查證 #22 checkout 幽靈訂單／冪等 abandon　·　2026-09-01 通過　·　`cb0d2f0`　·
+  查證包不含修法。推翻「同一把 key 重試會建出第二張訂單」（測試證實訂單維持 1 張），
+  並找到之前沒人發現的 ★ 重複風險 `POST /v1/shipments`，見 `.dispatch/reports/BE-34.md`
 - **BE-33** 修訂單編號 GUID v7 撞號（現在卡在哪 #21）　·　2026-08-31 通過　·　`299b3d5`　·
   BuildOrderNumber 改取 GUID hex 尾端 7 碼（純亂數區段）而非前 7 碼（時間戳記區段），見 `.dispatch/reports/BE-33.md`
 - **BE-32** 修 cursor 分頁 Where 子句同款排序翻譯失敗（現在卡在哪 #17）　·　2026-08-31 通過　·　`7efca02`　·
