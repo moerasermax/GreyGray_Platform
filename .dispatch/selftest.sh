@@ -192,7 +192,7 @@ t_guard deny "GG_PACKAGE=$PKG_A" "$(pl_write Write "$ABS_IN_WIN" file_path)" "�
 t_guard deny "GG_PACKAGE=$PKG_A" "$(pl_write Write "./${OUTSIDE}zz.tmp" file_path)" "相對路徑帶 ./"
 t_guard deny "GG_PACKAGE=$PKG_A" "$(pl_write Write "${OUTSIDE}//zz.tmp" file_path)"  "重複斜線"
 # repo 之外的路徑不歸這個閘門管（例如 GreyGray_PM），應放行
-t_guard allow "GG_PACKAGE=$PKG_A" "$(pl_write Write "D:/WorkSpace/01_開發中_wip/GreyGray_PM/x.md" file_path)" "repo 之外的路徑不歸這裡管"
+t_guard allow "GG_PACKAGE=$PKG_A" "$(pl_write Write "D:/WorkSpace/01_開發中_wip/GreyGray/GreyGray_PM/x.md" file_path)" "repo 之外的路徑不歸這裡管"
 
 # ══ 4. Stop 閘門 ════════════════════════════════════════════════
 echo "── 4. Stop 閘門 ──"
