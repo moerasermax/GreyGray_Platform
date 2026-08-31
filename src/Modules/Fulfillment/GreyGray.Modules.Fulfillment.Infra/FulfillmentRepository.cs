@@ -64,7 +64,7 @@ internal sealed class FulfillmentRepository(FulfillmentDbContext dbContext) : IS
         var limit = request.Limit is > 0 ? request.Limit : 20;
         var rows = await query
             .OrderByDescending(shipment => shipment.CreatedAt)
-            .ThenByDescending(shipment => shipment.Id.Value)
+            .ThenByDescending(shipment => shipment.Id)
             .Take(limit + 1)
             .ToArrayAsync(cancellationToken);
         var hasNext = rows.Length > limit;

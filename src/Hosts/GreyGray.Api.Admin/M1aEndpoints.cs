@@ -201,14 +201,6 @@ internal static class M1aEndpoints
                         return Result<AdminOrderResponse>.Failure(existing.Error);
                     }
 
-                    if (input.RefundTo == RefundDestination.OriginalPaymentMethod &&
-                        existing.Value.PaidAmount is { IsZero: false })
-                    {
-                        return Result<AdminOrderResponse>.Failure(
-                            "payment.original-refund-not-configured",
-                            "綠界原路退款尚未完成 provider API 設定，訂單未取消；可改選退款至儲值金。");
-                    }
-
                     var cancelled = await ordering.CancelAdminAsync(
                         new OrderId(parsed),
                         input.Reason,
@@ -285,14 +277,6 @@ internal static class M1aEndpoints
                 if (existing.IsFailure)
                 {
                     return Result<AdminOrderResponse>.Failure(existing.Error);
-                }
-
-                if (input.RefundTo == RefundDestination.OriginalPaymentMethod &&
-                    existing.Value.PaidAmount is { IsZero: false })
-                {
-                    return Result<AdminOrderResponse>.Failure(
-                        "payment.original-refund-not-configured",
-                        "綠界原路退款尚未完成 provider API 設定，訂單品項未取消；可改選退款至儲值金。");
                 }
 
                 var cancelled = await ordering.CancelLineAsync(

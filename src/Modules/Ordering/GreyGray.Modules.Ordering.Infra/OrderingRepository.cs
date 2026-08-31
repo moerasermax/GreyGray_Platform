@@ -125,7 +125,7 @@ internal sealed class OrderingRepository(OrderingDbContext dbContext) : IOrderRe
 
         var rows = await query
             .OrderByDescending(order => order.PlacedAt)
-            .ThenByDescending(order => order.Id.Value)
+            .ThenByDescending(order => order.Id)
             .Take(limit + 1)
             .ToArrayAsync(cancellationToken);
         var hasNext = rows.Length > limit;

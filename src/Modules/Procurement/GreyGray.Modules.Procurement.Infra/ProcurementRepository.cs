@@ -33,7 +33,7 @@ internal sealed class ProcurementRepository(ProcurementDbContext dbContext)
         return await query
             .OrderBy(item => item.Status)
             .ThenBy(item => item.CreatedAt)
-            .ThenBy(item => item.Id.Value)
+            .ThenBy(item => item.Id)
             .ToArrayAsync(cancellationToken);
     }
 

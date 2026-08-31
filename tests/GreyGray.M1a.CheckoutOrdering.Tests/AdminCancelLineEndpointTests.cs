@@ -57,8 +57,12 @@ public sealed class AdminCancelLineEndpointTests
         ordering.CancelLineCalls.ShouldBe(1);
     }
 
-    [Fact(DisplayName = "已付款品項選原路退款回 422 與 frozen code，且訂單不變")]
-    public async Task Paid_original_method_refund_fails_before_mutation()
+    // BE-30：這條測試原本斷言「已付款 ＋ 原路退款 → 422、不呼叫 application service」。
+    // 那個守衛寫在 M1a-6，當時綠界退刷 API 還沒做，是合理的 fail-closed；BE-17／BE-18
+    // 把退款流程做完之後它變成路障，已從 M1aEndpoints 拿掉，所以這裡改成驗證新行為：
+    // 原路退款要真的打到 application service，由那一層決定成敗。
+    [Fact(DisplayName = "已付款品項選原路退款會打到 application service 並回 200")]
+    public async Task Paid_original_method_refund_reaches_application_service()
     {
         var (order, sku, customer) = Scenario(paid: true);
         var ordering = new StubOrderingApplication(order);
@@ -78,13 +82,14 @@ public sealed class AdminCancelLineEndpointTests
             TestContext.Current.CancellationToken);
 
         await result.ExecuteAsync(context);
-        context.Response.StatusCode.ShouldBe(StatusCodes.Status422UnprocessableEntity);
+        context.Response.StatusCode.ShouldBe(StatusCodes.Status200OK);
+        ordering.CancelLineCalls.ShouldBe(1);
+        ordering.Current.Lines[0].Status.ShouldBe(OrderLineStatus.Unavailable);
+        ordering.Current.Lines[0].RefundedAmount.ShouldBe(order.Lines[0].LineTotal);
         context.Response.Body.Position = 0;
         using var reader = new StreamReader(context.Response.Body);
         var body = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
-        body.ShouldContain("payment.original-refund-not-configured");
-        ordering.CancelLineCalls.ShouldBe(0);
-        ordering.Current.Lines[0].Status.ShouldBe(OrderLineStatus.Pending);
+        body.ShouldNotContain("payment.original-refund-not-configured");
     }
 
     private static DefaultHttpContext Context(string key, StaffId? staffId = null)
