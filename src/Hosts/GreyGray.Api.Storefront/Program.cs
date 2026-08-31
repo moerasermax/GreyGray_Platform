@@ -27,8 +27,30 @@ GreyGrayTelemetry.ConfigureW3CActivityIds();
 
 var builder = WebApplication.CreateBuilder(args);
 
+var storefrontFrontendOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>()
+    ?.Where(origin => !string.IsNullOrWhiteSpace(origin))
+    .Select(origin => origin.Trim().TrimEnd('/'))
+    .Distinct(StringComparer.OrdinalIgnoreCase)
+    .ToArray() ?? [];
+if (storefrontFrontendOrigins.Length == 0 && builder.Environment.IsDevelopment())
+{
+    storefrontFrontendOrigins = ["http://localhost:5002", "http://127.0.0.1:5002"];
+}
+
 builder.Services.AddOpenApi(options => options.AddDocumentTransformer<M1aOpenApiComponents>());
 builder.Services.AddProblemDetails();
+if (storefrontFrontendOrigins.Length > 0)
+{
+    builder.Services.AddCors(options => options.AddPolicy(
+        "StorefrontFrontend",
+        policy => policy
+            .WithOrigins(storefrontFrontendOrigins)
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials()));
+}
 builder.Services.ConfigureHttpJsonOptions(options =>
     BffHttp.ApplyGreyGrayJson(options.SerializerOptions));
 builder.Services.AddGreyGrayRuntimeContext();
@@ -60,6 +82,11 @@ builder.Services
 //              前端只拿 HttpOnly; Secure; SameSite=Lax cookie。
 
 var app = builder.Build();
+
+if (storefrontFrontendOrigins.Length > 0)
+{
+    app.UseCors("StorefrontFrontend");
+}
 
 if (app.Environment.IsDevelopment())
 {
