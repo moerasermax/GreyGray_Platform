@@ -51,9 +51,48 @@ Leader 要明講。
 
 ---
 
-**沒有生效中的派工（2026-08-31）。** 整合者模式：原始碼一律不准寫。
+## 生效中
 
-**啟動 prompt 在 `.dispatch/PROMPTS.md`**，下一波派工前 Leader 用 ai-cli fan out。
+派工 BE-31：支援部分買到（ADR-026）　·　docs/27-後端第十五波派工書.md
+
+package: BE-31
+doc: docs/27-後端第十五波派工書.md
+allow: src/Modules/Procurement/GreyGray.Modules.Procurement.Core/PurchaseItemAggregate.cs
+allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Core/Order.cs
+allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Contracts/OrderingContracts.cs
+allow: src/Hosts/GreyGray.Api.Admin/M1bShortfallRefundEndpoints.cs
+allow: src/Hosts/GreyGray.Api.Admin/Program.cs
+allow: src/Hosts/GreyGray.Api.Admin/OpenApiComponents.cs
+allow: src/Hosts/GreyGray.Api.Admin/M1aEndpoints.cs
+allow: docs/api/openapi.admin.yaml
+allow: db/migrations/0015_
+allow: tests/
+
+**啟動 prompt 在 `.dispatch/PROMPTS.md`**。
+
+---
+
+<!--
+★ 2026-08-31 已通過整合驗收並提交（後端 dc0ea1f），撤包。原文保留供追溯。
+
+派工 BE-29：修正三處 `.ThenBy(x => x.Id.Value)` 導致的 admin 列表端點 500　·　docs/26-後端第十四波派工書.md
+
+package: BE-29
+doc: docs/26-後端第十四波派工書.md
+allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Infra/OrderingRepository.cs
+allow: src/Modules/Fulfillment/GreyGray.Modules.Fulfillment.Infra/FulfillmentRepository.cs
+allow: src/Modules/Procurement/GreyGray.Modules.Procurement.Infra/ProcurementRepository.cs
+allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
+allow: tests/GreyGray.M1b.Fulfillment.Tests/
+allow: tests/GreyGray.M1b.Procurement.Tests/
+
+派工 BE-30：拿掉兩處過期守衛，讓已付款訂單的「原路退款」真的打得到　·　docs/26-後端第十四波派工書.md
+
+package: BE-30
+doc: docs/26-後端第十四波派工書.md
+allow: src/Hosts/GreyGray.Api.Admin/M1aEndpoints.cs
+allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/AdminCancelLineEndpointTests.cs
+-->
 
 ---
 
@@ -168,8 +207,12 @@ allow: tests/
 ---
 
 <!--
+★ 從未啟用，被下面的 BE-31（docs/27）取代。原文保留供追溯。
+
 派工 BE-20：部分買到（ADR-026）　·　docs/19-後端第八波派工書.md
 ⏸ 等 BE-21 通過整合驗收才啟用（兩包會撞 Procurement 與 Ordering）。
+BE-21 通過之後這一包一直沒有真的排進派工，範圍等 2026-08-31 由 Leader
+重新設計成 BE-31（docs/27-後端第十五波派工書.md），不再用這份舊的粗略範圍。
 
 package: BE-20
 doc: docs/19-後端第八波派工書.md
@@ -190,6 +233,8 @@ allow: tests/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **BE-30** 拿掉兩處過期守衛，讓已付款訂單的「原路退款」真的打得到　·　2026-08-31 通過　·　`dc0ea1f`
+- **BE-29** 修正三處 `.ThenBy(x => x.Id.Value)` 導致的 admin 列表端點 500　·　2026-08-31 通過　·　`dc0ea1f`
 - **BE-28** storefront Host 補上 CORS（比照 admin Host 的 ADR-021 模式）　·　2026-08-31 通過　·　`0c4f83e`
 - **BE-27** 修 Ordering ↔ Fulfillment 循環相依，解除 admin BFF 三組端點永久掛住　·　2026-08-30 通過　·　`c9d3646`
 - **BE-26** 員工帳號 bootstrap 工具 ＋ 開發環境最小種子資料　·　2026-08-30 通過　·　`5950a10`
