@@ -1143,6 +1143,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/orders/{orderId}/lines/{lineId}/refund-shortfall": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 退還部分買到的短缺數量
+         * @description 部分買到（ADR-026）時用：買到的數量照常出貨，**短缺的數量退款**。
+         *     標記買到的當下不問退款去向，短缺數量先掛在 line 上；客人選好之後才呼叫這裡，
+         *     這一刻才真的退款、把 `quantity` 減成實際出貨數量並調降訂單總額。
+         *     一次性決策，退過就不能反悔改去向。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                };
+                path: {
+                    orderId: components["schemas"]["Id"];
+                    lineId: components["schemas"]["Id"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        reason: string;
+                        /** @description 客人自己選的退款去向，不是營運代選（ADR-023）。 */
+                        refundTo: components["schemas"]["RefundDestination"];
+                    };
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AdminOrder"];
+                    };
+                };
+                422: components["responses"]["UnprocessableEntity"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/campaigns/{campaignId}/purchase-items": {
         parameters: {
             query?: never;
@@ -1960,6 +2016,13 @@ export interface components {
             quantity: number;
             unitPrice: components["schemas"]["Money"];
             lineTotal: components["schemas"]["Money"];
+            /**
+             * @description 部分買到時短缺、等待退款決定的數量（ADR-026）；0 表示沒有短缺。
+             *     `quantity` 是實際要出貨的數量，短缺退款完成後才會扣掉這個數量；
+             *     本欄位退款後保留原值供追溯，所以「還在等退款決定」要看
+             *     `quantityShortfall > 0 且 refundedAmount 為 null`。
+             */
+            quantityShortfall?: number;
             /** @description 該品項已完成或已要求的退款金額；未退款時為 null。 */
             refundedAmount?: components["schemas"]["Money"] | null;
             campaignId?: components["schemas"]["Id"] | null;

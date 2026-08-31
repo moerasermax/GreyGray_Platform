@@ -51,9 +51,19 @@ Leader 要明講。
 
 ---
 
-**沒有生效中的派工（2026-08-31）。** 整合者模式：原始碼一律不准寫。
+**啟動 prompt 在 `.dispatch/PROMPTS.md`**。
 
-**啟動 prompt 在 `.dispatch/PROMPTS.md`**，下一波派工前 Leader 用 ai-cli fan out。
+---
+
+派工 FE-20：訂單品項顯示短缺數量＋新增「退短缺款」操作入口　·　docs/23-前端第九波派工書.md
+
+package: FE-20
+doc: docs/23-前端第九波派工書.md
+allow: frontend/packages/api-client/src/types.admin.ts
+allow: frontend/packages/api-client/src/endpoints/admin.ts
+allow: frontend/apps/admin/app/(dash)/orders/_components/RefundShortfallDialog.tsx
+allow: frontend/apps/admin/app/(dash)/orders/[orderId]/page.tsx
+allow: frontend/apps/admin/app/(dash)/orders/_lib/labels.ts
 
 ---
 

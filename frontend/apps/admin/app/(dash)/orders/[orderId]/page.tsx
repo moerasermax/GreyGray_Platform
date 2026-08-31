@@ -1,7 +1,13 @@
 'use client';
 
 import { ApiError, formatMoney } from '@greygray/api-client';
-import { cancelOrder, cancelOrderLine, getCampaign, getOrder } from '@greygray/api-client/endpoints/admin';
+import {
+  cancelOrder,
+  cancelOrderLine,
+  getCampaign,
+  getOrder,
+  refundOrderLineShortfall,
+} from '@greygray/api-client/endpoints/admin';
 import type { components } from '@greygray/api-client/admin';
 import {
   DataTable,
@@ -19,6 +25,7 @@ import { usePayloadIdempotency } from '../../../_lib/usePayloadIdempotency';
 import { CancelOrderDialog } from '../_components/CancelOrderDialog';
 import { CancelOrderLineDialog } from '../_components/CancelOrderLineDialog';
 import { MaskedContactNote } from '../_components/MaskedContactNote';
+import { RefundShortfallDialog } from '../_components/RefundShortfallDialog';
 import {
   deliveryMethodLabel,
   fulfillmentModeLabel,
@@ -50,6 +57,7 @@ export default function OrderDetailPage() {
 
   const [cancelOrderOpen, setCancelOrderOpen] = useState(false);
   const [cancelLine, setCancelLine] = useState<OrderLine | null>(null);
+  const [refundShortfallLine, setRefundShortfallLine] = useState<OrderLine | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,6 +112,21 @@ export default function OrderDetailPage() {
     idempotency.complete();
     setOrder(updated);
     toast.show('success', `品項「${cancelLine.name}」已取消。`);
+  }
+
+  async function handleRefundShortfall(input: { reason: string; refundTo: S['RefundDestination'] }) {
+    if (!refundShortfallLine) return;
+    const payload = { orderId, kind: 'refund-shortfall', lineId: refundShortfallLine.id, input };
+    const updated = await refundOrderLineShortfall(
+      browserApi(),
+      orderId,
+      refundShortfallLine.id,
+      input,
+      { idempotencyKey: idempotency.current(payload) },
+    );
+    idempotency.complete();
+    setOrder(updated);
+    toast.show('success', `品項「${refundShortfallLine.name}」的短缺款已退款。`);
   }
 
   if (loading) {
@@ -167,26 +190,47 @@ export default function OrderDetailPage() {
       key: 'refundedAmount',
       header: '缺貨退款',
       headerAlign: 'right',
-      renderCell: (line) => <MoneyCell value={refundedAmountText(line.refundedAmount)} />,
+      renderCell: (line) => (
+        <td data-numeric className="gg-numeric px-3 py-2">
+          <div>{refundedAmountText(line.refundedAmount)}</div>
+          {(line.quantityShortfall ?? 0) > 0 ? (
+            <div className="text-xs text-fg-muted">短缺 {line.quantityShortfall} 件</div>
+          ) : null}
+        </td>
+      ),
     },
     {
       key: 'action',
       header: '操作',
-      renderCell: (line) => (
-        <td className="px-3 py-2">
-          {line.status === 'Cancelled' || line.status === 'Unavailable' ? (
-            <span className="text-xs text-fg-muted">已處理</span>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setCancelLine(line)}
-              className="rounded-full border border-danger/30 px-3 py-1 text-xs font-semibold text-danger hover:bg-danger-subtle"
-            >
-              取消此品項
-            </button>
-          )}
-        </td>
-      ),
+      renderCell: (line) => {
+        const canRefundShortfall = (line.quantityShortfall ?? 0) > 0 && line.refundedAmount == null;
+        return (
+          <td className="px-3 py-2">
+            <div className="flex flex-col items-start gap-1">
+              {line.status === 'Cancelled' || line.status === 'Unavailable' ? (
+                <span className="text-xs text-fg-muted">已處理</span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setCancelLine(line)}
+                  className="rounded-full border border-danger/30 px-3 py-1 text-xs font-semibold text-danger hover:bg-danger-subtle"
+                >
+                  取消此品項
+                </button>
+              )}
+              {canRefundShortfall ? (
+                <button
+                  type="button"
+                  onClick={() => setRefundShortfallLine(line)}
+                  className="rounded-full border border-primary/30 px-3 py-1 text-xs font-semibold text-primary hover:bg-primary-subtle"
+                >
+                  退短缺款
+                </button>
+              ) : null}
+            </div>
+          </td>
+        );
+      },
     },
   ];
 
@@ -339,6 +383,13 @@ export default function OrderDetailPage() {
         lineName={cancelLine?.name ?? ''}
         onClose={() => setCancelLine(null)}
         onConfirm={handleCancelLine}
+      />
+      <RefundShortfallDialog
+        open={refundShortfallLine !== null}
+        lineName={refundShortfallLine?.name ?? ''}
+        shortfallQuantity={refundShortfallLine?.quantityShortfall ?? 0}
+        onClose={() => setRefundShortfallLine(null)}
+        onConfirm={handleRefundShortfall}
       />
     </div>
   );

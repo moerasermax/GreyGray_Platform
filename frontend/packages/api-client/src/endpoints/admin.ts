@@ -282,6 +282,16 @@ export function cancelOrderLine(
   return client.post(`/v1/orders/${orderId}/lines/${lineId}/cancel`, { body, ...options });
 }
 
+export function refundOrderLineShortfall(
+  client: ApiClient,
+  orderId: string,
+  lineId: string,
+  body: CancelAdminOrderRequest,
+  options: MutationOptions,
+): Promise<S['AdminOrder']> {
+  return client.post(`/v1/orders/${orderId}/lines/${lineId}/refund-shortfall`, { body, ...options });
+}
+
 // ── ledger ────────────────────────────────────────────────────────────────
 
 export function listLedgerEntries(
