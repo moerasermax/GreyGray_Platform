@@ -15,7 +15,11 @@ AGENT=claude
 GUARD=".$([ "$AGENT" = codex ] && echo codex || echo claude)/hooks/dispatch-guard.sh"
 STOPG=".$([ "$AGENT" = codex ] && echo codex || echo claude)/hooks/stop-gate.sh"
 CLAIM=".$([ "$AGENT" = codex ] && echo codex || echo claude)/hooks/claim-package.sh"
-BRIEF=".$([ "$AGENT" = codex ] && echo codex || echo claude)/hooks/session-brief.sh"
+# ★ 2026-08-31：claude 側 session-brief.sh 已併進 claim-package.sh（見該檔
+#   開頭註解），.claude/hooks/session-brief.sh 這個檔已經不存在——BRIEF 指到
+#   一個不存在的檔案，四條 t_brief 斷言全部必敗。codex 側沒有做這次合併，
+#   還是獨立的 session-brief.sh。BRIEF 依 agent 分別指到正確的那個檔。
+BRIEF=".$([ "$AGENT" = codex ] && echo codex || echo claude)/hooks/$([ "$AGENT" = codex ] && echo session-brief.sh || echo claim-package.sh)"
 
 PASS=0; FAIL=0; FAILED=""
 ok_()   { PASS=$((PASS+1)); }
@@ -266,9 +270,24 @@ cp "$BAK" "$GG_SELFTEST_ROOT/.dispatch/ACTIVE.md"; rm -f "$BAK"
 
 # ══ 8. session-brief 四種身分各自講對話 ═════════════════════════
 echo "── 8. session-brief ──"
+# ★ claude 走 claim-package.sh：brief_msg 用 .dispatch/.session/<sid>.briefed
+#   當「這個 session 是不是已經簡報過」的去重鍵，同一個 sid 重複呼叫第二次
+#   之後就不會再有 brief_msg（會走進別的分支，例如「已綁定」提示），所以
+#   四個子測試不能像 codex 那樣共用同一個 sid "stb"——每個子測試要換一個沒
+#   簡報過的新 sid，測完把 marker 清掉（不留痕跡，也不影響其他測試）。
+#   codex 的 session-brief.sh 沒有這種去重，沿用共用 sid 的舊寫法即可。
+_brief_n=0
 t_brief() { # t_brief <身分env> <期望關鍵字> <描述>
-  local idenv="$1" kw="$2" desc="$3" out
-  out="$(printf '{"session_id":"stb"}' | env -u GG_PACKAGE -u GG_ROLE $idenv bash "$GG_SELFTEST_ROOT/$BRIEF" 2>/dev/null)"
+  local idenv="$1" kw="$2" desc="$3" out sid
+  if [ "$AGENT" = codex ]; then
+    out="$(printf '{"session_id":"stb"}' | env -u GG_PACKAGE -u GG_ROLE $idenv bash "$GG_SELFTEST_ROOT/$BRIEF" 2>/dev/null)"
+  else
+    _brief_n=$((_brief_n+1)); sid="stb-$$-$_brief_n"
+    out="$(printf '{"session_id":"%s"}' "$sid" | env -u GG_PACKAGE -u GG_ROLE $idenv bash "$GG_SELFTEST_ROOT/$BRIEF" 2>/dev/null)"
+    rm -f "$GG_SELFTEST_ROOT/.dispatch/.session/$sid.briefed" \
+          "$GG_SELFTEST_ROOT/.dispatch/.session/$sid" \
+          "$GG_SELFTEST_ROOT/.dispatch/.session/$sid.role"
+  fi
   case "$out" in *"$kw"*) ok_ ;; *) bad_ "[$AGENT] brief $desc 沒提到「$kw」" ;; esac
 }
 t_brief "GG_ROLE=leader"      "Leader"       "Leader"
