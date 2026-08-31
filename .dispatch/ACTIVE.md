@@ -51,9 +51,22 @@ Leader 要明講。
 
 ---
 
-**啟動 prompt 在 `.dispatch/PROMPTS.md`**。
+**沒有生效中的派工（2026-08-31）。** 整合者模式：原始碼一律不准寫。
+
+**啟動 prompt 在 `.dispatch/PROMPTS.md`**，下一波派工前 Leader 用 ai-cli fan out。
 
 ---
+
+<!--
+★ 2026-08-31 已通過整合驗收並提交（前端 31ce3b1），撤包。原文保留供追溯。
+跟進後端第十五波（BE-31，ADR-026）已凍結進契約的 quantityShortfall 欄位與
+refund-shortfall 端點。子代理過程中撞到 ai-cli MCP 連線中斷，Leader 改用
+ListAgents／SendMessage 直接聯繫同一個子代理 session 續完；審查時發現子代理
+留了一段除錯用的假資料 fixture 誤寫進 page.tsx 的初始 state（會讓正式頁面
+短暫顯示假訂單），已要求子代理自行改回並補完自驗報告，Leader 複驗通過。
+即時驗證受限於這個環境沒有瀏覽器自動化工具、(dash) 版面 SSR 恆回傳空殼、
+dev DB 目前沒有任何 order 資料，只做到型別／邏輯層級驗證，詳見
+.dispatch/reports/FE-20.md 與 GreyGray_PM/03-驗收紀錄.md。
 
 派工 FE-20：訂單品項顯示短缺數量＋新增「退短缺款」操作入口　·　docs/23-前端第九波派工書.md
 
@@ -64,6 +77,7 @@ allow: frontend/packages/api-client/src/endpoints/admin.ts
 allow: frontend/apps/admin/app/(dash)/orders/_components/RefundShortfallDialog.tsx
 allow: frontend/apps/admin/app/(dash)/orders/[orderId]/page.tsx
 allow: frontend/apps/admin/app/(dash)/orders/_lib/labels.ts
+-->
 
 ---
 
@@ -128,6 +142,9 @@ allow: frontend/apps/storefront/app/(checkout)/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **FE-20** 訂單品項顯示短缺數量＋新增「退短缺款」操作入口　·　2026-08-31 通過　·　`31ce3b1`　·
+  跟進 BE-31（ADR-026）契約；即時驗證受限於環境（無瀏覽器自動化、dev DB 無 order 資料），
+  只做到型別／邏輯層級驗證，見 `.dispatch/reports/FE-20.md`
 - **FE-19** middleware 改讀反向代理 header 手動組 origin，取代失敗的 trustHostHeader　·　2026-08-31 通過　·　`ebdd36d`　·
   修法生效，接手 FE-18 沒解決的部分，見 `.dispatch/reports/FE-19.md`
 - **FE-18** 修 admin 正式機導向永遠指向 localhost（診斷性交付）　·　2026-08-31 通過　·　`83d2fda`　·
