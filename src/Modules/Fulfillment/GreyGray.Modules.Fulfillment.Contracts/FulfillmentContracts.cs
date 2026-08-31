@@ -13,6 +13,14 @@ public readonly record struct ShipmentId(Guid Value)
     public static ShipmentId New() => new(Guid.CreateVersion7());
 
     public override string ToString() => Value.ToString("N");
+
+    public static bool operator <(ShipmentId left, ShipmentId right) => left.Value.CompareTo(right.Value) < 0;
+
+    public static bool operator >(ShipmentId left, ShipmentId right) => left.Value.CompareTo(right.Value) > 0;
+
+    public static bool operator <=(ShipmentId left, ShipmentId right) => left.Value.CompareTo(right.Value) <= 0;
+
+    public static bool operator >=(ShipmentId left, ShipmentId right) => left.Value.CompareTo(right.Value) >= 0;
 }
 
 public readonly record struct PackageId(Guid Value)

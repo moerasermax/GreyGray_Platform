@@ -120,7 +120,7 @@ internal sealed class OrderingRepository(OrderingDbContext dbContext) : IOrderRe
 
             query = query.Where(order => order.PlacedAt < cursorOrder.PlacedAt
                 || (order.PlacedAt == cursorOrder.PlacedAt
-                    && order.Id.Value.CompareTo(cursorOrder.Id.Value) < 0));
+                    && order.Id < cursorOrder.Id));
         }
 
         var rows = await query

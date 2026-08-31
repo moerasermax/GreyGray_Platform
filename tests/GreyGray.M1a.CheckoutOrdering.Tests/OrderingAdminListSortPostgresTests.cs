@@ -69,19 +69,13 @@ public sealed class OrderingAdminListSortPostgresTests : IAsyncLifetime
     }
 
     /// <remarks>
-    /// 這一條**現在是紅的，而且不是這一包要修的**。BE-29 的範圍只有 <c>ThenBy</c> 那一行；
-    /// <c>PageAsync</c> 的 <c>Where</c> 子句裡還有一個同源但不同位置的手誤
-    /// （<c>order.Id.Value.CompareTo(cursor) &lt; 0</c>，<c>OrderingRepository.cs:123</c>），
-    /// 派工書 §1 明文把它劃在範圍外、只要求回報。實測結論寫在
-    /// <c>.dispatch/reports/BE-29.md</c>：它同樣翻譯不成 SQL，帶游標的第二頁一律 500。
-    /// 留成 Skip 而不是刪掉，是因為刪掉之後沒有任何東西會提醒下一個人這個洞還在——
-    /// 修好那一行之後把這個 Skip 拿掉就會轉綠，不必重新發明這條測試。
+    /// BE-29 迴歸：<c>PageAsync</c> 的 <c>Where</c> 子句原本寫
+    /// <c>order.Id.Value.CompareTo(cursor) &lt; 0</c>（<c>OrderingRepository.cs:123</c>），
+    /// 跟 <c>ThenBy</c> 那一行同一種手法拆開強型別 ID 比較，EF Core 翻譯不成 SQL，
+    /// 帶游標的第二頁一律 500。BE-32 改成 <c>order.Id &lt; cursorOrder.Id</c>
+    /// （比照 <c>EntryId</c> 的運算子重載）修好，這一條轉綠。
     /// </remarks>
-    [Fact(
-        DisplayName = "後台訂單列表 cursor 分頁：PlacedAt 全部相同時第二頁仍接得上，不重複也不漏",
-        Skip = "已知未修：PageAsync 的 Where 子句 order.Id.Value.CompareTo(...) 翻譯不成 SQL，"
-            + "第二頁一律 500。派工書 docs/26 §1 把這一行劃在 BE-29 範圍外，只要求回報。"
-            + "修好 OrderingRepository.cs:123 之後拿掉這個 Skip 即可。")]
+    [Fact(DisplayName = "後台訂單列表 cursor 分頁：PlacedAt 全部相同時第二頁仍接得上，不重複也不漏")]
     public async Task Admin_list_orders_pages_by_cursor_when_placed_at_is_identical()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

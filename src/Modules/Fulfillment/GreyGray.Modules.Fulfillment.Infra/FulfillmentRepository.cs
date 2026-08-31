@@ -58,7 +58,7 @@ internal sealed class FulfillmentRepository(FulfillmentDbContext dbContext) : IS
 
             query = query.Where(shipment => shipment.CreatedAt < cursorShipment.CreatedAt
                 || (shipment.CreatedAt == cursorShipment.CreatedAt
-                    && shipment.Id.Value.CompareTo(cursorShipment.Id.Value) < 0));
+                    && shipment.Id < cursorShipment.Id));
         }
 
         var limit = request.Limit is > 0 ? request.Limit : 20;

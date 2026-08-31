@@ -60,18 +60,14 @@ public sealed class FulfillmentAdminListSortPostgresTests : IAsyncLifetime
     }
 
     /// <remarks>
-    /// 這一條**現在是紅的，而且不是這一包要修的**——跟
-    /// <c>OrderingAdminListSortPostgresTests</c> 那一條同源：<c>ListAsync</c> 的
-    /// <c>Where</c> 子句裡 <c>shipment.Id.Value.CompareTo(cursor) &lt; 0</c>
-    /// （<c>FulfillmentRepository.cs:61</c>）同樣翻譯不成 SQL，帶游標的第二頁一律 500。
-    /// 派工書 §1 明文把它劃在 BE-29 範圍外、只要求回報，實測結論寫在
-    /// <c>.dispatch/reports/BE-29.md</c>。修好那一行之後拿掉 Skip 就會轉綠。
+    /// BE-29 迴歸：跟 <c>OrderingAdminListSortPostgresTests</c> 那一條同源——
+    /// <c>ListAsync</c> 的 <c>Where</c> 子句原本寫
+    /// <c>shipment.Id.Value.CompareTo(cursor) &lt; 0</c>（<c>FulfillmentRepository.cs:61</c>），
+    /// EF Core 翻譯不成 SQL，帶游標的第二頁一律 500。BE-32 改成
+    /// <c>shipment.Id &lt; cursorShipment.Id</c>（比照 <c>EntryId</c> 的運算子重載）修好，
+    /// 這一條轉綠。
     /// </remarks>
-    [Fact(
-        DisplayName = "後台出貨列表 cursor 分頁：CreatedAt 全部相同時第二頁仍接得上，不重複也不漏",
-        Skip = "已知未修：ListAsync 的 Where 子句 shipment.Id.Value.CompareTo(...) 翻譯不成 SQL，"
-            + "第二頁一律 500。派工書 docs/26 §1 把這一行劃在 BE-29 範圍外，只要求回報。"
-            + "修好 FulfillmentRepository.cs:61 之後拿掉這個 Skip 即可。")]
+    [Fact(DisplayName = "後台出貨列表 cursor 分頁：CreatedAt 全部相同時第二頁仍接得上，不重複也不漏")]
     public async Task Admin_list_shipments_pages_by_cursor_when_created_at_is_identical()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

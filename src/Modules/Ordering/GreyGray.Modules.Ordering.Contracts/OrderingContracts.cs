@@ -17,6 +17,14 @@ public readonly record struct OrderId(Guid Value)
     public static OrderId New() => new(Guid.CreateVersion7());
 
     public override string ToString() => Value.ToString("N");
+
+    public static bool operator <(OrderId left, OrderId right) => left.Value.CompareTo(right.Value) < 0;
+
+    public static bool operator >(OrderId left, OrderId right) => left.Value.CompareTo(right.Value) > 0;
+
+    public static bool operator <=(OrderId left, OrderId right) => left.Value.CompareTo(right.Value) <= 0;
+
+    public static bool operator >=(OrderId left, OrderId right) => left.Value.CompareTo(right.Value) >= 0;
 }
 
 public readonly record struct OrderLineId(Guid Value)
