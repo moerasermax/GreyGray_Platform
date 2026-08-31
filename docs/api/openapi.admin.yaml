@@ -596,6 +596,38 @@ paths:
               schema: { $ref: '#/components/schemas/AdminOrder' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
 
+  /v1/orders/{orderId}/lines/{lineId}/refund-shortfall:
+    post:
+      tags: [order]
+      x-required-role: Operator
+      summary: 退還部分買到的短缺數量
+      description: |
+        部分買到（ADR-026）時用：買到的數量照常出貨，**短缺的數量退款**。
+        標記買到的當下不問退款去向，短缺數量先掛在 line 上；客人選好之後才呼叫這裡，
+        這一刻才真的退款、把 `quantity` 減成實際出貨數量並調降訂單總額。
+        一次性決策，退過就不能反悔改去向。
+      parameters:
+        - { name: orderId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+        - { name: lineId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason, refundTo]
+              properties:
+                reason: { type: string, maxLength: 200 }
+                refundTo: { description: '客人自己選的退款去向，不是營運代選（ADR-023）。', $ref: '#/components/schemas/RefundDestination' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminOrder' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+
   # ── procurement（M1b）───────────────────────────────────────────────────
   /v1/campaigns/{campaignId}/purchase-items:
     get:
@@ -1268,6 +1300,13 @@ components:
         quantity: { type: integer }
         unitPrice: { $ref: '#/components/schemas/Money' }
         lineTotal: { $ref: '#/components/schemas/Money' }
+        quantityShortfall:
+          description: |
+            部分買到時短缺、等待退款決定的數量（ADR-026）；0 表示沒有短缺。
+            `quantity` 是實際要出貨的數量，短缺退款完成後才會扣掉這個數量；
+            本欄位退款後保留原值供追溯，所以「還在等退款決定」要看
+            `quantityShortfall > 0 且 refundedAmount 為 null`。
+          type: integer
         refundedAmount:
           description: 該品項已完成或已要求的退款金額；未退款時為 null。
           oneOf:

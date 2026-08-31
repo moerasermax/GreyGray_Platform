@@ -304,6 +304,7 @@ coverage gate 的唯一過濾來源，不再從 description 猜。
 | `GET` | `/v1/orders/{orderId}` | ReadOnly | M1a | 訂單詳情 |
 | `POST` | `/v1/orders/{orderId}/cancel` | Operator | M1a | 取消整張訂單並退款 |
 | `POST` | `/v1/orders/{orderId}/lines/{lineId}/cancel` | Operator | M1a | 取消單一品項並退款 |
+| `POST` | `/v1/orders/{orderId}/lines/{lineId}/refund-shortfall` | Operator | M1b | 部分買到的短缺數量退款（第十五波 BE-31 加，ADR-026） |
 | `GET` | `/v1/campaigns/{campaignId}/purchase-items` | Operator | M1b | 該團的採購清單 |
 | `POST` | `/v1/purchase-items/{purchaseItemId}/purchased` | Operator | M1b | 標記買到 |
 | `POST` | `/v1/purchase-items/{purchaseItemId}/unavailable` | Operator | M1b | 標記缺貨 |
@@ -355,3 +356,4 @@ coverage gate 的唯一過濾來源，不再從 description 猜。
 | 日期 | 異動 | 依據 | 影響 |
 |---|---|---|---|
 | 2026-08-30 | `refundTo` 的語意從「營運在後台代選」改成「客人自己選」；`RefundDestination.StoredValue` 註明 M1b 期間不開放，回可預期的業務失敗，M3 開啟 | ADR-023 | **純語意變更，schema 不動**——`refundTo` 早已 `required`，enum 兩個值早已都在。只改了兩個 cancel 端點（`/v1/orders/{orderId}/cancel`、`/v1/orders/{orderId}/lines/{lineId}/cancel`）的 `refundTo` description，與 `RefundDestination` 的 description。重跑 `pnpm api:generate`：`types.storefront.ts` 逐位元組不變，`types.admin.ts` 差異只有三行新增的 `@description` JSDoc，欄位、型別、`required`、enum 成員一個都沒變 |
+| 2026-08-31 | 新增 `POST /v1/orders/{orderId}/lines/{lineId}/refund-shortfall`（部分買到的短缺數量退款）；`AdminOrderLine` 新增 `quantityShortfall`（非必填） | ADR-026（第十五波 BE-31） | **純新增，不改既有 operation 語意**——完全比照既有 `.../lines/{lineId}/cancel` 的形狀（`reason`／`refundTo` request body、回 `AdminOrder`、`422`）。`quantityShortfall` 退款後不歸零，保留原值供追溯，「是否已退」看 `quantityShortfall > 0 且 refundedAmount 為 null`。前端還沒消化這個欄位與新端點，`pnpm api:generate` 待前端下一波跑 |
