@@ -51,7 +51,14 @@ Leader 要明講。
 
 ---
 
-## 生效中
+**沒有生效中的派工（2026-08-31）。** 整合者模式：原始碼一律不准寫。
+
+**下一波派工前，Leader 讀 `GreyGray_PM/00-進度總表.md`「下一步」一節決定要派什麼。**
+
+---
+
+<!--
+★ 2026-08-31 已通過整合驗收並提交（後端 c6fb2bf），撤包。原文保留供追溯。
 
 派工 BE-31：支援部分買到（ADR-026）　·　docs/27-後端第十五波派工書.md
 
@@ -59,7 +66,9 @@ package: BE-31
 doc: docs/27-後端第十五波派工書.md
 allow: src/Modules/Procurement/GreyGray.Modules.Procurement.Core/PurchaseItemAggregate.cs
 allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Core/Order.cs
+allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Core/OrderingApplicationService.cs
 allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Contracts/OrderingContracts.cs
+allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Infra/OrderingDbContext.cs
 allow: src/Hosts/GreyGray.Api.Admin/M1bShortfallRefundEndpoints.cs
 allow: src/Hosts/GreyGray.Api.Admin/Program.cs
 allow: src/Hosts/GreyGray.Api.Admin/OpenApiComponents.cs
@@ -67,8 +76,7 @@ allow: src/Hosts/GreyGray.Api.Admin/M1aEndpoints.cs
 allow: docs/api/openapi.admin.yaml
 allow: db/migrations/0015_
 allow: tests/
-
-**啟動 prompt 在 `.dispatch/PROMPTS.md`**。
+-->
 
 ---
 
@@ -233,6 +241,7 @@ allow: tests/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **BE-31** 支援部分買到（ADR-026）　·　2026-08-31 通過　·　`c6fb2bf`
 - **BE-30** 拿掉兩處過期守衛，讓已付款訂單的「原路退款」真的打得到　·　2026-08-31 通過　·　`dc0ea1f`
 - **BE-29** 修正三處 `.ThenBy(x => x.Id.Value)` 導致的 admin 列表端點 500　·　2026-08-31 通過　·　`dc0ea1f`
 - **BE-28** storefront Host 補上 CORS（比照 admin Host 的 ADR-021 模式）　·　2026-08-31 通過　·　`0c4f83e`
