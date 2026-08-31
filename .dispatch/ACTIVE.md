@@ -51,17 +51,31 @@ Leader 要明講。
 
 ---
 
-## 生效中
-
-**BE-35 是修正包**，修「現在卡在哪」#22 這一整個家族：副作用已經 commit、
-之後才在「組回應」那一步失敗，於是冪等鍵被 abandon、客人拿到錯誤。
-共五個端點同款形狀（checkout ＋ BE-34 新找到的四個）。
-
-修法**已經由 Leader 定死**（`docs/31-後端第十九波派工書.md` §1）：給 `BffHttp`
-加一個兩階段多載，`work`（會失敗，失敗時 abandon 是安全的）與 `render`
-（組回應，回傳型別不是 `Result<T>`，讓「組回應失敗」在型別上表達不出來）分開。
-**舊多載一個字都不准動**——33 個呼叫點裡有 28 個要繼續用它。
-(B)、★ `POST /v1/shipments`、A8／A9 明文不在這一波範圍（§2）。
+<!--
+★ 2026-09-01 已通過整合驗收並提交（後端 213e8a7），撤包。原文保留供追溯。
+「現在卡在哪」#22 的 (A′) 幽靈訂單與 (A″) 換 key 死路解掉，BE-34 留下的
+[Skip] 迴歸測試 `Committed_order_must_not_be_reported_as_a_failure` 轉綠。
+修法是 `BffHttp` 新增兩階段多載：`work`（會失敗）與 `render`（組回應）分開，
+`render` 回傳 `TResponse` 而不是 `Result<TResponse>`，**「組回應失敗」在型別上
+就表達不出來**——不靠人記得標記「副作用已產生」，靠型別讓錯的寫法編不過。
+另一個關鍵判斷：**刻意不接手 `CompleteAsync` 自己的失敗**，讓冪等鍵留在
+`IN_FLIGHT`（重送在 lease 到期前拿 409）而不是 abandon，因為 abandon 才會讓
+已產生的副作用被重做一次——這正好堵住 BE-34 在 `POST /v1/shipments` 找到的
+那條觸發路徑。五個同款端點改用新多載（checkout ＋ BE-34 新找到的四個）。
+**舊多載一個位元組都沒動**（`git diff --numstat` 152/0，純新增），
+33 個呼叫點裡 28 個繼續用它。
+Leader 裁決兩項超出「五個端點」字面範圍但屬必然後果的變更，均接受：
+① GET 訂單詳情（前後台各一）改成退化回 200 而非 422（共用組裝函式的必然結果，
+客人看得到訂單金額與狀態比整頁 422 好，契約沒破、退化有 log）；
+② `ToAdminOrderAsync` 的 `skuById[...]` 索引器改 `TryGetValue`，補掉一個獨立於
+#22 的潛在 `KeyNotFoundException`。
+Leader 獨立複驗：build 0/0、12 個測試專案逐一前景執行合計 203（基準 195＋8）
+0 Failed、Skipped 由 3 減為 2、`BffHttp` diff 逐行審查確認舊多載零改動、
+全部檔案無 BOM、audit-dispatch.sh 十一項通過。
+**剩下沒解的**：(B) 購物車結案卻沒訂單（要 saga 化，有 outbox 緩解）、
+★ `POST /v1/shipments` 重複風險（BE-34 找到，嚴重性高於 #22 本身，下一包）、
+A8／A9 兩個可自癒的幽靈、非泛型多載同款缺陷（目前 0 個呼叫點在用）。
+詳見 `.dispatch/reports/BE-35.md` 與 `GreyGray_PM/03-驗收紀錄.md`。
 
 派工 BE-35：修 #22 家族——副作用已 commit 就不准 abandon　·　docs/31-後端第十九波派工書.md
 
@@ -73,6 +87,7 @@ allow: src/Hosts/GreyGray.Api.Admin/M1aEndpoints.cs
 allow: src/Hosts/GreyGray.Api.Admin/M1bShortfallRefundEndpoints.cs
 allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
 allow: tests/GreyGray.Platform.Tests/
+-->
 
 ---
 
@@ -355,6 +370,9 @@ allow: tests/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **BE-35** 修 #22 家族：副作用已 commit 就不准 abandon　·　2026-09-01 通過　·　`213e8a7`　·
+  `BffHttp` 加兩階段 work／render 多載（讓「組回應失敗」在型別上表達不出來），
+  五個同款端點改用；(A′)(A″) 解掉，(B) 與 ★ `POST /v1/shipments` 留給後續
 - **BE-34** 查證 #22 checkout 幽靈訂單／冪等 abandon　·　2026-09-01 通過　·　`cb0d2f0`　·
   查證包不含修法。推翻「同一把 key 重試會建出第二張訂單」（測試證實訂單維持 1 張），
   並找到之前沒人發現的 ★ 重複風險 `POST /v1/shipments`，見 `.dispatch/reports/BE-34.md`
