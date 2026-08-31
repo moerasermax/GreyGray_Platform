@@ -58,6 +58,33 @@ Leader 要明講。
 ---
 
 <!--
+★ 2026-08-31 已通過整合驗收並提交（後端 7efca02），撤包。原文保留供追溯。
+跟 BE-29 修過的 OrderBy/ThenBy 同一種手法、同一個根因，比照 EntryId 已驗證過的
+運算子重載模式修好。訂單側活體 HTTP 驗證完整（4 頁 cursor 分頁全部 200），
+出貨側改採信任同等嚴謹度的自動化測試（Leader 裁決同意，成本效益考量）。
+過程中意外發現訂單編號 GUID v7 撞號的全新 bug，記錄但沒有動手修，留給下一波。
+Leader 派工過程中撞到 ai-cli MCP 斷線＋claude --bg 的 worktree 隔離政策與
+專案閘門互相矛盾兩層障礙，改用 claude -p（前景 print 模式）+ harness 自己的
+背景追蹤完成派工，全程無 ai-cli。詳見 .dispatch/reports/BE-32.md 與
+GreyGray_PM/03-驗收紀錄.md。
+
+派工 BE-32：修 cursor 分頁的 Where 子句同款排序翻譯失敗　·　docs/28-後端第十六波派工書.md
+
+package: BE-32
+doc: docs/28-後端第十六波派工書.md
+allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Contracts/OrderingContracts.cs
+allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Infra/OrderingRepository.cs
+allow: src/Modules/Fulfillment/GreyGray.Modules.Fulfillment.Contracts/FulfillmentContracts.cs
+allow: src/Modules/Fulfillment/GreyGray.Modules.Fulfillment.Infra/FulfillmentRepository.cs
+allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/OrderingAdminListSortPostgresTests.cs
+allow: tests/GreyGray.M1b.Fulfillment.Tests/FulfillmentAdminListSortPostgresTests.cs
+-->
+
+---
+
+---
+
+<!--
 ★ 2026-08-31 已通過整合驗收並提交（後端 c6fb2bf），撤包。原文保留供追溯。
 
 派工 BE-31：支援部分買到（ADR-026）　·　docs/27-後端第十五波派工書.md
@@ -241,6 +268,8 @@ allow: tests/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **BE-32** 修 cursor 分頁 Where 子句同款排序翻譯失敗（現在卡在哪 #17）　·　2026-08-31 通過　·　`7efca02`　·
+  跟 BE-29 同一類問題，比照 EntryId 運算子重載模式修好；意外發現訂單編號 GUID v7 撞號的全新 bug，見 `.dispatch/reports/BE-32.md`
 - **BE-31** 支援部分買到（ADR-026）　·　2026-08-31 通過　·　`c6fb2bf`
 - **BE-30** 拿掉兩處過期守衛，讓已付款訂單的「原路退款」真的打得到　·　2026-08-31 通過　·　`dc0ea1f`
 - **BE-29** 修正三處 `.ThenBy(x => x.Id.Value)` 導致的 admin 列表端點 500　·　2026-08-31 通過　·　`dc0ea1f`
