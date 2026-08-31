@@ -135,13 +135,9 @@ internal sealed class PurchaseItemAggregate
                 "實際買到數量必須介於 1 與需求數量之間。");
         }
 
-        if (quantityPurchased != QuantityRequested)
-        {
-            return Result<PurchaseTransition>.Failure(
-                "procurement.partial-purchase-not-supported",
-                "部分買到仍缺少短缺數量的退款契約；目前只能記錄全數買到，避免遺漏退款。");
-        }
-
+        // ADR-026：部分買到已經有退款契約（買到的出貨、短缺的退款），這裡不再擋。
+        // 短缺數量是 QuantityRequested - QuantityPurchased，不需要多存一個欄位；
+        // 退款去向與實際退款都在 Ordering 那一側處理，Procurement 不承載。
         if (actualPaid.Original.IsNegative
             || actualPaid.Booking.IsNegative
             || !Enum.IsDefined(actualPaid.Original.Currency)

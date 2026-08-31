@@ -128,8 +128,8 @@ public sealed class ProcurementTests
         conflict.Error.Code.ShouldBe("procurement.purchase-already-recorded");
     }
 
-    [Fact(DisplayName = "部分買到在短缺退款契約完成前明確拒絕，不誤記為 Purchased")]
-    public async Task Partial_purchase_is_rejected_until_shortage_compensation_exists()
+    [Fact(DisplayName = "部分買到照常記錄；短缺數量由 Ordering 那一側退款（ADR-026）")]
+    public async Task Partial_purchase_is_recorded_and_shortfall_is_left_to_ordering()
     {
         var fixture = new ProcurementFixture();
         fixture.AddOrder(OrderStatus.PaidAwaitingClose, FulfillmentMode.Preorder);
@@ -137,19 +137,27 @@ public sealed class ProcurementTests
             fixture.CampaignClosed,
             TestContext.Current.CancellationToken);
         var item = fixture.Repository.Items.Single();
+        var paid = new MoneyPair(
+            Money.OfMajor(500, Currency.JPY),
+            Money.OfMajor(110, Currency.TWD),
+            null);
 
         var result = await fixture.Service.MarkPurchasedAsync(
             item.Id,
             item.QuantityRequested - 1,
-            new MoneyPair(
-                Money.OfMajor(500, Currency.JPY),
-                Money.OfMajor(110, Currency.TWD),
-                null),
+            paid,
             TestContext.Current.CancellationToken);
 
-        result.Error.Code.ShouldBe("procurement.partial-purchase-not-supported");
-        item.Status.ShouldBe(PurchaseItemStatus.Pending);
-        fixture.Publisher.Events.ShouldBeEmpty();
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.Status.ShouldBe(PurchaseItemStatus.Purchased);
+        result.Value.QuantityPurchased.ShouldBe(item.QuantityRequested - 1);
+
+        // 短缺數量是 QuantityRequested - QuantityPurchased，Procurement 不另外存、
+        // 也不承載退款去向——那是 Ordering 那一側的 QuantityShortfall 與
+        // refund-shortfall 端點的事（ADR-026）。
+        var published = fixture.Publisher.Events.Single().ShouldBeOfType<ItemPurchased>();
+        published.OrderLineId.ShouldBe(item.OrderLineId);
+        published.Quantity.ShouldBe(item.QuantityRequested - 1);
     }
 
     [Fact(DisplayName = "記帳成本只接受 TWD，且查詢受 tenant 隔離")]

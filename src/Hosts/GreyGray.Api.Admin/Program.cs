@@ -98,6 +98,7 @@ if (app.Environment.IsDevelopment())
 app.MapM1aAdminEndpoints();
 app.MapM1bProcurementEndpoints();
 app.MapM1bCompensationEndpoints();
+app.MapM1bShortfallRefundEndpoints();
 app.MapM1bFulfillmentEndpoints();
 
 app.UseExceptionHandler();

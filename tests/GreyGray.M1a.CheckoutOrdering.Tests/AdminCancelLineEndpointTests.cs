@@ -185,6 +185,12 @@ public sealed class AdminCancelLineEndpointTests
             return Task.FromResult(Result<OrderView>.Success(Current));
         }
 
+        public Task<Result<OrderView>> RefundLineShortfallAsync(
+            OrderId orderId,
+            OrderLineId lineId,
+            string reason,
+            RefundDestination refundTo,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<Result<OrderView>> CreateFromCheckoutAsync(
             CheckoutCompleted checkout,
             CancellationToken cancellationToken) => throw new NotSupportedException();

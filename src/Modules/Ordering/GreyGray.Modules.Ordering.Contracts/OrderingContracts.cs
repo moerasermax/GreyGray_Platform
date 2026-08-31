@@ -118,6 +118,14 @@ public sealed record OrderLineView(
 
     public Money LineTotal => UnitPrice.MultiplyByQuantity(Quantity);
 
+    /// <summary>
+    /// 部分買到時短缺的數量（ADR-026），0 表示沒有短缺。
+    /// <see cref="Quantity"/> 是「實際要出貨的數量」，短缺退款完成後才會扣掉這個數量；
+    /// 本欄位退款後保留原值，判斷「還在等退款決定」要合併看
+    /// <see cref="RefundedAmount"/> 是不是 null。
+    /// </summary>
+    public int QuantityShortfall { get; init; }
+
     public Money? RefundedAmount { get; init; }
 }
 
@@ -218,6 +226,17 @@ public interface IOrderingApplication
 
     /// <summary>現場缺貨時取消整條訂單品項；其餘品項與訂單狀態不變。</summary>
     Task<Result<OrderView>> CancelLineAsync(
+        OrderId orderId,
+        OrderLineId lineId,
+        string reason,
+        RefundDestination refundTo,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 部分買到的短缺數量退款（ADR-026）。買到的照常出貨，短缺的退款——
+    /// 標記買到當下不問退款去向，客人選好之後才呼叫這裡，這一刻才減訂單金額。
+    /// </summary>
+    Task<Result<OrderView>> RefundLineShortfallAsync(
         OrderId orderId,
         OrderLineId lineId,
         string reason,

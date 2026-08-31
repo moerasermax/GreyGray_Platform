@@ -56,6 +56,7 @@ public sealed class ModuleShapeTests
                 "RecordPaymentFailedAsync",
                 "RecordPaymentRefundedAsync",
                 "RecordItemPurchasedAsync",
+                "RefundLineShortfallAsync",
             ],
             ignoreOrder: true);
     }

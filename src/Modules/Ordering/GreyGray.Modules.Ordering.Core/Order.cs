@@ -282,6 +282,58 @@ internal sealed class Order
         return refundAmount;
     }
 
+    /// <summary>
+    /// 部分買到的短缺數量退款（ADR-026）。買到的數量照常出貨，短缺的數量退款——
+    /// 標記買到當下刻意不問退款去向（比照 M1b-2 的決策延後模式），
+    /// 客人選好之後才呼叫這裡，這一刻才把 <see cref="OrderLine.Quantity"/> 減下來。
+    /// </summary>
+    /// <returns>短缺數量的退款金額；已經退過時回 <c>ordering.line-shortfall-already-refunded</c>。</returns>
+    public Result<Money> RefundLineShortfallByAdmin(OrderLineId orderLineId)
+    {
+        if (Status is OrderStatus.Cancelled or OrderStatus.Completed)
+        {
+            return Result<Money>.Failure(
+                "ordering.order-line-shortfall-cannot-be-refunded",
+                "訂單已取消或完成，不能再退短缺款。");
+        }
+
+        var line = _lines.SingleOrDefault(candidate => candidate.Id == orderLineId);
+        if (line is null)
+        {
+            return Result<Money>.Failure(
+                "ordering.order-line-not-found",
+                "找不到訂單品項。");
+        }
+
+        if (line.Status != OrderLineStatus.Purchased)
+        {
+            return Result<Money>.Failure(
+                "ordering.order-line-shortfall-cannot-be-refunded",
+                "只有已記錄買到結果的訂單品項才可能有短缺數量。");
+        }
+
+        if (line.QuantityShortfall <= 0)
+        {
+            return Result<Money>.Failure(
+                "ordering.order-line-has-no-shortfall",
+                "這個訂單品項全數買到，沒有短缺數量可退。");
+        }
+
+        // 冪等：短缺退款是一次性決策，退過就不再退，也不支援反悔改去向。
+        if (line.RefundedAmountMinor is not null)
+        {
+            return Result<Money>.Failure(
+                "ordering.line-shortfall-already-refunded",
+                "這個訂單品項的短缺數量已經退過款。");
+        }
+
+        var refundAmount = line.UnitPrice.MultiplyByQuantity(line.QuantityShortfall);
+        line.RecordShortfallRefund(refundAmount);
+        GoodsTotalAmountMinor = checked(GoodsTotalAmountMinor - refundAmount.AmountMinor);
+        GrandTotalAmountMinor = checked(GrandTotalAmountMinor - refundAmount.AmountMinor);
+        return refundAmount;
+    }
+
     public Result RecordRefund(Money amount)
     {
         if (amount.IsNegative || PaidAmount is null || amount.Currency != PaidAmount.Value.Currency)
@@ -319,16 +371,17 @@ internal sealed class Order
                 "實際買到數量必須介於 1 與訂購數量之間。");
         }
 
-        if (quantityPurchased != line.Quantity)
-        {
-            return Result<PurchaseLineTransition>.Failure(
-                "ordering.partial-purchase-not-supported",
-                "短缺數量尚未完成退款前，訂單品項不能標記為全數買到。");
-        }
-
         if (line.Status == OrderLineStatus.Purchased)
         {
-            return PurchaseLineTransition.AlreadyRecorded;
+            // 冪等要比對內容，不能只看狀態：同一條 line 先記 3 件、後來又送 4 件，
+            // 靜默接受會讓短缺數量與退款金額對不上帳。
+            // line.Quantity 在短缺退款完成後會被減掉，所以「上次記的買到數量」
+            // 要用 Quantity - QuantityShortfall 還原，退款前後都成立。
+            return line.Quantity - line.QuantityShortfall == quantityPurchased
+                ? PurchaseLineTransition.AlreadyRecorded
+                : Result<PurchaseLineTransition>.Failure(
+                    "ordering.purchase-already-recorded",
+                    "這個訂單品項已用不同的買到數量記錄過採購結果。");
         }
 
         if (line.Status is OrderLineStatus.Unavailable
@@ -348,7 +401,7 @@ internal sealed class Order
                 "訂單尚未付款或已取消，不能記錄採購結果。");
         }
 
-        line.MarkPurchased();
+        line.MarkPurchased(quantityPurchased);
         if (Status is OrderStatus.PaidAwaitingClose or OrderStatus.ClosedAwaitingDeparture)
         {
             Status = OrderStatus.Purchasing;
@@ -584,7 +637,21 @@ internal sealed class OrderLine
 
     public OrderLineStatus Status { get; private set; }
 
+    /// <summary>
+    /// 這條 line <b>現在實際要出貨／已出貨的數量</b>（ADR-026 之後的語意）。
+    /// 下單時等於客人訂購的數量；部分買到時仍維持原值不動——
+    /// 短缺退款去向還沒決定就先改訂單金額，客人會在退款真的發生之前
+    /// 看到總額變小，時序上說不通。<see cref="RecordShortfallRefund"/>
+    /// 真的退款那一刻才減掉 <see cref="QuantityShortfall"/>。
+    /// </summary>
     public int Quantity { get; private set; }
+
+    /// <summary>
+    /// 部分買到時短缺的數量（訂購數量 - 實際買到數量），0 表示沒有短缺。
+    /// <b>退款完成後不歸零</b>——「短缺過幾件」是歷史事實；
+    /// 「有沒有退過」看 <see cref="RefundedAmountMinor"/> 是不是 null。
+    /// </summary>
+    public int QuantityShortfall { get; private set; }
 
     public long UnitPriceAmountMinor { get; private set; }
 
@@ -627,7 +694,34 @@ internal sealed class OrderLine
         RefundedCurrency = refundAmount.Currency;
     }
 
-    public void MarkPurchased() => Status = OrderLineStatus.Purchased;
+    /// <summary>
+    /// 記錄採購結果。<paramref name="quantityPurchased"/> 小於訂購數量就是部分買到
+    /// （ADR-026），差額掛進 <see cref="QuantityShortfall"/> 等退款去向決定，
+    /// <see cref="Quantity"/> 這一刻不動。呼叫端（<see cref="Order.RecordItemPurchased"/>）
+    /// 已經驗過數量範圍與狀態。
+    /// </summary>
+    public void MarkPurchased(int quantityPurchased)
+    {
+        Status = OrderLineStatus.Purchased;
+        QuantityShortfall = Quantity - quantityPurchased;
+    }
+
+    /// <summary>
+    /// 短缺數量的退款完成。退款金額必須剛好等於短缺數量 × 單價——
+    /// 比照 <see cref="MarkUnavailable"/> 對 <see cref="LineTotal"/> 的驗證，
+    /// 金額對不上是呼叫端算錯，屬於「不該發生」，丟例外不回 Result（鐵則 5）。
+    /// </summary>
+    public void RecordShortfallRefund(Money refundAmount)
+    {
+        if (refundAmount != UnitPrice.MultiplyByQuantity(QuantityShortfall))
+        {
+            throw new InvalidOperationException("短缺退款金額必須等於短缺數量乘上單價。");
+        }
+
+        RefundedAmountMinor = refundAmount.AmountMinor;
+        RefundedCurrency = refundAmount.Currency;
+        Quantity -= QuantityShortfall;
+    }
 
     public void MarkGoodsReceived(DateTimeOffset receivedAt) => GoodsReceivedAt = receivedAt;
 
@@ -635,6 +729,7 @@ internal sealed class OrderLine
         new(Id, SkuId, Mode, Status, Quantity, UnitPrice, CampaignId, ConsumedLotId)
         {
             CampaignOfferId = CampaignOfferId,
+            QuantityShortfall = QuantityShortfall,
             RefundedAmount = RefundedAmountMinor is not null && RefundedCurrency is not null
                 ? new Money(RefundedAmountMinor.Value, RefundedCurrency.Value)
                 : null,

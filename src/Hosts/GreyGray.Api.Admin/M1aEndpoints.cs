@@ -915,7 +915,9 @@ internal static class M1aEndpoints
             .ToArray();
     }
 
-    private static async Task<Result<AdminOrderResponse>> ToAdminOrderAsync(
+    // internal（原本 private）：ADR-026 的短缺退款端點另開在
+    // M1bShortfallRefundEndpoints.cs，要共用同一份 AdminOrder 組裝邏輯。
+    internal static async Task<Result<AdminOrderResponse>> ToAdminOrderAsync(
         OrderView order,
         ICustomerDirectory customers,
         IPaymentQuery payments,
@@ -967,6 +969,7 @@ internal static class M1aEndpoints
                     line.Mode,
                     line.Status,
                     line.Quantity,
+                    line.QuantityShortfall,
                     line.UnitPrice,
                     line.LineTotal,
                     line.RefundedAmount,
@@ -1123,6 +1126,7 @@ internal static class M1aEndpoints
         FulfillmentMode Mode,
         OrderLineStatus Status,
         int Quantity,
+        int QuantityShortfall,
         Money UnitPrice,
         Money LineTotal,
         Money? RefundedAmount,

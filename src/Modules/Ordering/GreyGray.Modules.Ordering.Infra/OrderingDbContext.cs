@@ -239,6 +239,10 @@ internal sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> opti
                 table.HasCheckConstraint(
                     "ck_order_line_quantity",
                     "quantity BETWEEN 1 AND 999");
+                // 與 db/migrations/0015_ordering_partial_purchase_shortfall.sql 逐字一致。
+                table.HasCheckConstraint(
+                    "ck_order_line_quantity_shortfall",
+                    "quantity_shortfall BETWEEN 0 AND 999");
                 table.HasCheckConstraint(
                     "ck_order_line_unit_price",
                     "unit_price_amount_minor >= 0");
@@ -271,6 +275,9 @@ internal sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> opti
             .IsRequired();
         entity.Property(line => line.Quantity)
             .HasColumnName("quantity")
+            .IsRequired();
+        entity.Property(line => line.QuantityShortfall)
+            .HasColumnName("quantity_shortfall")
             .IsRequired();
         entity.Property(line => line.UnitPriceAmountMinor)
             .HasColumnName("unit_price_amount_minor")
