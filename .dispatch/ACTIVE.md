@@ -51,9 +51,35 @@ Leader 要明講。
 
 ---
 
-**沒有生效中的派工（2026-08-31）。** 整合者模式：原始碼一律不准寫。
+---
 
-**下一波派工前，Leader 讀 `GreyGray_PM/00-進度總表.md`「下一步」一節決定要派什麼。**
+<!--
+★ 2026-08-31 已通過整合驗收並提交（後端 299b3d5），撤包。原文保留供追溯。
+BuildOrderNumber 原本取 OrderId(GUID v7)"N"格式的前 7 hex 碼，剛好落在 GUID v7
+的 48-bit 時間戳記區段內，同一視窗（約 17.5 分鐘）建立的訂單幾乎必然撞號——
+這正是 BE-32 驗收過程中意外發現、記錄但沒動手修的那個新 bug。改成取尾端
+7 hex 碼（純亂數的 random_b 區段），格式／長度不變、不需要遷移，撞號機率
+降到約 1/2^28。新增迴歸測試確認修法前紅、修法後綠，不影響既有的
+OrderNumber 前綴斷言。
+Leader 派工過程踩到兩個環境限制，一併記在這裡供下一波參考：
+① `claude --resume <session-id>` 若沒有讓 resume prompt 重新以
+`GG_PACKAGE=BE-33` 開頭，`claim-package.sh` 不會重新綁定，閘門會對新寫入
+fail-closed（即使該 session 先前的寫入完全合法）——之後任何 resume 都要
+比照全新派工一樣帶上 `GG_PACKAGE=`；
+② 背景執行的 `ops/test.ps1` 整套跑法在這個 harness 上，session 重啟／resume
+時背景行程會被一併砍掉、不會存活，連續兩次都卡在同一個位置——後來改成
+12 個測試專案逐一在前景個別執行的方式繞過，全部覆蓋、沒有跳過任何專案。
+Leader 獨立複驗：diff 逐行核對、重新 build、audit-dispatch.sh、
+CheckoutOrdering.Tests.exe 自己重跑一次 36/36，皆與自驗報告一致。
+詳見 `.dispatch/reports/BE-33.md` 與 `GreyGray_PM/03-驗收紀錄.md`。
+
+派工 BE-33：修訂單編號 GUID v7 撞號　·　docs/29-後端第十七波派工書.md
+
+package: BE-33
+doc: docs/29-後端第十七波派工書.md
+allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Core/Order.cs
+allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/OrderingTests.cs
+-->
 
 ---
 
@@ -268,6 +294,8 @@ allow: tests/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **BE-33** 修訂單編號 GUID v7 撞號（現在卡在哪 #21）　·　2026-08-31 通過　·　`299b3d5`　·
+  BuildOrderNumber 改取 GUID hex 尾端 7 碼（純亂數區段）而非前 7 碼（時間戳記區段），見 `.dispatch/reports/BE-33.md`
 - **BE-32** 修 cursor 分頁 Where 子句同款排序翻譯失敗（現在卡在哪 #17）　·　2026-08-31 通過　·　`7efca02`　·
   跟 BE-29 同一類問題，比照 EntryId 運算子重載模式修好；意外發現訂單編號 GUID v7 撞號的全新 bug，見 `.dispatch/reports/BE-32.md`
 - **BE-31** 支援部分買到（ADR-026）　·　2026-08-31 通過　·　`c6fb2bf`
