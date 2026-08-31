@@ -564,8 +564,11 @@ internal sealed class Order
         return total ?? Money.Zero(Currency.TWD);
     }
 
-    private static string BuildOrderNumber(OrderId id, DateTimeOffset placedAt) =>
-        $"GG{placedAt.UtcDateTime:yyMMdd}{id.Value:N}"[..15].ToUpperInvariant();
+    private static string BuildOrderNumber(OrderId id, DateTimeOffset placedAt)
+    {
+        var randomSuffix = id.Value.ToString("N")[^7..];
+        return $"GG{placedAt.UtcDateTime:yyMMdd}{randomSuffix}".ToUpperInvariant();
+    }
 }
 
 internal enum PaymentCaptureTransition

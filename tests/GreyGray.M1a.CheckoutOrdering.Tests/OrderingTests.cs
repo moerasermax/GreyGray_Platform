@@ -41,6 +41,30 @@ public sealed class OrderingTests
         fixture.Publisher.Published[1].ShouldBeOfType<PaymentRequested>();
     }
 
+    [Fact(DisplayName = "現在卡在哪 #21：同一視窗內連續建兩張訂單，OrderNumber 不能撞號")]
+    public async Task Order_numbers_do_not_collide_for_orders_created_moments_apart()
+    {
+        var fixture = new OrderingFixture();
+        var secondCheckout = fixture.Checkout with
+        {
+            EventId = Guid.CreateVersion7(),
+            CartId = CartId.New(),
+            IdempotencyKey = "checkout-idempotency-2",
+        };
+
+        var first = await fixture.Service.CreateFromCheckoutAsync(
+            fixture.Checkout,
+            TestContext.Current.CancellationToken);
+        var second = await fixture.Service.CreateFromCheckoutAsync(
+            secondCheckout,
+            TestContext.Current.CancellationToken);
+
+        first.IsSuccess.ShouldBeTrue();
+        second.IsSuccess.ShouldBeTrue();
+        second.Value.Id.ShouldNotBe(first.Value.Id);
+        second.Value.OrderNumber.ShouldNotBe(first.Value.OrderNumber);
+    }
+
     [Fact(DisplayName = "客戶只能取消 AwaitingPayment，零退款不發 RefundRequested")]
     public async Task Customer_cancel_is_awaiting_payment_only()
     {
