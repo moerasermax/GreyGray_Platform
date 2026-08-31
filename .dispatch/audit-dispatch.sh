@@ -414,6 +414,75 @@ else
 fi
 
 
+say "⑪ 派工書提到的原始碼路徑，有沒有漏列進任何生效包的 allow"
+# 為什麼要有這一項：BE-31（第十五波）派工書 §0.2／§5 明文要求改
+# OrderingApplicationService.cs／OrderingDbContext.cs，但 §3 的所有權表與
+# ACTIVE.md 的 allow 都沒列，子代理查證後正確停下回報，Leader 才臨時補上。
+# 這是第三次同型跟頭（第六、七波各一次），三次都是機械查得出來的。
+#
+# ★ 這一項只能是「提醒」，不能是硬性擋——派工書裡合法地會提到不打算改的
+#   檔案（例如「複製 CancelOrderLineDialog.tsx 的結構」是在講模板，不是要
+#   改那個檔案本身），機械腳本分不出「要改」跟「參考用途」，硬擋會讓這一項
+#   自己被下一個人關掉。列出候選讓 Leader 逐一確認，比自動判定可靠。
+#
+# ★ 用「所有生效包的聯集」（GG_UNION=1，不設 GG_PACKAGE）而不是逐包比對：
+#   同一份派工書常常橫跨兩個包（例如 BE-29／BE-30 共用 docs/26），若逐包比對，
+#   派工書裡屬於另一包的檔案會被誤報成「這一包漏列」——聯集只問「現在到底
+#   有沒有人能寫」，不管是哪一包，噪音小很多。
+docs="$(gg_active_docs | sort -u)"
+CANDF="$GG_ROOT/.dispatch/.audit-cand11"; : > "$CANDF"
+# 同一個檔案常常在派工書裡被提到好幾次（簡寫、完整路徑、不同段落各講一次），
+# 每次提到的「緊接文字窗口」都不一樣，會被 sort -u 當成不同字串各印一次。
+# 用這個檔案記錄「這個解析後的路徑已經報過」，同一個檔案全篇只報一次。
+SEENP="$GG_ROOT/.dispatch/.audit-seenp11"; : > "$SEENP"
+for d in $docs; do
+  [ -f "$GG_ROOT/$d" ] || continue
+  # ★ 豁免詞比對要抓「這個檔案自己緊接著的文字」，不能像④⑤那樣抓整行——
+  #   §3 檔案所有權表常常一行塞好幾個用「·」分隔的檔案，一行裡只要有任何
+  #   一個檔案標「新檔」，整行比對會讓同一行其他明明是既有檔案的項目也被
+  #   誤豁免（BE-31 的 docs/27 §3 那一行就是這樣：M1bShortfallRefundEndpoints.cs
+  #   後面跟著「（新檔）」，同一行更前面的 OrderingApplicationService.cs／
+  #   OrderingDbContext.cs 不是新檔，卻會被那個「新檔」誤豁免）。改成抓
+  #   「反引號路徑＋緊接著最多 40 字（不跨過下一個 ·／| 分隔）」當比對窗口。
+  grep -oE '`[]A-Za-z0-9_./()[-]+\.(cs|ts|tsx|sql|ps1|yaml|yml|json|sh)`[^·|]{0,40}' "$GG_ROOT/$d" \
+    | sort -u | while IFS= read -r m; do
+      f="$(printf '%s' "$m" | grep -oE '^`[^`]+`' | tr -d '`')"
+      [ -n "$f" ] || continue
+      seen
+      p="$f"
+      if [ ! -e "$GG_ROOT/$p" ] && [ ! -e "$GG_ROOT/frontend/$p" ]; then
+        hits="$(gg_resolve_ref "$f")"
+        cnt="$(printf '%s' "$hits" | grep -c . || true)"
+        [ "${cnt:-0}" -eq 1 ] && p="$hits"
+      fi
+      # 全域放行的路徑本來就人人能寫，不算候選；新檔／另一棵樹的豁免詞比照④⑤，
+      # 但只比對這個檔案自己的窗口（$m），不比對整行
+      case "$p" in
+        docs/*|management/*|STATE.md|CLAUDE.md|AGENTS.md|.dispatch/reports/*) continue ;;
+      esac
+      printf '%s' "$m" | grep -qE "$NEWMARK" && continue
+      grep -qxF "$p" "$SEENP" 2>/dev/null && continue
+      printf '%s\n' "$p" >> "$SEENP"
+      if ! (unset GG_PACKAGE; GG_UNION=1 gg_path_allowed "$p") 2>/dev/null; then
+        printf '  ⚠ %s 提到 %s，但目前沒有任何生效包的 allow 涵蓋這個路徑（可能漏列，也可能只是參考用途，人工確認）\n' "$d" "$f"
+        printf x >> "$CANDF"
+      fi
+    done
+done
+rm -f "$SEENP"
+# ★ 刻意不走 tally()／bad()：這一項找到候選也不算失敗（見上方說明），
+#   tally() 的二選一訊息模型（查了都沒事 vs 一項都沒查到）裝不下「查了、
+#   而且真的印出候選」這第三種狀態，硬套會讓候選訊息跟「✓ 沒事」同時出現。
+_n11="$(wc -c < "$NFILE" | tr -d ' ')"; : > "$NFILE"
+_cand11="$(wc -c < "$CANDF" | tr -d ' ')"; rm -f "$CANDF"
+if [ "${_n11:-0}" -eq 0 ]; then
+  printf '  ⚠ 派工書裡一個原始碼路徑引用都沒抓到——抓取用的正規表示式可能失效了\n'
+elif [ "${_cand11:-0}" -eq 0 ]; then
+  ok "沒有查到可疑的候選（查了 ${_n11} 項，不代表保證沒漏，只是這次沒抓到）"
+else
+  printf '  · 以上 %s 個候選僅供人工確認，不計入稽核失敗\n' "$_cand11"
+fi
+
 say ""
 if [ "$FAIL" -eq 0 ]; then
   say "稽核通過。"
