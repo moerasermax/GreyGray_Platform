@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 using GreyGray.Modules.Campaign.Contracts;
@@ -13,6 +14,10 @@ using GreyGray.Platform.Abstractions.Idempotency;
 using GreyGray.Platform.Abstractions.Sessions;
 using GreyGray.Platform.Http;
 using GreyGray.Shared.Kernel;
+
+// BE-34：讓 CompleteCheckoutAsync 能被 CheckoutOrdering.Tests 直接呼叫。
+// Admin Host 把同一條寫在 AssemblyInfo.cs，Storefront Host 沒有那個檔案。
+[assembly: InternalsVisibleTo("GreyGray.M1a.CheckoutOrdering.Tests")]
 
 namespace GreyGray.Api.Storefront;
 
@@ -523,50 +528,76 @@ internal static class M1aEndpoints
             ICustomerDirectory customers,
             IIdempotencyStore idempotency,
             CancellationToken cancellationToken) =>
-        {
-            var customer = await GetCustomerAsync(context, sessions, cancellationToken);
-            if (customer is null)
-            {
-                return BffHttp.Unauthorized();
-            }
-
-            if (!context.Request.Headers.TryGetValue("Idempotency-Key", out var key))
-            {
-                return BffHttp.Problem(
-                    new Error("request.idempotency-key-required", "缺少 Idempotency-Key header。"),
-                    StatusCodes.Status400BadRequest);
-            }
-
-            var request = new CompleteCheckoutRequest(
-                GetOrCreateCartId(context),
-                customer.Value,
-                input.DeliveryMethod,
-                input.ShippingPolicy,
-                input.ShippingAddressId,
-                input.ConvenienceStoreCode,
-                input.BuyerNote,
-                key.ToString().Trim());
-            return await BffHttp.ExecuteIdempotentAsync(
+            await CompleteCheckoutAsync(
+                input,
                 context,
+                sessions,
+                checkout,
+                ordering,
+                catalog,
+                customers,
                 idempotency,
-                "storefront:cart:checkout",
-                request,
-                async token =>
-                {
-                    var completed = await checkout.CompleteAsync(request, token);
-                    if (completed.IsFailure)
-                    {
-                        return Result<OrderResponse>.Failure(completed.Error);
-                    }
+                cancellationToken));
+    }
 
-                    var order = await ordering.CreateFromCheckoutAsync(completed.Value, token);
-                    return order.IsSuccess
-                        ? await ToOrderAsync(order.Value, catalog, customers, token)
-                        : Result<OrderResponse>.Failure(order.Error);
-                },
-                StatusCodes.Status201Created,
-                cancellationToken);
-        });
+    /// <summary>
+    /// <c>POST /v1/cart/checkout</c> 的處理邏輯。BE-34 從 <see cref="MapCart"/> 的 inline
+    /// lambda 原樣抽出來，比照 Admin Host 的 <c>CancelOrderLineAsync</c>，好讓測試直接呼叫；
+    /// <b>行為沒有任何改動</b>。
+    /// </summary>
+    internal static async Task<IResult> CompleteCheckoutAsync(
+        CompleteCheckoutInput input,
+        HttpContext context,
+        ISessionStore sessions,
+        ICheckoutApplication checkout,
+        IOrderingApplication ordering,
+        ICatalogQuery catalog,
+        ICustomerDirectory customers,
+        IIdempotencyStore idempotency,
+        CancellationToken cancellationToken)
+    {
+        var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+        if (customer is null)
+        {
+            return BffHttp.Unauthorized();
+        }
+
+        if (!context.Request.Headers.TryGetValue("Idempotency-Key", out var key))
+        {
+            return BffHttp.Problem(
+                new Error("request.idempotency-key-required", "缺少 Idempotency-Key header。"),
+                StatusCodes.Status400BadRequest);
+        }
+
+        var request = new CompleteCheckoutRequest(
+            GetOrCreateCartId(context),
+            customer.Value,
+            input.DeliveryMethod,
+            input.ShippingPolicy,
+            input.ShippingAddressId,
+            input.ConvenienceStoreCode,
+            input.BuyerNote,
+            key.ToString().Trim());
+        return await BffHttp.ExecuteIdempotentAsync(
+            context,
+            idempotency,
+            "storefront:cart:checkout",
+            request,
+            async token =>
+            {
+                var completed = await checkout.CompleteAsync(request, token);
+                if (completed.IsFailure)
+                {
+                    return Result<OrderResponse>.Failure(completed.Error);
+                }
+
+                var order = await ordering.CreateFromCheckoutAsync(completed.Value, token);
+                return order.IsSuccess
+                    ? await ToOrderAsync(order.Value, catalog, customers, token)
+                    : Result<OrderResponse>.Failure(order.Error);
+            },
+            StatusCodes.Status201Created,
+            cancellationToken);
     }
 
     private static void MapOrders(RouteGroupBuilder api)
@@ -1134,7 +1165,7 @@ internal static class M1aEndpoints
 
     private sealed record QuoteCartInput(DeliveryMethod DeliveryMethod);
 
-    private sealed record CompleteCheckoutInput(
+    internal sealed record CompleteCheckoutInput(
         DeliveryMethod DeliveryMethod,
         ShippingPolicy ShippingPolicy,
         AddressId? ShippingAddressId,

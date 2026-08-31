@@ -20,6 +20,7 @@
     <ProjectReference Include="..\..\src\Modules\Checkout\GreyGray.Modules.Checkout.Infra\GreyGray.Modules.Checkout.Infra.csproj" />
     <ProjectReference Include="..\..\src\Modules\Ordering\GreyGray.Modules.Ordering.Infra\GreyGray.Modules.Ordering.Infra.csproj" />
     <ProjectReference Include="..\..\src\Hosts\GreyGray.Api.Admin\GreyGray.Api.Admin.csproj" />
+    <ProjectReference Include="..\..\src\Hosts\GreyGray.Api.Storefront\GreyGray.Api.Storefront.csproj" />
   </ItemGroup>
 
 </Project>

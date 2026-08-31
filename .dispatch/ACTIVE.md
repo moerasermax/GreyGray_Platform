@@ -51,6 +51,21 @@ Leader 要明講。
 
 ---
 
+## 生效中
+
+**BE-34 是查證包，不是修正包。** 交付物是證據（可執行的迴歸測試 ＋ 33 個
+`ExecuteIdempotentAsync` 呼叫點的分類表 ＋ 修法選項分析），不是修法。
+唯一准動的生產程式碼是「把 `/cart/checkout` 的 inline lambda 機械抽成靜態
+方法」，行為必須一模一樣（抽完 187 條測試要全綠）。冪等邏輯、交易行為、
+Checkout／Ordering 模組行為一律不准改——修法方向由 Leader 看完報告再拍板。
+
+派工 BE-34：查證「現在卡在哪」#22 checkout 幽靈訂單／冪等 abandon　·　docs/30-後端第十八波派工書.md
+
+package: BE-34
+doc: docs/30-後端第十八波派工書.md
+allow: src/Hosts/GreyGray.Api.Storefront/M1aEndpoints.cs
+allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
+
 ---
 
 <!--
