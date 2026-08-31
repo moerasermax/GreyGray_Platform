@@ -1,17 +1,5 @@
 {
   "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "shell": "bash",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-D:/WorkSpace/01_開發中_wip/GreyGray_Platform-fe}/.claude/hooks/session-brief.sh\"",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
     "PreToolUse": [
       {
         "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell",
