@@ -7,7 +7,7 @@
           {
             "type": "command",
             "shell": "bash",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-D:/WorkSpace/01_開發中_wip/GreyGray_Platform-fe}/.claude/hooks/dispatch-guard.sh\"",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-D:/WorkSpace/01_開發中_wip/GreyGray/GreyGray_Platform-fe}/.claude/hooks/dispatch-guard.sh\"",
             "timeout": 10,
             "statusMessage": "檢查派工範圍"
           }
@@ -20,7 +20,7 @@
           {
             "type": "command",
             "shell": "bash",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-D:/WorkSpace/01_開發中_wip/GreyGray_Platform-fe}/.claude/hooks/stop-gate.sh\"",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-D:/WorkSpace/01_開發中_wip/GreyGray/GreyGray_Platform-fe}/.claude/hooks/stop-gate.sh\"",
             "timeout": 20,
             "statusMessage": "檢查越界與 PM 同步"
           }
@@ -33,7 +33,7 @@
           {
             "type": "command",
             "shell": "bash",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-D:/WorkSpace/01_開發中_wip/GreyGray_Platform-fe}/.claude/hooks/claim-package.sh\"",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-D:/WorkSpace/01_開發中_wip/GreyGray/GreyGray_Platform-fe}/.claude/hooks/claim-package.sh\"",
             "timeout": 10
           }
         ]
