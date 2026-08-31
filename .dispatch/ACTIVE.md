@@ -51,6 +51,31 @@ Leader 要明講。
 
 ---
 
+## 生效中
+
+**BE-35 是修正包**，修「現在卡在哪」#22 這一整個家族：副作用已經 commit、
+之後才在「組回應」那一步失敗，於是冪等鍵被 abandon、客人拿到錯誤。
+共五個端點同款形狀（checkout ＋ BE-34 新找到的四個）。
+
+修法**已經由 Leader 定死**（`docs/31-後端第十九波派工書.md` §1）：給 `BffHttp`
+加一個兩階段多載，`work`（會失敗，失敗時 abandon 是安全的）與 `render`
+（組回應，回傳型別不是 `Result<T>`，讓「組回應失敗」在型別上表達不出來）分開。
+**舊多載一個字都不准動**——33 個呼叫點裡有 28 個要繼續用它。
+(B)、★ `POST /v1/shipments`、A8／A9 明文不在這一波範圍（§2）。
+
+派工 BE-35：修 #22 家族——副作用已 commit 就不准 abandon　·　docs/31-後端第十九波派工書.md
+
+package: BE-35
+doc: docs/31-後端第十九波派工書.md
+allow: src/Platform/Http/BffHttp.cs
+allow: src/Hosts/GreyGray.Api.Storefront/M1aEndpoints.cs
+allow: src/Hosts/GreyGray.Api.Admin/M1aEndpoints.cs
+allow: src/Hosts/GreyGray.Api.Admin/M1bShortfallRefundEndpoints.cs
+allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
+allow: tests/GreyGray.Platform.Tests/
+
+---
+
 <!--
 ★ 2026-09-01 已通過整合驗收並提交（後端 cb0d2f0），撤包。原文保留供追溯。
 查證包，不含修法。**核心結論是推翻既有文件**：`00-進度總表.md` #22 與
