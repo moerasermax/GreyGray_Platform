@@ -303,7 +303,7 @@ else
            .dispatch/audit-dispatch.sh .dispatch/gate-fingerprint.sh .dispatch/check-progress.py \
            .dispatch/PROMPTS.md .dispatch/reports/README.md \
            .claude/hooks/dispatch-guard.sh .claude/hooks/stop-gate.sh \
-           .claude/hooks/session-brief.sh .claude/hooks/claim-package.sh \
+           .claude/hooks/claim-package.sh \
            .codex/hooks/dispatch-guard.sh .codex/hooks/stop-gate.sh \
            .codex/hooks/session-brief.sh .codex/hooks/claim-package.sh .codex/hooks.json; do
     seen
