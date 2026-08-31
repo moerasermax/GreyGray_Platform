@@ -8,10 +8,122 @@ using GreyGray.Modules.Ordering.Contracts;
 using GreyGray.Modules.Ordering.Core;
 using GreyGray.Modules.Payment.Contracts;
 using GreyGray.Modules.Pricing.Contracts;
+using GreyGray.Platform.Abstractions.Idempotency;
 using GreyGray.Platform.Abstractions.Messaging;
 using GreyGray.Shared.Kernel;
+using Microsoft.Extensions.Logging;
 
 namespace GreyGray.M1a.CheckoutOrdering.Tests;
+
+/// <summary>
+/// 把寫出去的 log 留下來。BE-35 用它斷言「退化不准靜默」——
+/// 退化回應一定要留下可觀測的痕跡，否則故障就被藏起來了。
+/// </summary>
+internal sealed class CapturingLogger : ILogger
+{
+    private readonly List<(LogLevel Level, string Message)> _entries = [];
+
+    public IReadOnlyList<(LogLevel Level, string Message)> Entries => _entries;
+
+    public IDisposable? BeginScope<TState>(TState state)
+        where TState : notnull => null;
+
+    public bool IsEnabled(LogLevel logLevel) => true;
+
+    public void Log<TState>(
+        LogLevel logLevel,
+        EventId eventId,
+        TState state,
+        Exception? exception,
+        Func<TState, Exception?, string> formatter) =>
+        _entries.Add((logLevel, formatter(state, exception)));
+}
+
+/// <summary>
+/// 記憶體版冪等儲存，語意比照 <c>IdempotencyStore</c>：
+/// <c>ABANDONED</c> ＋ 同一個 request hash 再來一次會拿到 <c>Proceed</c>，
+/// 差別只在這一份<b>留得住最後狀態讓測試看得到</b>。
+/// BE-35 從 <c>StorefrontCheckoutEndpointTests</c> 搬到這裡，因為五個端點的迴歸測試都要用。
+/// </summary>
+internal sealed class InspectableIdempotencyStore : IIdempotencyStore
+{
+    private readonly Dictionary<(string Key, string Scope), Entry> _entries = [];
+
+    internal enum EntryStatus
+    {
+        InFlight,
+        Completed,
+        Abandoned,
+    }
+
+    public EntryStatus? StatusOf(string key, string scope) =>
+        _entries.TryGetValue((key, scope), out var entry) ? entry.Status : null;
+
+    public Task<(IdempotencyOutcome Outcome, string? cachedResponse)> TryBeginAsync(
+        string key,
+        string scope,
+        string requestHash,
+        CancellationToken cancellationToken)
+    {
+        var identity = (key, scope);
+        if (!_entries.TryGetValue(identity, out var entry))
+        {
+            _entries[identity] = new Entry(requestHash, EntryStatus.InFlight, null);
+            return Result(IdempotencyOutcome.Proceed, null);
+        }
+
+        if (!StringComparer.Ordinal.Equals(entry.RequestHash, requestHash))
+        {
+            return Result(IdempotencyOutcome.KeyReusedWithDifferentPayload, null);
+        }
+
+        switch (entry.Status)
+        {
+            case EntryStatus.Abandoned:
+                _entries[identity] = entry with { Status = EntryStatus.InFlight, Response = null };
+                return Result(IdempotencyOutcome.Proceed, null);
+            case EntryStatus.Completed:
+                return Result(IdempotencyOutcome.AlreadyCompleted, entry.Response);
+            default:
+                return Result(IdempotencyOutcome.InFlight, null);
+        }
+    }
+
+    public Task CompleteAsync(
+        string key,
+        string scope,
+        string responseSnapshot,
+        CancellationToken cancellationToken)
+    {
+        var entry = _entries[(key, scope)];
+        _entries[(key, scope)] = entry with
+        {
+            Status = EntryStatus.Completed,
+            Response = responseSnapshot,
+        };
+        return Task.CompletedTask;
+    }
+
+    public Task AbandonAsync(string key, string scope, CancellationToken cancellationToken)
+    {
+        if (_entries.TryGetValue((key, scope), out var entry))
+        {
+            _entries[(key, scope)] = entry with
+            {
+                Status = EntryStatus.Abandoned,
+                Response = null,
+            };
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private static Task<(IdempotencyOutcome Outcome, string? cachedResponse)> Result(
+        IdempotencyOutcome outcome,
+        string? cached) => Task.FromResult((outcome, cached));
+
+    private sealed record Entry(string RequestHash, EntryStatus Status, string? Response);
+}
 
 internal sealed class FakeClock(DateTimeOffset now) : IClock
 {

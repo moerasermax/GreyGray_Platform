@@ -16,6 +16,11 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
   </ItemGroup>
 
+  <!-- BE-35：BffHttp 的兩階段多載測試要用 HttpContext／IResult。 -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\Platform\GreyGray.Platform.csproj" />
     <ProjectReference Include="..\..\src\Modules\Identity\GreyGray.Modules.Identity.Contracts\GreyGray.Modules.Identity.Contracts.csproj" />

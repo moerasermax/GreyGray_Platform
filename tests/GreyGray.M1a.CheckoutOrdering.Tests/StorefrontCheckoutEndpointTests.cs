@@ -12,6 +12,7 @@ using GreyGray.Platform.Abstractions.Sessions;
 using GreyGray.Shared.Kernel;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Shouldly;
 using Xunit;
 using FulfillmentMode = GreyGray.Modules.Catalog.Contracts.FulfillmentMode;
@@ -21,6 +22,8 @@ namespace GreyGray.M1a.CheckoutOrdering.Tests;
 
 /// <summary>
 /// BE-34：把「現在卡在哪 #22」（checkout 幽靈訂單／冪等鍵被 abandon）從推論變成證據。
+/// BE-35 修好之後，這一組測試從「記錄缺陷」轉成「守住修法」——同一個觸發條件
+/// （第 ③ 步 catalog 讀不到）現在要回 201、冪等鍵 <c>Completed</c>、回應用退化值。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -45,10 +48,10 @@ public sealed class StorefrontCheckoutEndpointTests
     private const string CheckoutScope = "storefront:cart:checkout";
     private static readonly DateTimeOffset Now = new(2026, 9, 1, 3, 0, 0, TimeSpan.Zero);
 
-    // ── 情境 1／(A′) 幽靈訂單 ────────────────────────────────────────────────
+    // ── 情境 1／(A′) 幽靈訂單：BE-35 修好之後的樣子 ──────────────────────────
 
-    [Fact(DisplayName = "BE-34 情境1：第 ③ 步 catalog 失敗時，訂單已經建立但客人拿到 422，冪等鍵被 abandon")]
-    public async Task Ghost_order_is_created_even_though_checkout_responds_with_an_error()
+    [Fact(DisplayName = "BE-35 情境1：第 ③ 步 catalog 失敗時仍回 201，回應用退化值，冪等鍵 Completed")]
+    public async Task Catalog_failure_while_rendering_degrades_the_response_instead_of_failing_checkout()
     {
         var fixture = new CheckoutEndpointFixture();
         await fixture.SeedCartLineAsync();
@@ -56,9 +59,9 @@ public sealed class StorefrontCheckoutEndpointTests
 
         var (status, body) = await fixture.CheckoutAsync("key-1");
 
-        // 客人看到的：不是 201。
-        status.ShouldBe(StatusCodes.Status422UnprocessableEntity);
-        body.ShouldContain("ordering.catalog-snapshot-unavailable");
+        // 客人看到的：201。訂單已經 commit，組回應失敗不該讓它看起來像沒發生。
+        status.ShouldBe(StatusCodes.Status201Created);
+        body.ShouldNotContain("ordering.catalog-snapshot-unavailable");
 
         // 資料庫實際發生的：訂單真的建立了，而且付款也已經被要求。
         var orders = await fixture.ListOrdersAsync();
@@ -66,9 +69,20 @@ public sealed class StorefrontCheckoutEndpointTests
         fixture.OrderingPublisher.Published.OfType<OrderPlaced>().Count().ShouldBe(1);
         fixture.OrderingPublisher.Published.OfType<PaymentRequested>().Count().ShouldBe(1);
 
-        // 冪等鍵：被 abandon，保護解除。
+        // 冪等鍵：Completed。副作用已經產生就不准 abandon。
         fixture.Idempotency.StatusOf("key-1", CheckoutScope)
-            .ShouldBe(InspectableIdempotencyStore.EntryStatus.Abandoned);
+            .ShouldBe(InspectableIdempotencyStore.EntryStatus.Completed);
+
+        // 退化回應仍符合契約：Order.lines[].name／productId 都是必填，不可以是 null 或空字串。
+        // 商品名讀不到就用 SkuId 當顯示名；productId 退成全零 ID，仍是 32 字元十六進位，
+        // 符合契約 Id 的 pattern。
+        body.ShouldContain($"\"name\":\"{fixture.Sku.Id}\"");
+        body.ShouldContain("\"productId\":\"00000000000000000000000000000000\"");
+
+        // 不准靜默：每一次退化都要留下可觀測痕跡。
+        fixture.Logger.Entries.ShouldContain(
+            entry => entry.Level == LogLevel.Error && entry.Message.Contains("讀不到 SKU"),
+            "退化不留痕就是把故障藏起來。");
     }
 
     [Fact(DisplayName = "BE-34 情境2：同一把 key 重試不會建出第二張訂單，回的是原本那一張")]
@@ -79,10 +93,12 @@ public sealed class StorefrontCheckoutEndpointTests
         fixture.BreakCatalogAfterCheckoutCompletes();
 
         var first = await fixture.CheckoutAsync("key-1");
-        first.Status.ShouldBe(StatusCodes.Status422UnprocessableEntity);
+        first.Status.ShouldBe(
+            StatusCodes.Status201Created,
+            "BE-35 之後第一次就回 201（退化回應），不再是 422。");
         var ghost = (await fixture.ListOrdersAsync()).ShouldHaveSingleItem();
 
-        // catalog 恢復（模擬暫時性故障結束），同一把 key、同一個 CartId 重試。
+        // catalog 恢復（模擬暫時性故障結束），同一把 key、同一個 CartId 重送。
         fixture.HealCatalog();
         var (status, body) = await fixture.CheckoutAsync("key-1");
 
@@ -90,33 +106,38 @@ public sealed class StorefrontCheckoutEndpointTests
         var orders = await fixture.ListOrdersAsync();
         orders.Count.ShouldBe(
             1,
-            "★ 這就是要釘死的東西：兩個模組各自綁在同一把 checkout 冪等鍵上做冪等，" +
-            "BFF 的 key 被 abandon 只是讓業務邏輯重跑一次，而業務邏輯是可重入的。");
+            "★ 這就是要釘死的東西：不會建出第二張訂單。BE-35 之後連業務邏輯都不會重跑——" +
+            "冪等鍵是 Completed，第二次直接回快取。");
         orders[0].Id.ShouldBe(ghost.Id);
         body.ShouldContain(ghost.OrderNumber!);
+        fixture.Ordering.CreateCalls.ShouldBe(
+            1,
+            "副作用已 commit 就不 abandon，所以重送不會再進 work 一次。");
         fixture.Idempotency.StatusOf("key-1", CheckoutScope)
             .ShouldBe(InspectableIdempotencyStore.EntryStatus.Completed);
     }
 
-    [Fact(DisplayName = "BE-34 情境3：改用不同的 key 重試會回 cart-already-completed，客人自己救不回來")]
-    public async Task Retry_with_a_different_key_is_a_dead_end_but_the_order_stays_intact()
+    [Fact(DisplayName = "BE-35 情境3：結帳成功後換一把 key 重送會被購物車狀態擋下，訂單完好")]
+    public async Task Retry_with_a_different_key_is_refused_but_the_order_stays_intact()
     {
         var fixture = new CheckoutEndpointFixture();
         await fixture.SeedCartLineAsync();
         fixture.BreakCatalogAfterCheckoutCompletes();
 
         var first = await fixture.CheckoutAsync("key-1");
-        first.Status.ShouldBe(StatusCodes.Status422UnprocessableEntity);
+        first.Status.ShouldBe(
+            StatusCodes.Status201Created,
+            "BE-35 之後 (A″) 的前提不成立了：客人第一次就拿到 201，沒有理由換 key 重送。");
         var ghost = (await fixture.ListOrdersAsync()).ShouldHaveSingleItem();
 
         fixture.HealCatalog();
         var (status, body) = await fixture.CheckoutAsync("key-2");
 
-        // 第 ① 步就擋下來了：購物車已結案，而且不是同一把 key。
+        // 第 ① 步就擋下來了：購物車已結案，而且不是同一把 key。這是正確行為，不是缺陷。
         status.ShouldBe(StatusCodes.Status422UnprocessableEntity);
         body.ShouldContain("checkout.cart-already-completed");
 
-        // 不會重複下單，但這一條路永遠回不了 201。
+        // 不會重複下單；work 在還沒產生副作用時失敗，abandon 是安全的。
         (await fixture.ListOrdersAsync()).Count.ShouldBe(1);
         fixture.Idempotency.StatusOf("key-2", CheckoutScope)
             .ShouldBe(InspectableIdempotencyStore.EntryStatus.Abandoned);
@@ -203,9 +224,7 @@ public sealed class StorefrontCheckoutEndpointTests
 
     // ── 缺陷的迴歸測試：確認修好之後應該長什麼樣 ──────────────────────────
 
-    [Fact(
-        DisplayName = "BE-34 缺陷(A′)：訂單已經建立時，checkout 不得回錯誤、也不得 abandon 冪等鍵",
-        Skip = "BE-34 查證：確認為缺陷，待修法波轉綠")]
+    [Fact(DisplayName = "BE-34 缺陷(A′)：訂單已經建立時，checkout 不得回錯誤、也不得 abandon 冪等鍵")]
     public async Task Committed_order_must_not_be_reported_as_a_failure()
     {
         var fixture = new CheckoutEndpointFixture();
@@ -228,7 +247,10 @@ public sealed class StorefrontCheckoutEndpointTests
 
     [Fact(
         DisplayName = "BE-34 缺陷(B)：checkout 回失敗時，購物車不得停留在「已結案但沒有訂單」",
-        Skip = "BE-34 查證：確認為缺陷，待修法波轉綠")]
+        Skip = "缺陷 (B)，明文不在 BE-35 範圍（docs/31 §2）：第 ① 步已 commit、第 ② 步才失敗，" +
+               "要根治得把 checkout saga 化（BE-34 選項 5），會動到契約與前端。" +
+               "現況有兩層緩解：同一把 key 重試會自癒，且 CheckoutCompleted 與購物車結案同一個" +
+               "交易寫進 outbox，Worker 會非同步補建訂單。")]
     public async Task Failed_checkout_must_not_leave_a_completed_cart_without_an_order()
     {
         var fixture = new CheckoutEndpointFixture();
@@ -314,6 +336,7 @@ public sealed class StorefrontCheckoutEndpointTests
             Sessions = new FakeSessionStore();
             _sessionToken = Sessions.Issue(Customer.Id);
             Idempotency = new InspectableIdempotencyStore();
+            Logger = new CapturingLogger();
         }
 
         public CartId CartId { get; } = CartId.New();
@@ -345,6 +368,9 @@ public sealed class StorefrontCheckoutEndpointTests
         public FakeSessionStore Sessions { get; }
 
         public InspectableIdempotencyStore Idempotency { get; }
+
+        /// <summary>BE-35：退化回應必須留痕，這裡收下所有 log 供斷言。</summary>
+        public CapturingLogger Logger { get; }
 
         /// <summary>把一條 Preorder 品項放進購物車，讓 checkout 有東西可以結。</summary>
         public async Task SeedCartLineAsync()
@@ -412,6 +438,7 @@ public sealed class StorefrontCheckoutEndpointTests
                 Catalog,
                 Customers,
                 Idempotency,
+                Logger,
                 TestContext.Current.CancellationToken);
             await result.ExecuteAsync(context);
             context.Response.Body.Position = 0;
@@ -630,91 +657,6 @@ public sealed class StorefrontCheckoutEndpointTests
             int quantityPurchased,
             CancellationToken cancellationToken) =>
             inner.RecordItemPurchasedAsync(orderLineId, quantityPurchased, cancellationToken);
-    }
-
-    /// <summary>
-    /// 記憶體版冪等儲存，語意比照 <c>IdempotencyStore</c>：
-    /// <c>ABANDONED</c> ＋ 同一個 request hash 再來一次會拿到 <c>Proceed</c>，
-    /// 差別只在這一份<b>留得住最後狀態讓測試看得到</b>。
-    /// </summary>
-    internal sealed class InspectableIdempotencyStore : IIdempotencyStore
-    {
-        private readonly Dictionary<(string Key, string Scope), Entry> _entries = [];
-
-        internal enum EntryStatus
-        {
-            InFlight,
-            Completed,
-            Abandoned,
-        }
-
-        public EntryStatus? StatusOf(string key, string scope) =>
-            _entries.TryGetValue((key, scope), out var entry) ? entry.Status : null;
-
-        public Task<(IdempotencyOutcome Outcome, string? cachedResponse)> TryBeginAsync(
-            string key,
-            string scope,
-            string requestHash,
-            CancellationToken cancellationToken)
-        {
-            var identity = (key, scope);
-            if (!_entries.TryGetValue(identity, out var entry))
-            {
-                _entries[identity] = new Entry(requestHash, EntryStatus.InFlight, null);
-                return Result(IdempotencyOutcome.Proceed, null);
-            }
-
-            if (!StringComparer.Ordinal.Equals(entry.RequestHash, requestHash))
-            {
-                return Result(IdempotencyOutcome.KeyReusedWithDifferentPayload, null);
-            }
-
-            switch (entry.Status)
-            {
-                case EntryStatus.Abandoned:
-                    _entries[identity] = entry with { Status = EntryStatus.InFlight, Response = null };
-                    return Result(IdempotencyOutcome.Proceed, null);
-                case EntryStatus.Completed:
-                    return Result(IdempotencyOutcome.AlreadyCompleted, entry.Response);
-                default:
-                    return Result(IdempotencyOutcome.InFlight, null);
-            }
-        }
-
-        public Task CompleteAsync(
-            string key,
-            string scope,
-            string responseSnapshot,
-            CancellationToken cancellationToken)
-        {
-            var entry = _entries[(key, scope)];
-            _entries[(key, scope)] = entry with
-            {
-                Status = EntryStatus.Completed,
-                Response = responseSnapshot,
-            };
-            return Task.CompletedTask;
-        }
-
-        public Task AbandonAsync(string key, string scope, CancellationToken cancellationToken)
-        {
-            if (_entries.TryGetValue((key, scope), out var entry))
-            {
-                _entries[(key, scope)] = entry with
-                {
-                    Status = EntryStatus.Abandoned,
-                    Response = null,
-                };
-            }
-
-            return Task.CompletedTask;
-        }
-
-        private static Task<(IdempotencyOutcome Outcome, string? cachedResponse)> Result(
-            IdempotencyOutcome outcome,
-            string? cached) => Task.FromResult((outcome, cached));
-
-        private sealed record Entry(string RequestHash, EntryStatus Status, string? Response);
     }
 
     /// <summary>記憶體 session；只需要能發一張 Customer session 並讀回來。</summary>

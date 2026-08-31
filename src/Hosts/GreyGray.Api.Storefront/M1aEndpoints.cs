@@ -381,6 +381,8 @@ internal static class M1aEndpoints
 
     private static void MapCart(RouteGroupBuilder api)
     {
+        var logger = LoggerFor(api);
+
         api.MapGet("/cart", async (
             HttpContext context,
             ISessionStore sessions,
@@ -537,14 +539,21 @@ internal static class M1aEndpoints
                 catalog,
                 customers,
                 idempotency,
+                logger,
                 cancellationToken));
     }
 
     /// <summary>
     /// <c>POST /v1/cart/checkout</c> 的處理邏輯。BE-34 從 <see cref="MapCart"/> 的 inline
-    /// lambda 原樣抽出來，比照 Admin Host 的 <c>CancelOrderLineAsync</c>，好讓測試直接呼叫；
-    /// <b>行為沒有任何改動</b>。
+    /// lambda 原樣抽出來，比照 Admin Host 的 <c>CancelOrderLineAsync</c>，好讓測試直接呼叫。
     /// </summary>
+    /// <remarks>
+    /// BE-35：改用 <see cref="BffHttp.ExecuteIdempotentAsync{TState, TResponse}"/> 兩階段多載。
+    /// ①<c>CompleteAsync</c> ②<c>CreateFromCheckoutAsync</c> 屬於 <c>work</c>（失敗時副作用還沒
+    /// 產生、或產生了但底層可重入，abandon 是安全的）；③<see cref="ToOrderAsync"/> 屬於
+    /// <c>render</c>，它<b>不會失敗</b>——訂單這時已經 commit 了，讓組回應把它報成失敗
+    /// 正是缺陷 (A′)。
+    /// </remarks>
     internal static async Task<IResult> CompleteCheckoutAsync(
         CompleteCheckoutInput input,
         HttpContext context,
@@ -554,6 +563,7 @@ internal static class M1aEndpoints
         ICatalogQuery catalog,
         ICustomerDirectory customers,
         IIdempotencyStore idempotency,
+        ILogger logger,
         CancellationToken cancellationToken)
     {
         var customer = await GetCustomerAsync(context, sessions, cancellationToken);
@@ -588,20 +598,20 @@ internal static class M1aEndpoints
                 var completed = await checkout.CompleteAsync(request, token);
                 if (completed.IsFailure)
                 {
-                    return Result<OrderResponse>.Failure(completed.Error);
+                    return Result<OrderView>.Failure(completed.Error);
                 }
 
-                var order = await ordering.CreateFromCheckoutAsync(completed.Value, token);
-                return order.IsSuccess
-                    ? await ToOrderAsync(order.Value, catalog, customers, token)
-                    : Result<OrderResponse>.Failure(order.Error);
+                return await ordering.CreateFromCheckoutAsync(completed.Value, token);
             },
+            (order, token) => ToOrderAsync(order, catalog, customers, logger, token),
             StatusCodes.Status201Created,
             cancellationToken);
     }
 
     private static void MapOrders(RouteGroupBuilder api)
     {
+        var logger = LoggerFor(api);
+
         api.MapGet("/orders", async (
             OrderStatus? status,
             string? cursor,
@@ -671,8 +681,9 @@ internal static class M1aEndpoints
                 return BffHttp.Problem(result.Error);
             }
 
-            var mapped = await ToOrderAsync(result.Value, catalog, customers, cancellationToken);
-            return mapped.IsSuccess ? Results.Ok(mapped.Value) : BffHttp.Problem(mapped.Error);
+            // BE-35：ToOrderAsync 不再會失敗，讀不到 SKU 時回退化值並留下 log。
+            return Results.Ok(
+                await ToOrderAsync(result.Value, catalog, customers, logger, cancellationToken));
         });
 
         api.MapPost("/orders/{orderId}/cancel", async (
@@ -685,38 +696,66 @@ internal static class M1aEndpoints
             ICustomerDirectory customers,
             IIdempotencyStore idempotency,
             CancellationToken cancellationToken) =>
-        {
-            var customer = await GetCustomerAsync(context, sessions, cancellationToken);
-            if (customer is null)
-            {
-                return BffHttp.Unauthorized();
-            }
-
-            if (!TryId(orderId, out var parsed))
-            {
-                return BffHttp.Problem(new Error("ordering.order-not-found", "找不到訂單。"));
-            }
-
-            var request = new CancelCustomerOrderRequest(customer.Value, new OrderId(parsed), input?.Reason);
-            return await BffHttp.ExecuteIdempotentAsync(
+            await CancelCustomerOrderAsync(
+                orderId,
+                input,
                 context,
+                sessions,
+                ordering,
+                catalog,
+                customers,
                 idempotency,
-                "storefront:orders:cancel",
-                request,
-                async token =>
-                {
-                    var cancelled = await ordering.CancelCustomerAsync(
-                        request.CustomerId,
-                        request.OrderId,
-                        request.Reason,
-                        token);
-                    return cancelled.IsSuccess
-                        ? await ToOrderAsync(cancelled.Value, catalog, customers, token)
-                        : Result<OrderResponse>.Failure(cancelled.Error);
-                },
-                StatusCodes.Status200OK,
-                cancellationToken);
-        });
+                logger,
+                cancellationToken));
+    }
+
+    /// <summary>
+    /// <c>POST /v1/orders/{orderId}/cancel</c> 的處理邏輯（BE-34 分類表的 S12）。
+    /// BE-35 比照 <see cref="CompleteCheckoutAsync"/> 從 inline lambda 抽出來，好讓測試直接呼叫。
+    /// </summary>
+    /// <remarks>
+    /// 這一條比 checkout 更糟：<c>CancelCustomerAsync</c> commit 之後 <c>OrderCancelled</c>／
+    /// <c>RefundRequested</c> 就已經送出去了，而底層是狀態機守衛（訂單已 <c>Cancelled</c> 就擋下），
+    /// 所以「組回應失敗 → abandon → 重試」<b>回不了成功</b>——退款已經發生，客人卻只看得到錯誤。
+    /// 改用兩階段多載之後，<see cref="ToOrderAsync"/> 讀不到 SKU 也不會把已經完成的取消報成失敗。
+    /// </remarks>
+    internal static async Task<IResult> CancelCustomerOrderAsync(
+        string orderId,
+        CancelOrderInput? input,
+        HttpContext context,
+        ISessionStore sessions,
+        IOrderingApplication ordering,
+        ICatalogQuery catalog,
+        ICustomerDirectory customers,
+        IIdempotencyStore idempotency,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+        if (customer is null)
+        {
+            return BffHttp.Unauthorized();
+        }
+
+        if (!TryId(orderId, out var parsed))
+        {
+            return BffHttp.Problem(new Error("ordering.order-not-found", "找不到訂單。"));
+        }
+
+        var request = new CancelCustomerOrderRequest(customer.Value, new OrderId(parsed), input?.Reason);
+        return await BffHttp.ExecuteIdempotentAsync(
+            context,
+            idempotency,
+            "storefront:orders:cancel",
+            request,
+            token => ordering.CancelCustomerAsync(
+                request.CustomerId,
+                request.OrderId,
+                request.Reason,
+                token),
+            (order, token) => ToOrderAsync(order, catalog, customers, logger, token),
+            StatusCodes.Status200OK,
+            cancellationToken);
     }
 
     private static void MapPayment(RouteGroupBuilder api)
@@ -777,6 +816,17 @@ internal static class M1aEndpoints
                 cancellationToken);
         });
 
+        // BE-35／必做 4：這是第 34 個冪等呼叫點，它「沒有」走 BffHttp.ExecuteIdempotentAsync，
+        // 而是手寫了一模一樣的「IsFailure → AbandonAsync」／「catch → AbandonAsync + throw」形狀
+        // （key = MerchantTradeNo、scope = webhook:ecpay），所以 grep ExecuteIdempotentAsync 抓不到它。
+        // 形狀雖然相同，但這裡「維持現狀是對的」，不需要改用新的兩階段多載：
+        //   ① HandleEcpayCallbackAsync 自己就是冪等的——payment.Status 已經是 Captured／
+        //      PartiallyRefunded／Refunded 且 ProviderTransactionId 相同時直接回 Result.Success()，
+        //      abandon 之後綠界重送同一筆回呼會被正確地再處理一次，不會產生第二份副作用；
+        //   ② 成功時的回應是固定字串 "1|OK"，沒有「讀別的模組來組回應」那一段，
+        //      也就沒有「副作用已 commit 之後才失敗」的區間（BE-34 分類：安全）。
+        // 也就是說，這裡缺的是說明而不是修法。真要動它請看
+        // BffHttp.ExecuteIdempotentAsync<TState, TResponse> 的 XML doc，四條語意寫在那裡。
         api.MapPost("/webhooks/ecpay", async (
             HttpContext context,
             IPaymentCommand payments,
@@ -834,6 +884,16 @@ internal static class M1aEndpoints
             }
         });
     }
+
+    /// <summary>
+    /// 端點層的 logger。<see cref="M1aEndpoints"/> 是 static class，不能當
+    /// <c>ILogger&lt;T&gt;</c> 的型別引數，所以用固定的類別名稱字串建；
+    /// 在 Map 階段建一次就好，不必每個請求重建。
+    /// </summary>
+    private static ILogger LoggerFor(IEndpointRouteBuilder endpoints) =>
+        endpoints.ServiceProvider
+            .GetRequiredService<ILoggerFactory>()
+            .CreateLogger("GreyGray.Api.Storefront.M1aEndpoints");
 
     private static async Task<CustomerId?> GetCustomerAsync(
         HttpContext context,
@@ -953,10 +1013,26 @@ internal static class M1aEndpoints
             order.Lines.Count,
             null);
 
-    private static async Task<Result<OrderResponse>> ToOrderAsync(
+    /// <summary>把 <see cref="OrderView"/> 組成前台 <c>Order</c> 回應。</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>BE-35：這個方法不會失敗。</b>呼叫它的時候訂單已經 commit 了，讓它回 <c>Result</c>
+    /// 正是「現在卡在哪 #22」那一整個家族的來源——組回應讀不到別的模組，不該讓已經成立的
+    /// 下單／取消看起來像沒發生。
+    /// </para>
+    /// <para>
+    /// 讀不到 SKU 或地址時填退化值，兩條硬性要求：<b>① 不改契約</b>——退化回應仍符合
+    /// <c>docs/05-API契約.md</c>／<c>docs/api/openapi.storefront.yaml</c> 的 <c>Order</c>
+    /// schema，必填欄位一律有值（<c>name</c> 用 <c>skuId</c> 的字串形式、<c>productId</c>
+    /// 用全零 ID，兩者都是 32 字元十六進位，符合 <c>Id</c> 的 pattern）；
+    /// <b>② 不准靜默</b>——每一次退化都 <c>LogError</c> 留痕。
+    /// </para>
+    /// </remarks>
+    private static async Task<OrderResponse> ToOrderAsync(
         OrderView order,
         ICatalogQuery catalog,
         ICustomerDirectory customers,
+        ILogger logger,
         CancellationToken cancellationToken)
     {
         var lines = new List<OrderLineResponse>(order.Lines.Count);
@@ -965,17 +1041,21 @@ internal static class M1aEndpoints
             var sku = await catalog.GetSkuAsync(line.SkuId, cancellationToken);
             if (sku.IsFailure)
             {
-                return Result<OrderResponse>.Failure(
-                    "ordering.catalog-snapshot-unavailable",
-                    $"訂單品項 {line.Id} 的商品資料無法讀取。");
+                logger.LogError(
+                    "訂單 {OrderId} 的品項 {OrderLineId} 讀不到 SKU {SkuId}（{ErrorCode}），" +
+                    "改以退化值組回應；訂單本身已經成立。",
+                    order.Id,
+                    line.Id,
+                    line.SkuId,
+                    sku.Error.Code);
             }
 
             lines.Add(new OrderLineResponse(
                 line.Id,
                 line.SkuId,
-                sku.Value.ProductId,
-                sku.Value.Name,
-                sku.Value.VariantName,
+                sku.IsSuccess ? sku.Value.ProductId : default,
+                sku.IsSuccess ? sku.Value.Name : line.SkuId.ToString(),
+                sku.IsSuccess ? sku.Value.VariantName : null,
                 null,
                 line.Mode,
                 line.Status,
@@ -1001,6 +1081,15 @@ internal static class M1aEndpoints
                     found.Value.District,
                     found.Value.StreetAddress,
                     false);
+            }
+            else
+            {
+                // shippingAddress 在契約裡本來就可為 null，所以行為沒變；BE-35 只是不再讓它靜默。
+                logger.LogError(
+                    "訂單 {OrderId} 讀不到收件地址 {AddressId}（{ErrorCode}），回應的 shippingAddress 留空。",
+                    order.Id,
+                    order.ShippingAddressId.Value,
+                    found.Error.Code);
             }
         }
 
@@ -1172,7 +1261,7 @@ internal static class M1aEndpoints
         string? ConvenienceStoreCode,
         string? BuyerNote);
 
-    private sealed record CancelOrderInput(string? Reason);
+    internal sealed record CancelOrderInput(string? Reason);
 
     private sealed record CancelCustomerOrderRequest(
         CustomerId CustomerId,

@@ -10,6 +10,7 @@ using GreyGray.Platform.Abstractions.Idempotency;
 using GreyGray.Shared.Kernel;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Shouldly;
 using Xunit;
 using FulfillmentMode = GreyGray.Modules.Catalog.Contracts.FulfillmentMode;
@@ -41,6 +42,7 @@ public sealed class AdminCancelLineEndpointTests
             new FakePaymentQuery(),
             new FakeCatalogQuery(sku),
             idempotency,
+            new CapturingLogger(),
             TestContext.Current.CancellationToken);
         await M1aEndpoints.CancelOrderLineAsync(
             order.Id.ToString(),
@@ -52,6 +54,7 @@ public sealed class AdminCancelLineEndpointTests
             new FakePaymentQuery(),
             new FakeCatalogQuery(sku),
             idempotency,
+            new CapturingLogger(),
             TestContext.Current.CancellationToken);
 
         ordering.CancelLineCalls.ShouldBe(1);
@@ -79,6 +82,7 @@ public sealed class AdminCancelLineEndpointTests
             new FakePaymentQuery(),
             new FakeCatalogQuery(sku),
             new MemoryIdempotencyStore(),
+            new CapturingLogger(),
             TestContext.Current.CancellationToken);
 
         await result.ExecuteAsync(context);
@@ -90,6 +94,54 @@ public sealed class AdminCancelLineEndpointTests
         using var reader = new StreamReader(context.Response.Body);
         var body = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
         body.ShouldNotContain("payment.original-refund-not-configured");
+    }
+
+    // BE-35／A4：退款事件在 CancelLineAsync 就已經送出去了，之後的 ToAdminOrderAsync 只是組回應。
+    // 組回應讀不到別的模組時不可以把已經完成的取消報成失敗，也不可以 abandon 冪等鍵——底層是
+    // 品項狀態守衛（已 Unavailable 就擋下），abandon 之後重試回不了成功，退款卻已經發生。
+    [Fact(DisplayName = "BE-35 A4：退款已送出時，組回應讀不到客戶也要回 200 且冪等鍵不是 Abandoned")]
+    public async Task Committed_line_cancel_is_not_reported_as_a_failure()
+    {
+        var (order, sku, _) = Scenario(paid: true);
+        var ordering = new StubOrderingApplication(order);
+        var idempotency = new InspectableIdempotencyStore();
+        var logger = new CapturingLogger();
+        var context = Context("committed-line-cancel");
+        var scope = M1aEndpoints.Scope(
+            context,
+            $"orders:{order.Id}:lines:{order.Lines[0].Id}:cancel");
+
+        // 組回應時 customers.GetAsync 會失敗：directory 裡登記的是另一個人。
+        var strangerDirectory = new FakeCustomerDirectory(
+            new CustomerSummary(CustomerId.New(), "別人", MemberTier.Standard, true));
+        var result = await M1aEndpoints.CancelOrderLineAsync(
+            order.Id.ToString(),
+            order.Lines[0].Id.ToString(),
+            new M1aEndpoints.CancelOrderInput("現場缺貨", RefundDestination.StoredValue),
+            context,
+            ordering,
+            strangerDirectory,
+            new FakePaymentQuery(),
+            new FakeCatalogQuery(sku),
+            idempotency,
+            logger,
+            TestContext.Current.CancellationToken);
+
+        await result.ExecuteAsync(context);
+        context.Response.StatusCode.ShouldBe(StatusCodes.Status200OK);
+        ordering.CancelLineCalls.ShouldBe(1, "副作用確實已經產生。");
+        idempotency.StatusOf("committed-line-cancel", scope).ShouldBe(
+            InspectableIdempotencyStore.EntryStatus.Completed,
+            "副作用已 commit 就不准 abandon。");
+
+        // 退化回應仍符合契約：customerDisplayName 是必填，退成 customerId 而不是 null。
+        context.Response.Body.Position = 0;
+        using var reader = new StreamReader(context.Response.Body);
+        var body = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
+        body.ShouldContain($"\"customerDisplayName\":\"{order.CustomerId}\"");
+        logger.Entries.ShouldContain(
+            entry => entry.Level == LogLevel.Error && entry.Message.Contains("讀不到客戶"),
+            "退化不留痕就是把故障藏起來。");
     }
 
     private static DefaultHttpContext Context(string key, StaffId? staffId = null)
