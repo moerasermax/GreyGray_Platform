@@ -51,6 +51,25 @@ Leader 要明講。
 
 ---
 
+<!--
+★ 2026-09-01 已通過整合驗收並提交（後端 f8e357f），撤包。原文保留供追溯。
+「現在卡在哪」#24 解掉：六處冪等錯誤碼由 `request.` 前綴改成契約規定的 `platform.`，
+前端 `problem.ts` 的「409 用同一把 key 自動重試」**第一次真的會觸發**。
+四條迴歸測試逐字釘住 code 與狀態碼，並實測「暫時改回 `request.*` 會四條全紅、
+還原後 SHA256 逐位元組相符」——證明不是空跑。
+`docs/api/` 零行變更、`check-openapi.ps1` 實跑 PASS。
+**明文沒有動 `BffHttp.StatusFor`**：模組層三處（比派工書列的多一處，
+`ShipmentAggregate.cs:92`）會落到 422 而非契約的 400，但 `BeginAsync` 在 `work`
+執行前就把缺鍵擋成 400，那條路經由 HTTP 走不到——新測試用 `workCalls == 0`
+把這個推論變成可執行的證據。
+順帶把第三個「migration 上界寫死」漂移改成推導（子代理取**最大編號**而不是
+派工書字面的檔案數，理由是編號出現空號時檔案數會安靜少套一份，Leader 接受）。
+Leader 獨立複驗：12 個測試專案 **218 條**全過（基準 214＋4）、build 0/0、
+`src/`／`tests/` 的 `request.idempotency` 零命中、`audit-dispatch.sh` 十一項通過
+（第 ⑦ 項由 Leader 把 `docs/05-API契約.md` 同步到前端樹後轉綠——那是整合者的工作，
+子代理正確地停下來回報而沒有跨樹動手）。
+詳見 `.dispatch/reports/BE-37.md` 與 `GreyGray_PM/03-驗收紀錄.md` 第十九次。
+
 派工 BE-37：冪等錯誤碼對齊契約（#24）　·　docs/33-後端第二十一波派工書.md
 
 「現在卡在哪」#24：`docs/05-API契約.md` §4 規定冪等三個錯誤碼都是 `platform.` 前綴，
@@ -80,6 +99,7 @@ allow: src/Hosts/GreyGray.Api.Storefront/M1aEndpoints.cs
 allow: src/Hosts/GreyGray.Api.Admin/M1bFulfillmentEndpoints.cs
 allow: tests/GreyGray.Platform.Tests/
 allow: tests/GreyGray.M1a.Migrations.Tests/
+-->
 
 ---
 
@@ -461,6 +481,10 @@ allow: tests/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **BE-37** 冪等錯誤碼對齊契約（#24）　·　2026-09-01 通過　·　`f8e357f`　·
+  六處 `request.` 前綴改成契約規定的 `platform.`，前端的「409 用同一把 key 自動重試」
+  第一次真的會觸發。四條迴歸測試逐字釘住 code 與狀態碼（先紅後綠 ＋ SHA256 還原證明）。
+  `docs/api/` 零改動、`check-openapi.ps1` PASS。218 條測試全過，見 `.dispatch/reports/BE-37.md`
 - **BE-36** `POST /v1/shipments` 加模組層冪等，堵掉重複出貨單（#23）　·　2026-09-01 通過　·　`e2b4bf1`　·
   呼叫端傳 `Idempotency-Key` 進模組（比照 `Cart.CheckoutIdempotencyKey`），
   **刻意不用自然鍵**（會破壞契約保證的 N:M）、**刻意不改用兩階段多載**（會製造 24 小時 409），
