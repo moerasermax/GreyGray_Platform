@@ -51,6 +51,54 @@ Leader 要明講。
 
 ---
 
+<!--
+★ 2026-09-01 已通過整合驗收並提交（後端 f191120），撤包。原文保留供追溯。
+
+前台第一次有東西可以買：`POST /v1/lots` 讓本地現貨進得了庫存，
+`available` 由 0 變成真實數量，單品頁的「已售完」消失、加入購物車按鈕可按。
+
+★★ 這一包最值得記住的是**雙重入帳的陷阱**：帳務的進貨成本分錄掛在
+`GoodsReceived` 上（`LedgerEventHandlers.cs`），而代購路徑建完批號**還會再發一次
+`LotCreated`**。直覺的「加一個 `LotCreated` 帳務 handler」會讓代購那條線對同一批貨
+記兩次帳，**而且在這之前沒有人訂閱 `LotCreated`，所以全套測試不會有任何一條紅**。
+新 handler 只在 `LocalWholesale` 入帳，並有專屬迴歸測試（代購路徑存貨借方
+175,000 而非 350,000）。子代理另外自己推出 `CustomerReturn` 也不該在這裡入帳
+（成本沿用原採購成本、不是新的進貨），派工書沒寫，判斷正確。
+
+★ 子代理第一輪**刻意讓一條測試紅著交付**：`LotCreatedLedgerHandler` 的 DI 登錄
+所在的 `ModuleRegistration.cs` 不在派工書 §4 的所有權表裡（**Leader 漏列，
+`audit-dispatch.sh` ⑪ 同型第二次，第一次是 BE-31**）。它拒絕自己 `new` 一個 handler
+讓測試變綠，理由是那會把「邏輯對、正式環境沒接線」藏起來，而假登錄在真登錄補上後
+會變成兩個 handler、製造假性雙重入帳。Leader 補列 allow（`7cf81bf`）後第二輪補上，
+**測試本體一個字沒改就由紅轉綠**——這正好回頭證明了那個決定是對的。
+
+★ Leader 裁決維持的取捨：`POST /v1/lots` **不驗 SKU 存不存在**。守衛排在模組冪等
+查詢之前的話，SKU 事後被刪會讓重播永遠回不了原批號（#22 A″ 死路，唯一出路是換新鍵，
+而換新鍵正好繞過模組冪等）；要同時做對兩件事得把守衛塞進模組，那會讓 Inventory
+反向依賴 Catalog、違反鐵則第 3 條。代價是打錯 `skuId` 會建出孤兒批號，已記成追蹤項。
+
+順帶收掉第四個「migration 上界寫死」漂移（`OrderingPaymentConstraintTests` 的
+`LastMigration = 16`，以及三個既有測試的 `<= 10`／`<= 6` 過濾），全部改成推導最大編號。
+BE-37 列的同型漂移到此清完。
+
+Leader 獨立複驗：`ops\test.ps1` 全套自己重跑 12 個專案（Debug 預設路徑）
+**227 條**全過（基準 218＋9）、0 Failed、Skipped 2、0 警告、exit 0；
+`git diff` 逐行審查確認 `docs/api/` 與 `frontend/` 零改動；
+`audit-dispatch.sh` 十一項通過；**活體驗證**對執行中的 admin Host 實送：
+不帶 `Idempotency-Key` → 400 `platform.idempotency-key-required`（補上自驗報告 ④
+沒驗到的端到端那一格）、帶鍵 → 201、同鍵重送 → 回同一個 lot id；
+DB 查證批號恰好一筆、`ledger.journal_entry` 恰好一筆（DR 1300／CR 1100 各 192,000
+＝ 24 × 8,000）——分錄是 **Worker 派送出來的**，同時證明那行 DI 登錄在 Worker 裡也接上了。
+詳見 `.dispatch/reports/BE-38.md` 與 `GreyGray_PM/03-驗收紀錄.md` 第二十次。
+
+★ 複驗期間另外查出一件**跟這一包無關**的事，已寫進 `GreyGray_PM`：
+`GET /v1/cart` 未登入回 **500 而不是 401**，根因是
+`InvalidOperationException: 缺少綠界設定 'Payment:ECPay:MerchantId'`——
+DI 解析期就炸，所以**登入與否都一樣**。那個依賴是 `afd82f8`（第七波）引入的，
+而 `start-dev-hosts.ps1` 對 ECPay 設定的投遞次數是 **0**，
+`install-dev-environment.ps1` 明文說「刻意不接」。
+**也就是說購物車從第七波起在 dev 就是死的**，卡在 E3（綠界憑證）。
+
 派工 BE-38：M2 批發進貨與批號列表　·　docs/34-後端第二十二波派工書.md
 
 2026-09-01 使用者第一次在真瀏覽器裡測前台，回報「讀不到數量、加不了購物車、
@@ -92,6 +140,7 @@ allow: tests/GreyGray.M1a.Inventory.Tests/
 allow: tests/GreyGray.M1a.PaymentLedger.Tests/
 allow: tests/GreyGray.M1a.Migrations.Tests/
 allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/OrderingPaymentConstraintTests.cs
+-->
 
 ---
 
