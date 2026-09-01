@@ -51,6 +51,48 @@ Leader 要明講。
 
 ---
 
+派工 BE-38：M2 批發進貨與批號列表　·　docs/34-後端第二十二波派工書.md
+
+2026-09-01 使用者第一次在真瀏覽器裡測前台，回報「讀不到數量、加不了購物車、
+下不了單」。**前端沒有壞**：`inventory.lot` 是空的、五個 SKU 全部 `available: 0`，
+單品頁正確地顯示「已售完」，所以數量選擇器與加入購物車按鈕本來就不會出現。
+根因是**今天沒有任何方法能讓庫存進來**——唯一會建立批號的路徑是代購流程的
+`GoodsReceived` 事件，契約裡的批發進貨 `POST /v1/lots` 從來沒有實作
+（M2 ⏸「契約已定、實作刻意延後」）。使用者 2026-09-01 拍板：**只做後端兩個端點，
+不種假資料、不做後台進貨畫面**。
+
+★ Leader 已查證並裁決，派工書 §1／§2 是唯一有效版本：
+① **雙重入帳的陷阱**：帳務的進貨成本分錄掛在 `GoodsReceived` 上
+   （`LedgerEventHandlers.cs:227`），不是掛在 `LotCreated` 上；而 `LotCreated`
+   **目前零消費者**，卻**會被代購路徑發出來**（`ModuleRegistration.cs:160`）。
+   直覺的「加一個 LotCreated 帳務 handler」會讓代購那條線對同一批貨記兩次帳，
+   **而且現有測試一條都不會紅**。所以新 handler 必須只在
+   `Source == LotSource.LocalWholesale` 時入帳，並附一條專屬迴歸測試。
+② **冪等照 BE-36 的形狀抄**（`M1bFulfillmentEndpoints.cs:69-101`）：呼叫端把
+   `Idempotency-Key` 傳進模組、存在批號上、同鍵重送回原本那一張，
+   新欄位走 migration `0017`。**不准用自然鍵**（同一個 SKU 重複進貨是日常，
+   跟 BE-36 否決自然鍵同一個理由）、**不准改用 BE-35 的兩階段多載**
+   （失敗的鍵留 `IN_FLIGHT` 24 小時，唯一出路是換新 key，而換新 key 正好繞過冪等）。
+③ 資料層已查證：`from_campaign_id` 本來就 nullable、`quantity_available` 是
+   `GENERATED ALWAYS` 欄位，**兩者都不需要 migration 動它們**。
+④ 契約一個字都不用改：`openapi.admin.yaml:863` 與 `docs/05-API契約.md:321-322`
+   早就有這兩個端點；`check-openapi.ps1` 預設只驗 M1a，做 M2 是加法。
+
+package: BE-38
+doc: docs/34-後端第二十二波派工書.md
+allow: db/migrations/0017_
+allow: src/Modules/Inventory/
+allow: src/Modules/Ledger/GreyGray.Modules.Ledger.Infra/LedgerEventHandlers.cs
+allow: src/Hosts/GreyGray.Api.Admin/M2InventoryEndpoints.cs
+allow: src/Hosts/GreyGray.Api.Admin/Program.cs
+allow: ops/install-dev-environment.ps1
+allow: ops/verify-environment.ps1
+allow: tests/GreyGray.M1a.Inventory.Tests/
+allow: tests/GreyGray.M1a.PaymentLedger.Tests/
+allow: tests/GreyGray.M1a.Migrations.Tests/
+
+---
+
 <!--
 ★ 2026-09-01 已通過整合驗收並提交（後端 f8e357f），撤包。原文保留供追溯。
 「現在卡在哪」#24 解掉：六處冪等錯誤碼由 `request.` 前綴改成契約規定的 `platform.`，

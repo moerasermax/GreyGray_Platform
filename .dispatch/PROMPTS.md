@@ -1,18 +1,62 @@
 # 啟動 prompt
 
-**沒有生效中的派工（2026-09-01）。** 兩棵樹都是整合者模式，原始碼一律不准寫。
+**生效中：BE-38（後端樹）。** 前端樹仍是整合者模式，原始碼一律不准寫。
 
-這一輪跑了兩波，都已通過整合驗收並撤包：
+已通過整合驗收並撤包的前兩波：
 
 | 包 | 內容 | commit |
 |---|---|---|
 | BE-36 | `POST /v1/shipments` 加模組層冪等，堵掉重複出貨單（#23） | `e2b4bf1` |
 | BE-37 | 冪等錯誤碼對齊契約（#24） | `f8e357f` |
 
-**「現在卡在哪」表上已經沒有任何生效中的內部項目**——剩下的全是外部輸入
-（E3 綠界憑證、E2 拓樸）或需要使用者拍板的 dev-only 模擬付款開關。
-下一步的判斷見 `GreyGray_PM/04-交接書.md` 第五節。
-**下一份後端派工書是 `docs/34-後端第二十二波派工書.md`。**
+**下一份後端派工書是 `docs/35-後端第二十三波派工書.md`。**
+
+---
+
+## BE-38 的啟動 prompt（生效中）
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
+GreyGray Platform 後端。.NET 10 模組化單體，14 個限界上下文，EF Core + Npgsql。
+
+GG_PACKAGE=BE-38
+
+開工前務必先讀：
+  CLAUDE.md                        六條鐵則 ＋ 派工規則
+  docs/34-後端第二十二波派工書.md    §0 事實 ＋ §1 雙重入帳陷阱 ＋ §2 冪等
+  docs/05-API契約.md                §4 冪等那一節
+  .dispatch/reports/README.md      ★ 自驗報告的格式，缺標頭會被退回
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/BE-38.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 不准把驗證丟背景、不准排程 wakeup。12 個測試專案逐一在前景個別執行。
+     不要用 dotnet test，SDK 10.0.301 ＋ xunit.v3 走 VSTest 會直接報錯。
+     用 ops\test.ps1。
+
+★ §1 的雙重入帳陷阱是這一包最容易做錯的地方，先讀完再動手。
+  新的 LotCreated 帳務 handler 只在 LocalWholesale 時入帳，
+  OverseasPurchase 直接 return，而且要有專屬迴歸測試。
+
+★ 不要動 docs/api/*.yaml（契約已經有這兩個端點）、不要動前端、
+  不要順手實作 LotSource.CustomerReturn、不要動 BffHttp.StatusFor。
+
+★ BOM：維持每個檔案原本的狀態。你會動的 .cs 都沒有 BOM，維持沒有。
+  用 Python 寫檔時不要用 encoding='utf-8-sig'（寫一定加 BOM）。
+
+★ 質疑被鼓勵，但不准自己改方向：派工書寫錯了就停下來寫進報告問，
+  不要一邊照做一邊在報告裡抱怨，也不要自己換一個做法。
+
+檔案所有權：見派工書 §4。
+docs/、management/、STATE.md、CLAUDE.md、AGENTS.md 每一包都寫得了。
+
+不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
+git checkout -- .、以及 git commit。
+
+你不可以自己宣告通過。交付完就停。
+```
 
 ---
 
