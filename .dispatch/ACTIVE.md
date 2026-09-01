@@ -51,6 +51,34 @@ Leader 要明講。
 
 ---
 
+派工 BE-36：`POST /v1/shipments` 加模組層冪等，堵掉重複出貨單（#23）　·　docs/32-後端第二十波派工書.md
+
+「現在卡在哪」#23：`FulfillmentApplicationService.CreateAsync` 一層冪等都沒有，
+唯一鍵 `(tenant_id, shipment_id, order_id)` 擋不到「同一批訂單建成兩張出貨單」，
+重複那張會被撿貨、被 `dispatch`、物流成本重複入帳。
+
+★ Leader 已裁決兩件事，派工書 §1 是唯一有效版本：
+① **不准**用 `(tenant_id, orderIds, method)` 當自然鍵——`openapi.admin.yaml` 明文
+   保證 N:M（一張訂單拆多個包裹是日常），那樣會擋掉「同一個宅配拆兩箱」，
+   而且既有測試蓋不到（既有 N:M 測試刻意用兩個不同的 `DeliveryMethod`）。
+   改成比照 `Cart.CheckoutIdempotencyKey`：**呼叫端把冪等鍵傳進來**。
+② **不准**把這條端點改成 BE-35 的兩階段多載——新多載讓失敗的鍵留在 `IN_FLIGHT`，
+   retention 24 小時，店員同鍵重送一律 409，只能換新 key，而換新 key 正好繞過
+   要加的模組冪等、建出第二張。底層有冪等之後，舊多載的 abandon 重試才是最好的路徑。
+   **`src/Platform/Http/BffHttp.cs` 一個位元組都不准動。**
+
+package: BE-36
+doc: docs/32-後端第二十波派工書.md
+allow: src/Modules/Fulfillment/
+allow: src/Hosts/GreyGray.Api.Admin/M1bFulfillmentEndpoints.cs
+allow: db/migrations/0016_fulfillment_shipment_idempotency.sql
+allow: tests/GreyGray.M1b.Fulfillment.Tests/
+allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/OrderingPaymentConstraintTests.cs
+allow: ops/install-dev-environment.ps1
+allow: ops/verify-environment.ps1
+
+---
+
 <!--
 ★ 2026-09-01 已通過整合驗收並提交（後端 213e8a7），撤包。原文保留供追溯。
 「現在卡在哪」#22 的 (A′) 幽靈訂單與 (A″) 換 key 死路解掉，BE-34 留下的
