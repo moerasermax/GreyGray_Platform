@@ -83,6 +83,16 @@ allow: frontend/packages/ui/src/components/ProductCard.tsx
 allow: frontend/packages/ui/src/components/__tests__/
 allow: frontend/apps/storefront/app/(account)/login/page.tsx
 allow: frontend/apps/storefront/app/(account)/register/page.tsx
+allow: frontend/apps/storefront/app/(shop)/_components/__tests__/
+
+★ 2026-09-01 補列（第二輪）：子代理正確回報「新測試是休眠的」——
+`packages/ui` 既沒有 `test` script 也沒有 vitest 相依，`pnpm --recursive test`
+根本跑不到它（146 條前後完全沒變）。它沒有自己去動 `package.json`／`pnpm-lock.yaml`，
+處理正確。**Leader 的裁決是搬家而不是加相依**：`suppressCardNavigation` 已經從
+`packages/ui` 的公開入口 export（`index.ts:36` 的 `export * from './components/ProductCard'`），
+而 `apps/storefront` 依賴 `@greygray/ui`（`workspace:*`）**且有 vitest**——
+把測試搬到 storefront 就會真的跑，**零相依變更、lockfile 零改動**，
+順帶還能拿掉那個為了 `TS2307` 加的 `@ts-expect-error`（型別會回來，不再是 `any`）。
 
 ---
 
