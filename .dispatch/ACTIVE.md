@@ -91,6 +91,7 @@ allow: ops/verify-environment.ps1
 allow: tests/GreyGray.M1a.Inventory.Tests/
 allow: tests/GreyGray.M1a.PaymentLedger.Tests/
 allow: tests/GreyGray.M1a.Migrations.Tests/
+allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/OrderingPaymentConstraintTests.cs
 
 ---
 
