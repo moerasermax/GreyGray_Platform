@@ -51,6 +51,68 @@ Leader 要明講。
 
 ---
 
+派工 BE-37：冪等錯誤碼對齊契約（#24）　·　docs/33-後端第二十一波派工書.md
+
+「現在卡在哪」#24：`docs/05-API契約.md` §4 規定冪等三個錯誤碼都是 `platform.` 前綴，
+但 `BffHttp` 與兩個端點共**六處**全部回 `request.` 前綴。後果不是潔癖問題——
+前端 `problem.ts` 的 `isInFlight` 比對的是 `platform.request-in-flight`，
+`http.ts` 拿它決定「409 要不要用同一把 key 自動重試」（預設 2 次），
+**後端從來沒有回過那個字串，所以那段自動重試從上線第一天起就是死的**。
+
+★ Leader 已裁決，派工書 §1 是唯一有效版本：
+① **改程式、不改契約**——`docs/05` 是已凍結的契約；而且 `docs/api/*.yaml`
+   完全沒有列舉錯誤碼（只引用 `IdempotencyKey` header 參數），所以改這些字串
+   **不會動到 OpenAPI、不會動到前端 codegen**，`check-openapi.ps1` 也不受影響。
+② `request.idempotency-key-too-long` 契約表裡沒有，**保留這個碼**（比併回
+   key-required 更精確），前綴跟著改成 `platform.`，並在 `docs/05` 補一行
+   記錄它是 400 的子類——那是補文件記錄既有行為，不是改契約語意。
+③ **不准動 `BffHttp.StatusFor`**。模組層也回 `platform.idempotency-key-required`，
+   那條路走 `Problem(error)` 不帶狀態碼，`StatusFor` 比對不到 → 回 422 而非契約說的 400；
+   但 `BeginAsync` 在 `work` 執行前就把缺鍵擋成 400，**那條路徑經由 HTTP 走不到**。
+   動 `StatusFor` 會波及所有走 `Problem(error)` 的呼叫點，風險遠大於收益。
+④ 順帶根治第三個「migration 上界寫死」漂移（`M1aCoreMigrationTests.cs:296` 的
+   `0001→0014`，BE-36 報告「我發現但沒做的事 ①」找到）——改成從實際檔案數推導。
+
+package: BE-37
+doc: docs/33-後端第二十一波派工書.md
+allow: src/Platform/Http/BffHttp.cs
+allow: src/Hosts/GreyGray.Api.Storefront/M1aEndpoints.cs
+allow: src/Hosts/GreyGray.Api.Admin/M1bFulfillmentEndpoints.cs
+allow: tests/GreyGray.Platform.Tests/
+allow: tests/GreyGray.M1a.Migrations.Tests/
+
+---
+
+<!--
+★ 2026-09-01 已通過整合驗收並提交（後端 e2b4bf1），撤包。原文保留供追溯。
+「現在卡在哪」#23 解掉：`POST /v1/shipments` 不會再建出重複的出貨單。
+修法是呼叫端把 `Idempotency-Key` 傳進 Fulfillment 模組、存在出貨單上、
+同一把鍵重送回原本那一張（比照 `Cart.CheckoutIdempotencyKey`：
+`string?` 欄位 ＋ 過濾式唯一索引 `ux_shipment_tenant_creation_key`）。
+**兩個方向是 Leader 在派工前就查證後否決的，不要在後續波次走回去**：
+① `(tenant_id, 排序後 orderIds, method)` 自然鍵會破壞 `openapi.admin.yaml`
+明文保證的 N:M（「同一批訂單、同一個配送方式建成兩張」就是「一張訂單拆兩箱」
+這個日常情境本身），而且既有兩條 N:M 測試拆包裹時都刻意用了兩個**不同**的
+`DeliveryMethod`，蓋不到這個回歸——那個修法會全套測試全綠然後在正式環境壞掉。
+BE-36 新增的第 3 條測試（同批訂單、**同一個 method**、不同 key → 建得出第二張）
+就是為了永久擋住這個方向。
+② 改用 BE-35 的兩階段多載會讓失敗的鍵留在 `IN_FLIGHT`，retention 24 小時，
+店員同鍵重送一律 409，唯一出路是換新 key，而換新 key 正好繞過模組冪等、
+建出第二張。所以 `src/Platform/Http/BffHttp.cs` 與 `docs/api/` 零改動。
+③ `CreateAsync` 的冪等查詢排在「訂單必須是 `ReadyToShip`」守衛**之前**——
+排在後面的話重播會被守衛擋成失敗，等於複製一次 #22 (A″) 的死路，有專屬測試守著。
+順帶修掉三個既有落差：`ops/` 的 migration 清單停在 `0014`（BE-31 的 `0015`
+**從來沒補上**，全新 dev 環境會缺 `quantity_shortfall`）、`verify-environment.ps1`
+的 `expectedCount` 同款、`install-dev-environment.ps1` 裡一段警告 `0003` 不能重放
+的過期註解（該 bug 已由 BE-24 修掉）。
+Leader 獨立複驗：`ops\test.ps1` 全套重跑，12 個測試專案 **214 條**全過
+（基準 203＋11）0 Failed、Skipped 2、exit 0；build 0 警告 0 錯誤；
+diff 逐行審查確認 `BffHttp.cs` 與 `docs/api/` **零行**變更；
+`audit-dispatch.sh` 十一項通過。複驗退回三次，其中第三次退回的是 **Leader 自己**
+（拿壞掉的量法去「更正」一段本來正確的行尾敘述，子代理堅持不寫自己量不出來的
+斷言，重量後證實子代理是對的）。詳見 `.dispatch/reports/BE-36.md` 與
+`GreyGray_PM/03-驗收紀錄.md` 第十八次。
+
 派工 BE-36：`POST /v1/shipments` 加模組層冪等，堵掉重複出貨單（#23）　·　docs/32-後端第二十波派工書.md
 
 「現在卡在哪」#23：`FulfillmentApplicationService.CreateAsync` 一層冪等都沒有，
@@ -76,6 +138,7 @@ allow: tests/GreyGray.M1b.Fulfillment.Tests/
 allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/OrderingPaymentConstraintTests.cs
 allow: ops/install-dev-environment.ps1
 allow: ops/verify-environment.ps1
+-->
 
 ---
 
@@ -398,6 +461,11 @@ allow: tests/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **BE-36** `POST /v1/shipments` 加模組層冪等，堵掉重複出貨單（#23）　·　2026-09-01 通過　·　`e2b4bf1`　·
+  呼叫端傳 `Idempotency-Key` 進模組（比照 `Cart.CheckoutIdempotencyKey`），
+  **刻意不用自然鍵**（會破壞契約保證的 N:M）、**刻意不改用兩階段多載**（會製造 24 小時 409），
+  `BffHttp` 與 `docs/api/` 零改動。順帶補上 `ops/` 從 BE-31 起就漏掉的 `0015`。
+  214 條測試全過，見 `.dispatch/reports/BE-36.md`
 - **BE-35** 修 #22 家族：副作用已 commit 就不准 abandon　·　2026-09-01 通過　·　`213e8a7`　·
   `BffHttp` 加兩階段 work／render 多載（讓「組回應失敗」在型別上表達不出來），
   五個同款端點改用；(A′)(A″) 解掉，(B) 與 ★ `POST /v1/shipments` 留給後續
