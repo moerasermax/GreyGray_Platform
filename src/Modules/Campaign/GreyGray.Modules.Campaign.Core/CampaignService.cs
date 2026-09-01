@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Globalization;
 using GreyGray.Modules.Campaign.Contracts;
 using GreyGray.Modules.Catalog.Contracts;
@@ -9,6 +10,9 @@ namespace GreyGray.Modules.Campaign.Core;
 internal sealed record CampaignPageSlice(
     IReadOnlyList<CampaignAggregate> Items,
     string? NextCursor);
+
+/// <summary>「這個 SKU 目前歸哪個團的哪個 offer 管」的中間結果，只在組前台定價時用。</summary>
+internal sealed record CampaignSkuOffer(CampaignAggregate Campaign, CampaignOfferEntity Offer);
 
 internal interface ICampaignRepository
 {
@@ -29,6 +33,20 @@ internal interface ICampaignRepository
         int limit,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// 取這個租戶目前所有指定狀態的團，連同它們的 offer。
+    /// </summary>
+    /// <remarks>
+    /// <b>刻意不在這一層過濾「還在收單嗎」</b>：那條規則是
+    /// <see cref="CampaignAggregate.IsAcceptingOrders"/>（狀態 ＋ <c>IClock</c>），
+    /// 抄一份到 SQL 裡就會有兩份會各自漂移的定義。這裡只用有索引的
+    /// <c>status</c> 把範圍縮到「開著的團」，時間由呼叫端用聚合判斷。
+    /// </remarks>
+    Task<IReadOnlyList<CampaignAggregate>> ListByStatusAsync(
+        TenantId tenantId,
+        CampaignStatus status,
+        CancellationToken cancellationToken);
+
     void Add(CampaignAggregate campaign);
 }
 
@@ -42,6 +60,11 @@ internal sealed class CampaignService(
     ICorrelationContext correlationContext)
     : ICampaignQuery, ICampaignStorefront, ICampaignAdministration, ICampaignTripCostAdministration
 {
+    // 型別刻意寫成具象類別而不是 IReadOnlyDictionary：C# 不允許「來源型別是介面」的
+    // 使用者定義轉換，宣告成介面的話 `return EmptyProductCampaigns;` 走不到 Result<T> 的隱含轉換。
+    private static readonly ReadOnlyDictionary<ProductId, StorefrontProductCampaign> EmptyProductCampaigns =
+        ReadOnlyDictionary<ProductId, StorefrontProductCampaign>.Empty;
+
     public async Task<Result<CampaignSummary>> GetAsync(
         CampaignId id,
         CancellationToken cancellationToken)
@@ -145,6 +168,95 @@ internal sealed class CampaignService(
             ToStorefrontListItem(campaign, clock.UtcNow),
             campaign.Description,
             offers);
+    }
+
+    async Task<Result<IReadOnlyDictionary<ProductId, StorefrontProductCampaign>>>
+        ICampaignStorefront.FindOpenCampaignPricingAsync(
+            IReadOnlyCollection<ProductId> productIds,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(productIds);
+        if (productIds.Count == 0)
+        {
+            return EmptyProductCampaigns;
+        }
+
+        var now = clock.UtcNow;
+        var accepting = (await campaigns.ListByStatusAsync(
+                correlationContext.TenantId,
+                CampaignStatus.Open,
+                cancellationToken))
+            .Where(campaign => campaign.IsAcceptingOrders(now))
+            .OrderBy(campaign => campaign.ClosesAt)
+            .ThenBy(campaign => campaign.Id.Value)
+            .ToArray();
+
+        // 同一個 SKU 掛在多個收單中的團上時取 ClosesAt 最早的那個：上面已經照
+        // (ClosesAt, Id) 排好，所以第一個寫進字典的就是要留下來的那個，TryAdd 會把後面的丟掉。
+        var offersBySku = new Dictionary<SkuId, CampaignSkuOffer>();
+        foreach (var campaign in accepting)
+        {
+            foreach (var offer in campaign.Offers.Where(candidate => candidate.IsActive))
+            {
+                offersBySku.TryAdd(offer.SkuId, new CampaignSkuOffer(campaign, offer));
+            }
+        }
+
+        if (offersBySku.Count == 0)
+        {
+            return EmptyProductCampaigns;
+        }
+
+        // SKU 屬於哪個商品只有 Catalog 知道，而 campaign schema 不准 JOIN 過去（鐵則第 4 條），
+        // 所以用契約上的批次查詢反查。缺 SKU 一律當失敗，理由同 GetDetailAsync：
+        // 收單中的團掛著一個查不到的 SKU 是資料壞了，不是「這個商品剛好沒開團」。
+        var skus = await catalogQuery.GetSkusAsync(offersBySku.Keys.ToArray(), cancellationToken);
+        if (skus.IsFailure)
+        {
+            return Result<IReadOnlyDictionary<ProductId, StorefrontProductCampaign>>.Failure(skus.Error);
+        }
+
+        var wanted = productIds.ToHashSet();
+        var grouped = new Dictionary<ProductId, List<(SkuId SkuId, CampaignSkuOffer Hit)>>();
+        foreach (var sku in skus.Value)
+        {
+            if (!wanted.Contains(sku.ProductId))
+            {
+                continue;
+            }
+
+            if (!grouped.TryGetValue(sku.ProductId, out var bucket))
+            {
+                bucket = [];
+                grouped[sku.ProductId] = bucket;
+            }
+
+            bucket.Add((sku.Id, offersBySku[sku.Id]));
+        }
+
+        var result = new Dictionary<ProductId, StorefrontProductCampaign>(grouped.Count);
+        foreach (var (productId, bucket) in grouped)
+        {
+            // 一個商品的規格理論上可以分散在不同的團裡，但契約的 campaignId／campaign 都是單數，
+            // 所以商品層沿用同一條 tie-break：命中的團裡 ClosesAt 最早的那一個。
+            var campaign = bucket
+                .Select(entry => entry.Hit.Campaign)
+                .OrderBy(entry => entry.ClosesAt)
+                .ThenBy(entry => entry.Id.Value)
+                .First();
+            result[productId] = new StorefrontProductCampaign(
+                productId,
+                ToStorefrontListItem(campaign, now),
+                bucket.Min(entry => entry.Hit.Offer.SellingPrice),
+                bucket.ToDictionary(
+                    entry => entry.SkuId,
+                    entry => new StorefrontCampaignSkuOffer(
+                        entry.Hit.Offer.Id,
+                        entry.Hit.Campaign.Id,
+                        entry.Hit.Offer.SellingPrice)));
+        }
+
+        return result;
     }
 
     async Task<Result<CampaignPage<AdminCampaignView>>> ICampaignAdministration.ListAsync(

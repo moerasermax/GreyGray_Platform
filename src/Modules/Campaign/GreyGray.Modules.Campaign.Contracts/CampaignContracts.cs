@@ -119,6 +119,34 @@ public sealed record StorefrontCampaignDetail(
     string? Description,
     IReadOnlyList<StorefrontCampaignOffer> Offers);
 
+/// <summary>
+/// 一個 SKU 在「目前仍在收單」的團裡的 offer。
+/// </summary>
+/// <remarks>
+/// <b>預購 SKU 的售價只能從這裡來。</b><c>SkuSnapshot.ListPrice</c> 是現貨標價，
+/// 不可以拿來冒充開團凍結價——售價在開團時定死，現場買貴買便宜都不影響已成立訂單。
+/// </remarks>
+public sealed record StorefrontCampaignSkuOffer(
+    CampaignOfferId OfferId,
+    CampaignId CampaignId,
+    Money SellingPrice);
+
+/// <summary>
+/// 一個預購商品目前掛在哪一個仍在收單的團上，以及它每個 SKU 的開團定價。
+/// </summary>
+/// <param name="PriceFrom">
+/// 這個商品掛在團上的所有 SKU 裡最低的那個售價，對應契約的 <c>ProductListItem.priceFrom</c>。
+/// </param>
+/// <param name="Offers">
+/// SKU → 該 SKU 的 offer。<b>只含真的掛在收單中的團上的 SKU</b>；
+/// 同一個商品可能只有部分規格進了團，沒進團的規格不會出現在這裡。
+/// </param>
+public sealed record StorefrontProductCampaign(
+    ProductId ProductId,
+    StorefrontCampaignListItem Campaign,
+    Money PriceFrom,
+    IReadOnlyDictionary<SkuId, StorefrontCampaignSkuOffer> Offers);
+
 /// <summary>後台建立或修改草稿的輸入。</summary>
 /// <param name="PriceInquiryTimeoutMinutes">
 /// 現場漲價詢問的逾時分鐘數（ADR-027，每團可設）。
@@ -227,6 +255,31 @@ public interface ICampaignStorefront
 
     Task<Result<StorefrontCampaignDetail>> GetDetailAsync(
         CampaignId id,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 用商品批次反查「目前仍在收單」的開團定價。前台商品列表與商品詳情靠它把
+    /// <c>campaignId</c>／<c>campaign</c>／<c>price</c>／<c>campaignOfferId</c> 填出來。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>批次是必要的</b>：商品列表一次要問一整頁的商品，逐一問會變 N+1。
+    /// 沒有掛在收單中的團上的商品<b>不會出現在回傳的字典裡</b>（不是給一個空值）。
+    /// </para>
+    /// <para>
+    /// <b>只看仍在收單的團</b>——<c>Status = Open</c> 且尚未到 <c>ClosesAt</c>，
+    /// 判斷一律由模組依自己的時鐘做，呼叫端不要自己拿 <c>ClosesAt</c> 跟現在時間比。
+    /// </para>
+    /// <para>
+    /// <b>同一個 SKU 掛在多個收單中的團上時取 <c>ClosesAt</c> 最早的那一個。</b>
+    /// <c>campaign_offer</c> 沒有「一個 SKU 只能屬於一個團」的唯一鍵，所以這件事擋不住，
+    /// 只能定規則：最快截止的優先，與前台「LastCall」的語意一致。<c>ClosesAt</c> 相同時
+    /// 再用 <c>CampaignId</c> 定序，讓同一批資料永遠得到同一個答案。
+    /// 商品層的團同理——取這個商品命中的團裡 <c>ClosesAt</c> 最早的那一個。
+    /// </para>
+    /// </remarks>
+    Task<Result<IReadOnlyDictionary<ProductId, StorefrontProductCampaign>>> FindOpenCampaignPricingAsync(
+        IReadOnlyCollection<ProductId> productIds,
         CancellationToken cancellationToken);
 }
 

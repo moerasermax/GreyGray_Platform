@@ -20,6 +20,10 @@
     <ProjectReference Include="..\..\src\Modules\Identity\GreyGray.Modules.Identity.Infra\GreyGray.Modules.Identity.Infra.csproj" />
     <ProjectReference Include="..\..\src\Modules\Catalog\GreyGray.Modules.Catalog.Contracts\GreyGray.Modules.Catalog.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Modules\Catalog\GreyGray.Modules.Catalog.Infra\GreyGray.Modules.Catalog.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Campaign\GreyGray.Modules.Campaign.Contracts\GreyGray.Modules.Campaign.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Inventory\GreyGray.Modules.Inventory.Contracts\GreyGray.Modules.Inventory.Contracts.csproj" />
+    <!-- BE-39：商品端點的四個開團欄位要有測試釘住，所以要看得到 Storefront Host 的組回應進入點。 -->
+    <ProjectReference Include="..\..\src\Hosts\GreyGray.Api.Storefront\GreyGray.Api.Storefront.csproj" />
     <ProjectReference Include="..\..\src\Platform\GreyGray.Platform.csproj" />
   </ItemGroup>
 

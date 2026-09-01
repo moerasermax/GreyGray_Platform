@@ -63,6 +63,16 @@ internal sealed class CampaignRepository(CampaignDbContext dbContext) : ICampaig
         return new CampaignPageSlice(items, nextCursor);
     }
 
+    public async Task<IReadOnlyList<CampaignAggregate>> ListByStatusAsync(
+        TenantId tenantId,
+        CampaignStatus status,
+        CancellationToken cancellationToken) =>
+        await dbContext.Campaigns
+            .AsNoTracking()
+            .Include(campaign => campaign.Offers)
+            .Where(campaign => campaign.TenantId == tenantId && campaign.Status == status)
+            .ToListAsync(cancellationToken);
+
     public void Add(CampaignAggregate campaign)
     {
         ArgumentNullException.ThrowIfNull(campaign);

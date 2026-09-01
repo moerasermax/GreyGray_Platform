@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -18,6 +19,11 @@ using GreyGray.Shared.Kernel;
 // BE-34：讓 CompleteCheckoutAsync 能被 CheckoutOrdering.Tests 直接呼叫。
 // Admin Host 把同一條寫在 AssemblyInfo.cs，Storefront Host 沒有那個檔案。
 [assembly: InternalsVisibleTo("GreyGray.M1a.CheckoutOrdering.Tests")]
+
+// BE-39：讓 ListProductsAsync／GetProductDetailAsync 能被 IdentityCatalog.Tests 直接呼叫。
+// 商品端點的 campaignId／campaign／price／campaignOfferId 四個欄位曾經整整一波
+// 硬編碼成 null 而沒有任何測試發現，補測試需要看得到這兩個進入點與它們的回應型別。
+[assembly: InternalsVisibleTo("GreyGray.M1a.IdentityCatalog.Tests")]
 
 namespace GreyGray.Api.Storefront;
 
@@ -306,6 +312,7 @@ internal static class M1aEndpoints
             string? cursor,
             int? limit,
             IStorefrontCatalogQuery catalog,
+            ICampaignStorefront campaigns,
             CancellationToken cancellationToken) =>
         {
             CategoryId? category = null;
@@ -319,13 +326,13 @@ internal static class M1aEndpoints
                 category = new CategoryId(parsed);
             }
 
-            var result = await catalog.ListProductsAsync(
+            var result = await ListProductsAsync(
                 new ProductSearch(q, category, mode, false, cursor, limit ?? 20),
+                catalog,
+                campaigns,
                 cancellationToken);
             return result.IsSuccess
-                ? Results.Ok(new ProductPageResponse(
-                    result.Value.Items.Select(ToProductListItem).ToArray(),
-                    result.Value.NextCursor))
+                ? Results.Ok(result.Value)
                 : BffHttp.Problem(result.Error);
         });
 
@@ -333,6 +340,7 @@ internal static class M1aEndpoints
             string productId,
             IStorefrontCatalogQuery catalog,
             IInventoryQuery inventory,
+            ICampaignStorefront campaigns,
             CancellationToken cancellationToken) =>
         {
             if (!TryId(productId, out var parsed))
@@ -340,12 +348,103 @@ internal static class M1aEndpoints
                 return BffHttp.Problem(new Error("catalog.product-not-found", "找不到商品。"));
             }
 
-            var result = await catalog.GetProductAsync(new ProductId(parsed), cancellationToken);
+            var result = await GetProductDetailAsync(
+                new ProductId(parsed),
+                catalog,
+                inventory,
+                campaigns,
+                cancellationToken);
             return result.IsSuccess
-                ? Results.Ok(await ToProductDetailAsync(result.Value, inventory, cancellationToken))
+                ? Results.Ok(result.Value)
                 : BffHttp.Problem(result.Error);
         });
     }
+
+    /// <summary>
+    /// 組 <c>GET /v1/products</c> 的回應。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// BE-39：預購商品的 <c>campaignId</c> 與 <c>priceFrom</c> 只能從開團來——Catalog 那邊
+    /// 預購 SKU 沒有標價，所以在補這一段之前，前台商品列表對每一個預購商品都顯示
+    /// 「目前無法購買」，而同一個商品在開團頁是可以買的。
+    /// </para>
+    /// <para>
+    /// <b>先一次查完整頁，再投影</b>：在 <c>Select</c> 裡逐一 <c>await</c> 就會變 N+1。
+    /// 整頁都是現貨時完全不問 Campaign。
+    /// </para>
+    /// </remarks>
+    internal static async Task<Result<ProductPageResponse>> ListProductsAsync(
+        ProductSearch search,
+        IStorefrontCatalogQuery catalog,
+        ICampaignStorefront campaigns,
+        CancellationToken cancellationToken)
+    {
+        var result = await catalog.ListProductsAsync(search, cancellationToken);
+        if (result.IsFailure)
+        {
+            return Result<ProductPageResponse>.Failure(result.Error);
+        }
+
+        var pricing = await FindCampaignPricingAsync(
+            campaigns,
+            result.Value.Items
+                .Where(item => item.Mode == FulfillmentMode.Preorder)
+                .Select(item => item.Id)
+                .ToArray(),
+            cancellationToken);
+        return pricing.IsFailure
+            ? Result<ProductPageResponse>.Failure(pricing.Error)
+            : new ProductPageResponse(
+                result.Value.Items
+                    .Select(item => ToProductListItem(item, pricing.Value.GetValueOrDefault(item.Id)))
+                    .ToArray(),
+                result.Value.NextCursor);
+    }
+
+    /// <summary>
+    /// 組 <c>GET /v1/products/{productId}</c> 的回應。
+    /// </summary>
+    /// <remarks>
+    /// BE-39：預購商品要附上團的摘要（前端要顯示截團倒數，也拿 <c>isAcceptingOrders</c>
+    /// 判斷能不能下單），每個 SKU 要附上該團的凍結售價與 <c>campaignOfferId</c>。
+    /// </remarks>
+    internal static async Task<Result<ProductDetailResponse>> GetProductDetailAsync(
+        ProductId productId,
+        IStorefrontCatalogQuery catalog,
+        IInventoryQuery inventory,
+        ICampaignStorefront campaigns,
+        CancellationToken cancellationToken)
+    {
+        var result = await catalog.GetProductAsync(productId, cancellationToken);
+        if (result.IsFailure)
+        {
+            return Result<ProductDetailResponse>.Failure(result.Error);
+        }
+
+        ProductId[] preorder = result.Value.Mode == FulfillmentMode.Preorder
+            ? [result.Value.Id]
+            : [];
+        var pricing = await FindCampaignPricingAsync(campaigns, preorder, cancellationToken);
+        return pricing.IsFailure
+            ? Result<ProductDetailResponse>.Failure(pricing.Error)
+            : await ToProductDetailAsync(
+                result.Value,
+                inventory,
+                pricing.Value.GetValueOrDefault(result.Value.Id),
+                cancellationToken);
+    }
+
+    /// <summary>沒有任何預購商品時不去打 Campaign 模組；有的話一次問完。</summary>
+    private static async Task<Result<IReadOnlyDictionary<ProductId, StorefrontProductCampaign>>>
+        FindCampaignPricingAsync(
+            ICampaignStorefront campaigns,
+            IReadOnlyCollection<ProductId> preorderProductIds,
+            CancellationToken cancellationToken) =>
+        preorderProductIds.Count == 0
+            ? Result<IReadOnlyDictionary<ProductId, StorefrontProductCampaign>>.Success(
+                ReadOnlyDictionary<ProductId, StorefrontProductCampaign>.Empty)
+            : await campaigns.FindOpenCampaignPricingAsync(preorderProductIds, cancellationToken);
 
     private static void MapCampaign(RouteGroupBuilder api)
     {
@@ -1111,21 +1210,31 @@ internal static class M1aEndpoints
             order.QuoteExplain);
     }
 
-    private static ProductListItemResponse ToProductListItem(StorefrontProductListItem item) => new(
+    /// <param name="campaign">
+    /// 這個商品目前掛著的、仍在收單的團。現貨一律是 <c>null</c>；預購商品沒有任何開著的團時
+    /// 也是 <c>null</c>，此時 <c>campaignId</c> 與 <c>priceFrom</c> 都留空，前端會保守地
+    /// 視為不可下單——那是對的，因為它確實買不到。
+    /// </param>
+    private static ProductListItemResponse ToProductListItem(
+        StorefrontProductListItem item,
+        StorefrontProductCampaign? campaign) => new(
         item.Id,
         item.Name,
         item.ShortDescription,
         item.ImageUrl,
-        item.PriceFrom,
+        // 契約：priceFrom 現貨是標價，預購是該團的定價（多 SKU 取最低）。
+        campaign?.PriceFrom ?? item.PriceFrom,
         item.UnitPriceLabel,
         [],
         false,
         item.Mode,
-        null);
+        campaign?.Campaign.Id);
 
+    /// <param name="campaign">同 <see cref="ToProductListItem"/>。</param>
     private static async Task<ProductDetailResponse> ToProductDetailAsync(
         StorefrontProductDetail product,
         IInventoryQuery inventory,
+        StorefrontProductCampaign? campaign,
         CancellationToken cancellationToken)
     {
         IReadOnlyDictionary<SkuId, int> availability = new Dictionary<SkuId, int>();
@@ -1148,19 +1257,26 @@ internal static class M1aEndpoints
             product.Images,
             product.CategoryId,
             product.Mode,
-            null,
-            product.Skus.Select(sku => new SkuResponse(
-                sku.Id,
-                sku.Name,
-                sku.VariantName,
-                sku.WeightGram,
-                sku.Size,
-                sku.UnitOfMeasure,
-                sku.UnitCount,
-                sku.IsActive,
-                availability.GetValueOrDefault(sku.Id),
-                product.Mode == FulfillmentMode.Stock ? sku.ListPrice : null,
-                null)).ToArray(),
+            campaign?.Campaign,
+            product.Skus.Select(sku =>
+            {
+                var offer = campaign?.Offers.GetValueOrDefault(sku.Id);
+                return new SkuResponse(
+                    sku.Id,
+                    sku.Name,
+                    sku.VariantName,
+                    sku.WeightGram,
+                    sku.Size,
+                    sku.UnitOfMeasure,
+                    sku.UnitCount,
+                    sku.IsActive,
+                    // 契約明文：預購 SKU 的 available 恆為 0，但仍然可以下單，
+                    // 前端不要拿這個值擋預購。所以只有現貨才去查庫存。
+                    availability.GetValueOrDefault(sku.Id),
+                    // 契約：price 現貨是標價，預購是該團的定價。
+                    product.Mode == FulfillmentMode.Stock ? sku.ListPrice : offer?.SellingPrice,
+                    offer?.OfferId);
+            }).ToArray(),
             false);
     }
 
@@ -1190,11 +1306,11 @@ internal static class M1aEndpoints
 
     private sealed record CategoryResponse(CategoryId Id, string Name, string? ImageUrl);
 
-    private sealed record ProductPageResponse(
+    internal sealed record ProductPageResponse(
         IReadOnlyList<ProductListItemResponse> Items,
         string? NextCursor);
 
-    private sealed record ProductListItemResponse(
+    internal sealed record ProductListItemResponse(
         ProductId Id,
         string Name,
         string? ShortDescription,
@@ -1206,7 +1322,7 @@ internal static class M1aEndpoints
         FulfillmentMode Mode,
         CampaignId? CampaignId);
 
-    private sealed record SkuResponse(
+    internal sealed record SkuResponse(
         SkuId Id,
         string Name,
         string? VariantName,
@@ -1219,7 +1335,7 @@ internal static class M1aEndpoints
         Money? Price,
         CampaignOfferId? CampaignOfferId);
 
-    private sealed record ProductDetailResponse(
+    internal sealed record ProductDetailResponse(
         ProductId Id,
         string Name,
         string? Description,
