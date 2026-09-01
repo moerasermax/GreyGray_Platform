@@ -230,10 +230,11 @@ public sealed class InventoryReservationIntegrationTests : IAsyncLifetime
 
     private async Task ApplyMigrationsAsync(CancellationToken cancellationToken)
     {
+        // 上界從 db/migrations/ 的實際內容推導，不寫死：保留庫存這條路要跑在
+        // 正式機真的會有的完整 schema 上，而寫死的上界每加一份 migration 就少測一份。
         var migrationDirectory = Path.Combine(FindRepositoryRoot(), "db", "migrations");
         var paths = Directory.GetFiles(migrationDirectory, "*.sql")
-            .Where(path => int.TryParse(Path.GetFileName(path).AsSpan(0, 4), out var number)
-                && number <= 6)
+            .Where(path => int.TryParse(Path.GetFileName(path).AsSpan(0, 4), out _))
             .OrderBy(path => path, StringComparer.Ordinal);
         foreach (var path in paths)
         {

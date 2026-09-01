@@ -273,10 +273,13 @@ public sealed class GoodsReceivedInventoryTests : IAsyncLifetime
 
     private async Task ApplyMigrationsAsync(CancellationToken cancellationToken)
     {
+        // 上界從 db/migrations/ 的實際內容推導，不寫死。原本寫死 10 的版本在 0017 加上
+        // inventory.lot.creation_idempotency_key 之後直接紅了（EF model 有欄位、schema 沒有）——
+        // 這一次是吵出來的，但同一個寫法的一般後果是「悄悄少套」：測試不紅，只是測得比
+        // 它宣稱的少，那比紅還難發現。
         var migrationDirectory = Path.Combine(FindRepositoryRoot(), "db", "migrations");
         var paths = Directory.GetFiles(migrationDirectory, "*.sql")
-            .Where(path => int.TryParse(Path.GetFileName(path).AsSpan(0, 4), out var number)
-                && number <= 10)
+            .Where(path => int.TryParse(Path.GetFileName(path).AsSpan(0, 4), out _))
             .OrderBy(path => path, StringComparer.Ordinal);
         foreach (var path in paths)
         {

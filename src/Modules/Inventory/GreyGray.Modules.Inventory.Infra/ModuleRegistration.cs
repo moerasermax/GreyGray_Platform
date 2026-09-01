@@ -81,12 +81,23 @@ internal sealed class InventoryModule : IModuleRegistration
             GoodsReceived,
             GoodsReceivedInventoryHandler,
             InventoryDbContext>();
+        services.AddScoped<InventoryApplicationService>(serviceProvider =>
+            new InventoryApplicationService(
+                serviceProvider.GetRequiredService<IInventoryLotRepository>(),
+                serviceProvider.GetRequiredService<InventoryDbContext>(),
+                serviceProvider.GetRequiredService<IEventPublisher>(),
+                serviceProvider.GetRequiredService<IClock>(),
+                serviceProvider.GetRequiredService<ICorrelationContext>()));
+        services.AddScoped<IInventoryReceiving>(serviceProvider =>
+            serviceProvider.GetRequiredService<InventoryApplicationService>());
+        services.AddScoped<IInventoryLotQuery>(serviceProvider =>
+            serviceProvider.GetRequiredService<InventoryApplicationService>());
         return services;
     }
 }
 
 internal sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> options)
-    : DbContext(options)
+    : DbContext(options), IUnitOfWork
 {
     public DbSet<LotAggregate> Lots => Set<LotAggregate>();
 
@@ -122,8 +133,18 @@ internal sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> op
         lot.Property(value => value.BatchCode)
             .HasColumnName("batch_code")
             .HasMaxLength(64);
+        lot.Property(value => value.CreationIdempotencyKey)
+            .HasColumnName("creation_idempotency_key")
+            .HasMaxLength(255);
         lot.Property(value => value.ReceivedAt)
             .HasColumnName("received_at");
+        // 過濾式唯一索引：帶回入庫與 0017 之前建立的批號都沒有鍵（NULL），
+        // 不能讓它們互相撞在一起。逐字對齊
+        // db/migrations/0017_inventory_lot_wholesale_idempotency.sql。
+        lot.HasIndex(value => new { value.TenantId, value.CreationIdempotencyKey })
+            .IsUnique()
+            .HasFilter("creation_idempotency_key IS NOT NULL")
+            .HasDatabaseName("ux_lot_tenant_creation_key");
 
         modelBuilder.AddPlatformTables();
     }
@@ -132,6 +153,59 @@ internal sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> op
 internal sealed class InventoryLotRepository(InventoryDbContext dbContext) : IInventoryLotRepository
 {
     public void Add(LotAggregate lot) => dbContext.Lots.Add(lot);
+
+    public Task<LotAggregate?> GetByCreationKeyAsync(
+        TenantId tenantId,
+        string idempotencyKey,
+        CancellationToken cancellationToken) =>
+        dbContext.Lots
+            .AsNoTracking()
+            .SingleOrDefaultAsync(
+                lot => lot.TenantId == tenantId.Value
+                    && lot.CreationIdempotencyKey == idempotencyKey,
+                cancellationToken);
+
+    public async Task<LotQueryPage> ListAsync(
+        TenantId tenantId,
+        AdminLotListRequest request,
+        CancellationToken cancellationToken)
+    {
+        var query = dbContext.Lots
+            .AsNoTracking()
+            .Where(lot => lot.TenantId == tenantId.Value);
+        if (request.SkuId is { } skuId)
+        {
+            query = query.Where(lot => lot.SkuId == skuId.Value);
+        }
+
+        // 游標比對用 received_at 而不是 id：id 是 uuid，Guid 在 C# 沒有 `<`，
+        // Npgsql 也不翻譯 Guid.CompareTo；比照 CampaignRepository 用時間欄位比大小。
+        // 排序仍以 id 收尾，讓同一毫秒建立的批號有穩定順序。
+        if (request.Cursor is { } cursor)
+        {
+            var cursorReceivedAt = await dbContext.Lots
+                .AsNoTracking()
+                .Where(lot => lot.TenantId == tenantId.Value && lot.Id == cursor.Value)
+                .Select(lot => lot.ReceivedAt)
+                .SingleOrDefaultAsync(cancellationToken);
+            if (cursorReceivedAt is null)
+            {
+                return new LotQueryPage([], null);
+            }
+
+            query = query.Where(lot => lot.ReceivedAt < cursorReceivedAt);
+        }
+
+        var limit = request.Limit is > 0 ? request.Limit : 20;
+        var rows = await query
+            .OrderByDescending(lot => lot.ReceivedAt)
+            .ThenByDescending(lot => lot.Id)
+            .Take(limit + 1)
+            .ToArrayAsync(cancellationToken);
+        var hasNext = rows.Length > limit;
+        var page = rows.Take(limit).ToArray();
+        return new LotQueryPage(page, hasNext ? new LotId(page[^1].Id) : null);
+    }
 }
 
 internal sealed class GoodsReceivedInventoryHandler(

@@ -100,6 +100,7 @@ app.MapM1bProcurementEndpoints();
 app.MapM1bCompensationEndpoints();
 app.MapM1bShortfallRefundEndpoints();
 app.MapM1bFulfillmentEndpoints();
+app.MapM2InventoryEndpoints();
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();

@@ -1,4 +1,5 @@
 using GreyGray.Modules.Campaign.Contracts;
+using GreyGray.Modules.Inventory.Contracts;
 using GreyGray.Modules.Ledger.Contracts;
 using GreyGray.Modules.Ledger.Core;
 using GreyGray.Modules.Ordering.Contracts;
@@ -238,6 +239,49 @@ internal sealed class GoodsReceivedLedgerHandler(LedgerPostingService posting)
             [
                 new(AccountCodes.Inventory, Direction.Debit, totalCost, @event.CampaignId),
                 new(AccountCodes.Cash, Direction.Credit, totalCost, @event.CampaignId),
+            ],
+            cancellationToken);
+    }
+}
+
+/// <summary>
+/// M2 本地批發進貨建立批號。DR 存貨 / CR 現金。
+/// <para>
+/// <b>★ 只有 <see cref="LotSource.LocalWholesale"/> 在這裡入帳。</b>
+/// 代購那條線的進貨成本已經由 <see cref="GoodsReceivedLedgerHandler"/> 記過，而
+/// <c>GoodsReceivedInventoryHandler</c> 建完批號之後<b>還會再發一次 <c>LotCreated</c></b>；
+/// 不擋的話同一批貨會記兩次帳，存貨與現金雙雙翻倍（見 <c>docs/34</c> §1）。
+/// 拒收退回轉現貨（<see cref="LotSource.CustomerReturn"/>）還沒有實作，
+/// 它的成本沿用原採購成本、不是一筆新的進貨，所以同樣不在這裡入帳。
+/// </para>
+/// <para>
+/// 科目與代購完全相同：<c>Ledger.Contracts.AccountCodes</c> 的註解已經定了
+/// 「兩種模式用的是同一組科目，差別在 Saga 的狀態機上，不在帳上」。
+/// 本地批發沒有團，所以 <c>campaignId</c> 留空。
+/// </para>
+/// </summary>
+internal sealed class LotCreatedLedgerHandler(LedgerPostingService posting)
+    : IIntegrationEventHandler<LotCreated>
+{
+    public async Task HandleAsync(LotCreated @event, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(@event);
+
+        if (@event.Source != LotSource.LocalWholesale)
+        {
+            return;
+        }
+
+        var totalCost = @event.UnitCost.MultiplyByQuantity(@event.Quantity);
+        await posting.PostAsync(
+            @event.TenantId,
+            @event.OccurredAt,
+            "Inventory",
+            @event.LotId.ToString(),
+            $"本地批發進貨建立批號，SKU {@event.SkuId}",
+            [
+                new(AccountCodes.Inventory, Direction.Debit, totalCost),
+                new(AccountCodes.Cash, Direction.Credit, totalCost),
             ],
             cancellationToken);
     }

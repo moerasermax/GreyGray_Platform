@@ -1,4 +1,5 @@
 using GreyGray.Modules.Campaign.Contracts;
+using GreyGray.Modules.Inventory.Contracts;
 using GreyGray.Modules.Ledger.Contracts;
 using GreyGray.Modules.Ledger.Core;
 using GreyGray.Modules.Ordering.Contracts;
@@ -88,6 +89,13 @@ internal sealed class LedgerModule : IModuleRegistration
         services.AddIdempotentIntegrationEventHandler<
             TripCostRecorded,
             TripCostRecordedLedgerHandler,
+            LedgerDbContext>();
+        // ★ 只有本地批發進貨會在這裡入帳；handler 自己會把其他來源擋掉。
+        // 代購那條線的進貨成本由上面的 GoodsReceivedLedgerHandler 記，
+        // 而 Inventory 建完批號之後還會再發一次 LotCreated——兩邊都記就是雙重入帳。
+        services.AddIdempotentIntegrationEventHandler<
+            LotCreated,
+            LotCreatedLedgerHandler,
             LedgerDbContext>();
         return services;
     }

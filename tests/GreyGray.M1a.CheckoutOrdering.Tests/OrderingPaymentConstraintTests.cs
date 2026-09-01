@@ -32,9 +32,6 @@ namespace GreyGray.M1a.CheckoutOrdering.Tests;
 /// </remarks>
 public sealed class OrderingPaymentConstraintTests : IAsyncLifetime
 {
-    /// <summary>目前 db/migrations 的最後一個編號；測試要跑在正式機會有的完整 schema 上。</summary>
-    private const int LastMigration = 16;
-
     private static readonly DateTimeOffset Now = new(2026, 8, 30, 3, 0, 0, TimeSpan.Zero);
 
     private readonly PostgreSqlContainer _postgres =
@@ -188,7 +185,8 @@ public sealed class OrderingPaymentConstraintTests : IAsyncLifetime
             "ordering_capture_migrated",
             cancellationToken);
         var migrations = Path.Combine(FindRepositoryRoot(), "db", "migrations");
-        for (var migration = 1; migration <= LastMigration; migration++)
+        var lastMigration = LastMigrationNumber(migrations);
+        for (var migration = 1; migration <= lastMigration; migration++)
         {
             var path = Directory.GetFiles(migrations, $"{migration:0000}_*.sql").ShouldHaveSingleItem();
 
@@ -200,6 +198,34 @@ public sealed class OrderingPaymentConstraintTests : IAsyncLifetime
         }
 
         return connectionString;
+    }
+
+    /// <summary>
+    /// <c>db/migrations/</c> 底下編號最大的那一份。<b>取最大編號而不是檔案數</b>——
+    /// 兩者現在相等，但編號一旦出現空號（撤掉中間某一份），檔案數會安靜地少套最後一份，
+    /// 最大編號不會。照抄 <c>M1aCoreMigrationTests.LastMigrationNumber</c>。
+    /// <para>
+    /// 原本這裡是 <c>private const int LastMigration = 16;</c>。這條測試的意圖寫在類別註解上
+    /// ——「一次在<b>真的套過 db/migrations</b> 的 schema 上」，所以寫死的上界每加一份
+    /// migration 就少套一份：<b>不會紅，只會測得比它宣稱的少</b>，那比紅還難發現。
+    /// 0017 出現時它就已經漂了一份。
+    /// </para>
+    /// </summary>
+    private static int LastMigrationNumber(string migrationDirectory)
+    {
+        var numbers = new List<int>();
+        foreach (var path in Directory.GetFiles(migrationDirectory, "*.sql"))
+        {
+            if (int.TryParse(Path.GetFileName(path).AsSpan(0, 4), out var number))
+            {
+                numbers.Add(number);
+            }
+        }
+
+        // 一個都沒有就當場炸掉，不要回一個「看起來像數字」的 0——那會讓整條鏈一份都不套，
+        // 而這條 helper 存在的理由正是「不准安靜地少套」。
+        numbers.ShouldNotBeEmpty($"{migrationDirectory} 底下找不到任何 NNNN_*.sql。");
+        return numbers.Max();
     }
 
     private async Task<string> CreateDatabaseAsync(

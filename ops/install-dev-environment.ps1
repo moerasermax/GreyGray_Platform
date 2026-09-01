@@ -2,7 +2,7 @@
     GreyGray 本機開發環境整備（docs/19 第八波 BE-22）。
 
     只解決 D 階段的阻塞：開發機需要一組能連得到的 PostgreSQL 17 ＋ Garnet，
-    ＋ 套完 0001_～0016_ migrations，讓 FE-12 有真後端可以打。
+    ＋ 套完 0001_～0017_ migrations，讓 FE-12 有真後端可以打。
 
     刻意跟 install-environment.ps1（「正式機環境整備」，見它自己的檔頭）分開，
     不是重複造輪子：那支腳本做的專屬服務帳號、ACL、NSSM 服務、cloudflared tunnel、
@@ -50,7 +50,8 @@ $migrationFiles = @(
     '0010_m1b_inventory.sql', '0011_m1b_compensation.sql', '0012_m1b_fulfillment.sql',
     '0013_m1b_appraisal_period.sql', '0014_m1b_price_inquiry_timeout.sql',
     '0015_ordering_partial_purchase_shortfall.sql',
-    '0016_fulfillment_shipment_idempotency.sql'
+    '0016_fulfillment_shipment_idempotency.sql',
+    '0017_inventory_lot_wholesale_idempotency.sql'
 ) | ForEach-Object { Join-Path 'db\migrations' $_ }
 # 0001 建的 14 個模組 schema role + platform（共用例外）；audit／reporting 目前沒有
 # 任何 *.Infra 專案讀取對應的 ConnectionStrings 鍵，這一波的三個 Host 用不到，不生密碼。
@@ -314,7 +315,7 @@ do {
 if ($garnetPingResult -ne '+PONG') { throw "Garnet 在 $StartupTimeoutSeconds 秒內沒有回 +PONG（最後一次回應：$garnetPingResult）；看 $logDir\garnet.err.log" }
 Write-Host "PASS Garnet RESP PING：$garnetPingResult"
 
-# ── migrations：0001_～0016_，用既有的 invoke-migrations.ps1（部署帳號用完即丟）──
+# ── migrations：0001_～0017_，用既有的 invoke-migrations.ps1（部署帳號用完即丟）──
 <#
     這一段會判斷「已經套過就跳過」。**現在的理由純粹是省時間，不是安全問題。**
 
@@ -421,5 +422,5 @@ Write-Host "PASS Identity 個資保護金鑰：$dataProtectionKeyFile（$(if ($d
     HashKey／HashIV，不存在就跳過。正式機那半（ops/deploy.ps1）已經接好了。
 #>
 
-Write-Host "PASS 本機開發環境整備完成：PostgreSQL 17 ($PostgreSqlPort)、Garnet ($GarnetPort)、migrations 0001~0016。"
+Write-Host "PASS 本機開發環境整備完成：PostgreSQL 17 ($PostgreSqlPort)、Garnet ($GarnetPort)、migrations 0001~0017。"
 Write-Host "下一步：ops\start-dev-hosts.ps1 啟動三個 Host；ops\stop-dev-environment.ps1 全部收掉。"

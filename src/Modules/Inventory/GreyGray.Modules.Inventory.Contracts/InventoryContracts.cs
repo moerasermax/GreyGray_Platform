@@ -61,7 +61,51 @@ public sealed record Lot(
 
 public sealed record StockAvailability(SkuId SkuId, int Available);
 
+/// <summary>
+/// 批發進貨的輸入（M2）。<b>沒有團</b>——本地批發是 STOCK 模式，賣之前就進來了，
+/// 所以 <see cref="Lot.FromCampaign"/> 一律留空。<c>BatchCode</c> 是廠商的批號標示，可以不給。
+/// </summary>
+public sealed record WholesaleReceipt(
+    SkuId SkuId,
+    int Quantity,
+    Money UnitCost,
+    string? BatchCode);
+
+/// <summary>批號列表的查詢條件。游標式分頁，不用 offset（docs/05-API契約.md §5）。</summary>
+public sealed record AdminLotListRequest(
+    SkuId? SkuId,
+    LotId? Cursor,
+    int Limit);
+
+public sealed record LotPage(IReadOnlyList<Lot> Items, string? NextCursor);
+
 // ── 同步契約 ─────────────────────────────────────────────────────────────
+
+/// <summary>
+/// M2 批發進貨。<b>模組自己有一層冪等</b>：BFF 那一層的冪等鍵在收尾階段出錯時會被
+/// abandon，店員用同一把鍵重送就會建出第二個批號——幽靈庫存加一筆多出來的存貨分錄。
+/// 所以比照 <c>ShipmentAggregate</c> 與 <c>Cart</c>，把呼叫端的鍵存進聚合，
+/// 以它為準判斷「這是重播還是新的一批貨」。
+/// </summary>
+public interface IInventoryReceiving
+{
+    Task<Result<Lot>> ReceiveWholesaleAsync(
+        WholesaleReceipt receipt,
+        string idempotencyKey,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// 批號列表（後台）。<b>刻意不掛在 <see cref="IInventoryQuery"/> 上</b>——
+/// 那個介面是 Checkout 與前台依賴的「可用量」契約，批號列表沒有那些消費者，
+/// 把兩者混在一起等於逼每個只需要可用量的呼叫端都認識批號分頁。
+/// </summary>
+public interface IInventoryLotQuery
+{
+    Task<Result<LotPage>> ListLotsAsync(
+        AdminLotListRequest request,
+        CancellationToken cancellationToken);
+}
 
 public interface IInventoryQuery
 {
