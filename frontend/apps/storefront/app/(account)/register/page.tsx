@@ -76,6 +76,7 @@ export default function RegisterPage() {
               type="tel"
               inputMode="numeric"
               autoComplete="tel"
+              required
               invalid={Boolean(errors.phoneNumber)}
               value={values.phoneNumber}
               onChange={(e) => setField('phoneNumber', e.target.value)}
@@ -88,6 +89,7 @@ export default function RegisterPage() {
               id="register-password"
               type="password"
               autoComplete="new-password"
+              required
               invalid={Boolean(errors.password)}
               value={values.password}
               onChange={(e) => setField('password', e.target.value)}
@@ -98,6 +100,7 @@ export default function RegisterPage() {
             <Input
               id="register-display-name"
               autoComplete="nickname"
+              required
               invalid={Boolean(errors.displayName)}
               value={values.displayName}
               onChange={(e) => setField('displayName', e.target.value)}

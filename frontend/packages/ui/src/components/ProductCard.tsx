@@ -32,6 +32,41 @@ export interface ProductCardProps {
 }
 
 /**
+ * `suppressCardNavigation` 只用得到事件的這兩個方法。**刻意不是 `React.MouseEvent`**——
+ * 這個 workspace 沒有 jsdom 也沒有 `@testing-library`（不加相依是這一包的前提），
+ * 型別縮到最小才餵得進假的 event 物件做單元測試。
+ * `React.MouseEvent` 兩個方法都有，所以真的事件仍然傳得進來。
+ */
+export interface SuppressibleCardEvent {
+  preventDefault: () => void;
+  stopPropagation: () => void;
+}
+
+/**
+ * 卡片內的互動元素（收藏心）要吃掉點擊，不讓它變成「開啟這張卡」。
+ *
+ * **兩個都要呼叫，少一個就是「現在卡在哪」#27 那個 bug。**
+ * 商品列表把整張卡包在 `<Link>` 裡（`storefront .../ProductCardLink.tsx`），
+ * 於是點愛心會走到兩條各自獨立的導航路徑：
+ *
+ * 1. `<a href>` 的**瀏覽器預設行為** —— 只有 `preventDefault()` 擋得住。
+ *    `stopPropagation()` 擋不住它：預設行為是在事件傳播「結束之後」才執行的，
+ *    跟還有沒有人在監聽無關。
+ * 2. `next/link` 掛在 `<a>` 上的 `onClick`（client-side 導航）—— `stopPropagation()`
+ *    讓它收不到事件；就算收到了，它自己也會先看 `defaultPrevented` 而提早 return。
+ *
+ * 修好前的版本只寫了 `stopPropagation()`，剛好把①漏掉，
+ * 結果是「愛心不會切換、整頁跳去商品詳情」。
+ *
+ * 呼叫時機在 `FavoriteHeart` 自己的 `onToggle` **之後**（事件由內往外冒泡），
+ * 所以收藏狀態照常切換，被擋掉的只有導航。
+ */
+export function suppressCardNavigation(event: SuppressibleCardEvent): void {
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+/**
  * 純展示元件，不處理路由——要包 `next/link` 或 `onClick` 導頁是頁面自己的事。
  * 圖片走 `next/image` ＋ 1:1 裁切（鐵則 7）；`imageUrl` 是 `null` 時不發圖片請求，
  * 直接畫底色佔位。
@@ -94,7 +129,7 @@ export function ProductCard({
         {onToggleFavorite && (
           <span
             className="absolute right-[var(--gg-space-2)] top-[var(--gg-space-2)]"
-            onClick={(event) => event.stopPropagation()}
+            onClick={suppressCardNavigation}
           >
             <FavoriteHeart
               pressed={favorited}

@@ -69,6 +69,7 @@ export default function LoginPage() {
               type="tel"
               inputMode="numeric"
               autoComplete="tel"
+              required
               value={phoneNumber}
               onChange={(e) => setPhoneNumber(e.target.value)}
               placeholder="0912345678"
@@ -80,6 +81,7 @@ export default function LoginPage() {
               id="login-password"
               type="password"
               autoComplete="current-password"
+              required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
