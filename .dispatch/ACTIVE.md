@@ -83,6 +83,7 @@ doc: docs/34-後端第二十二波派工書.md
 allow: db/migrations/0017_
 allow: src/Modules/Inventory/
 allow: src/Modules/Ledger/GreyGray.Modules.Ledger.Infra/LedgerEventHandlers.cs
+allow: src/Modules/Ledger/GreyGray.Modules.Ledger.Infra/ModuleRegistration.cs
 allow: src/Hosts/GreyGray.Api.Admin/M2InventoryEndpoints.cs
 allow: src/Hosts/GreyGray.Api.Admin/Program.cs
 allow: ops/install-dev-environment.ps1
