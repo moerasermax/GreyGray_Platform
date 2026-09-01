@@ -51,9 +51,34 @@ Leader 要明講。
 
 ---
 
-**沒有生效中的派工（2026-08-31）。** 整合者模式：原始碼一律不准寫。
+派工 FE-21：後台首頁接上真的帳務端點（#29）　·　docs/24-前端第十波派工書.md
 
-**啟動 prompt 在 `.dispatch/PROMPTS.md`**，下一波派工前 Leader 用 ai-cli fan out。
+2026-09-01 使用者登入後台後，Leader 用真 Chrome 逐頁測，查出**後台首頁的財務數字與
+最近分錄是寫死的假資料**：首頁顯示「客戶負債 NT$1,280,000／現金 NT$860,000、
+資料時間 2026年8月28日」並跳紅字警示「正在用還沒交貨的錢過日子」，
+但同一份資料在帳務頁與 API 是「客戶負債 NT$0／現金 -NT$1,920、即時」；
+首頁「最近分錄」列 6 筆，而 `GET /v1/ledger/entries` **只有 1 筆**。
+**兩頁互相矛盾，而老闆會看首頁做經營判斷。**
+
+★ Leader 已查證並裁決：
+① 根因是 `(dash)/_lib/dashboardMock.ts` 的兩個 fixture 被 `(dash)/page.tsx` 直接使用。
+   **那個檔案自己的註解就寫著要換成 `GET /v1/ledger/liability-vs-cash` 與
+   `GET /v1/ledger/entries`**，而這兩個端點現在都存在也都正常，
+   `packages/api-client` 的 `getLiabilityVsCash`／`listLedgerEntries` 也早就有。
+② **不要重新設計**：`(dash)/ledger/page.tsx` 已經正確地做完這件事
+   （Leader 在真瀏覽器裡確認它顯示真資料），照抄那個形狀。
+③ **四個 KPI 卡維持「尚未提供」**——那是誠實的空值，不是假數字；
+   更不准用列表 API 在前端加總（列表有分頁，加出來只是這一頁的合計）。
+④ 必須補測試釘住「首頁顯示的數字來自 API」。**#29 能活到現在，
+   正是因為沒有任何測試斷言過這件事**；沒有那條測試，改完還會再退化。
+⑤ 載入中與失敗時**絕對不准 fallback 回任何寫死的數字**——那正是這個 bug 的成因。
+
+package: FE-21
+doc: docs/24-前端第十波派工書.md
+allow: frontend/apps/admin/app/(dash)/page.tsx
+allow: frontend/apps/admin/app/(dash)/_lib/
+allow: frontend/apps/admin/app/(dash)/_components/LiabilityVsCashCard.tsx
+allow: frontend/apps/admin/app/(dash)/__tests__/
 
 ---
 
