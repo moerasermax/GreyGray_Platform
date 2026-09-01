@@ -293,7 +293,7 @@ public sealed class M1aCoreMigrationTests : IAsyncLifetime
             """, cancellationToken);
     }
 
-    [Fact(DisplayName = "0001→0014 之後單獨重放 0003，ledger.account 的 seed 不會炸")]
+    [Fact(DisplayName = "套完全套 migration 之後單獨重放 0003，ledger.account 的 seed 不會炸")]
     public async Task Replaying_channel_seams_after_full_chain_keeps_ledger_account_seed_idempotent()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -301,7 +301,14 @@ public sealed class M1aCoreMigrationTests : IAsyncLifetime
         var connectionString = await CreateDatabaseAsync(cancellationToken);
         var channelSeams = Path.Combine(migrations, "0003_channel_seams.sql");
 
-        await ExecuteMigrationChainAsync(connectionString, migrations, 14, cancellationToken);
+        // 上界從 db/migrations/ 的實際內容推導，不寫死數字：這條測試的意圖是「套完
+        // **全套** migration 之後再重放 0003」，寫死的話每加一份 migration 就悄悄少測
+        // 一份——它不會紅，只會測得比 DisplayName 宣稱的少，那比紅還難發現。
+        await ExecuteMigrationChainAsync(
+            connectionString,
+            migrations,
+            LastMigrationNumber(migrations),
+            cancellationToken);
 
         // 全新資料庫套完整鏈之後的基準：0005 的 seed 共 15 個科目（1200 由 0003 先插入，
         // 0005 對它走 ON CONFLICT DO UPDATE 補上 id/type），之後沒有任何 migration 再動科目表。
@@ -526,6 +533,28 @@ public sealed class M1aCoreMigrationTests : IAsyncLifetime
             Database = databaseName,
         };
         return builder.ConnectionString;
+    }
+
+    /// <summary>
+    /// <c>db/migrations/</c> 底下編號最大的那一份。<b>取最大編號而不是檔案數</b>——
+    /// 兩者現在相等，但編號一旦出現空號（撤掉中間某一份），檔案數會安靜地少套最後一份，
+    /// 最大編號不會。這條 helper 的存在就是為了不再寫死上界。
+    /// </summary>
+    private static int LastMigrationNumber(string migrationDirectory)
+    {
+        var numbers = new List<int>();
+        foreach (var path in Directory.GetFiles(migrationDirectory, "*.sql"))
+        {
+            if (int.TryParse(Path.GetFileName(path).AsSpan(0, 4), out var number))
+            {
+                numbers.Add(number);
+            }
+        }
+
+        // 一個都沒有就當場炸掉，不要回一個「看起來像數字」的 0——那會讓整條鏈一份都不套，
+        // 而這條 helper 存在的理由正是「不准安靜地少套」。
+        numbers.ShouldNotBeEmpty($"{migrationDirectory} 底下找不到任何 NNNN_*.sql。");
+        return numbers.Max();
     }
 
     private static async Task ExecuteMigrationChainAsync(

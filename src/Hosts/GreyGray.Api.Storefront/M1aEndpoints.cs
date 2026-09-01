@@ -575,7 +575,7 @@ internal static class M1aEndpoints
         if (!context.Request.Headers.TryGetValue("Idempotency-Key", out var key))
         {
             return BffHttp.Problem(
-                new Error("request.idempotency-key-required", "缺少 Idempotency-Key header。"),
+                new Error("platform.idempotency-key-required", "缺少 Idempotency-Key header。"),
                 StatusCodes.Status400BadRequest);
         }
 

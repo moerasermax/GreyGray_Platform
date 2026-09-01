@@ -381,7 +381,7 @@ public static class BffHttp
             string.IsNullOrWhiteSpace(header))
         {
             return new(null, Problem(
-                new Error("request.idempotency-key-required", "缺少 Idempotency-Key header。"),
+                new Error("platform.idempotency-key-required", "缺少 Idempotency-Key header。"),
                 StatusCodes.Status400BadRequest), null);
         }
 
@@ -389,7 +389,7 @@ public static class BffHttp
         if (key.Length > 255)
         {
             return new(null, Problem(
-                new Error("request.idempotency-key-too-long", "Idempotency-Key 最多 255 個字元。"),
+                new Error("platform.idempotency-key-too-long", "Idempotency-Key 最多 255 個字元。"),
                 StatusCodes.Status400BadRequest), null);
         }
 
@@ -408,10 +408,10 @@ public static class BffHttp
                 new(null, Results.NoContent(), null),
             IdempotencyOutcome.AlreadyCompleted => new(null, null, cached),
             IdempotencyOutcome.InFlight => new(null, Problem(
-                new Error("request.idempotency-in-flight", "相同操作仍在處理中，請稍後重試。"),
+                new Error("platform.request-in-flight", "相同操作仍在處理中，請稍後重試。"),
                 StatusCodes.Status409Conflict), null),
             IdempotencyOutcome.KeyReusedWithDifferentPayload => new(null, Problem(
-                new Error("request.idempotency-key-reused", "同一 Idempotency-Key 不可搭配不同內容。"),
+                new Error("platform.idempotency-key-reused", "同一 Idempotency-Key 不可搭配不同內容。"),
                 StatusCodes.Status422UnprocessableEntity), null),
             _ => throw new InvalidOperationException($"未知冪等結果 {outcome}。"),
         };

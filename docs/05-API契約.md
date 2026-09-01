@@ -159,6 +159,10 @@ BFF 的四種結果（對應 `IIdempotencyStore.TryBeginAsync`）：
 | `InFlight` | `409`，`code: platform.request-in-flight`，前端稍後重試（同一把 key） |
 | `KeyReusedWithDifferentPayload` | `422`，`code: platform.idempotency-key-reused` |
 
+**`400` 的子類**：key 有帶但超過 255 字元 → `400`，`code: platform.idempotency-key-too-long`。
+上面那條 `1..255 chars` 的限制本來就在，這個 code 只是把「沒帶」與「帶了但太長」分成兩個碼，
+讓前端分得出「該補 header」與「該換一把 key」。
+
 `GET` 永遠不需要這個 header。
 
 **唯一的例外：`POST /v1/webhooks/ecpay`。** 綠界送的是它自己格式的表單，
