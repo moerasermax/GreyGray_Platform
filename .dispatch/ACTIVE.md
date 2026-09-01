@@ -51,6 +51,42 @@ Leader 要明講。
 
 ---
 
+## 生效中：FE-23　前台的殼（底部分頁列）
+
+修「現在卡在哪」**#30**。使用者 2026-09-02 從前台測整段下單時撞到：
+加完購物車之後**沒有任何按鈕回得去**，只能按上一頁；
+而且**首頁上連「購物車」三個字都沒有**，`/cart` 只能自己打網址進去。
+
+根因不是誰漏做，是當初就沒排：`docs/06-前端工作包.md` 八包裡
+**只有 FE-6「後台：殼、登入與營運儀表板」有殼這一包，前台從來沒有**。
+FE-3／4／5 做的是前台的頁面，沒有人做框。八包做完、五波驗收都沒抓到，
+因為**只有在真瀏覽器裡連續操作才會發現**——單獨測每一頁時每一頁都是好的。
+
+★★ 這一包最容易做錯的地方：`BottomActionBar` 是 `fixed bottom-0`、高 72px，
+**已經有三頁在用**（商品詳情的 `AddToCartPanel`、購物車頁、結帳頁），
+兩條固定列疊在一起會蓋住內容。那三頁不要顯示分頁列，而且要有測試釘住這份清單。
+
+★ 徽章不准在拿不到資料時顯示 0——「0 件」與「不知道幾件」是兩件事。
+這個專案一再踩到的失敗形狀就是「畫面宣稱了不成立的事」（#29、FE-21）。
+
+★ 沿用 FE-21／FE-22 兩個既有結論：`pnpm lint` 在這個 workspace 跑不起來（沒裝 ESLint），
+不要列進自驗；測試要放在 `apps/storefront`（有 vitest），寫在 `packages/ui` 的
+永遠不會被執行。基準 **150 條**，交付時必須變多。
+
+package: FE-23
+doc: docs/26-前端第十二波派工書.md
+allow: frontend/apps/storefront/app/layout.tsx
+allow: frontend/apps/storefront/app/_components/
+allow: frontend/apps/storefront/app/_lib/
+allow: frontend/apps/storefront/app/(shop)/products/[productId]/_components/AddToCartPanel.tsx
+allow: frontend/apps/storefront/app/(shop)/campaigns/[campaignId]/_components/CampaignOfferRow.tsx
+allow: frontend/apps/storefront/app/(checkout)/cart/page.tsx
+
+> 後兩個呼叫點與購物車頁列進來，是因為徽章要能立即更新（加入時 ＋1、移除時 −1）。
+> **只改通知徽章那幾行，不要改它們的版面或邏輯。**
+
+---
+
 <!--
 ★ 2026-09-01 已通過整合驗收並提交（前端 6f3f380），撤包。原文保留供追溯。
 

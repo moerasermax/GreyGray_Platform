@@ -7,11 +7,12 @@
  */
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BottomActionBar, Button, Card, EmptyState, ErrorState, PriceDisplay, Skeleton } from '@greygray/ui';
 import * as api from '@greygray/api-client/endpoints/storefront';
 import { browserApi } from '../../_lib/apiClient';
 import { usePayloadIdempotency } from '../../_lib/usePayloadIdempotency';
+import { publishCart } from '../../_lib/cartCountStore';
 import { CartLineRow } from '../_components/CartLineRow';
 import { useCart } from '../_lib/useCart';
 import { blockingAvailabilityWarning } from '../_lib/cartRules';
@@ -22,6 +23,17 @@ export default function CartPage() {
   const { cart, loading, error, reload, setCart } = useCart();
   const [busyLineId, setBusyLineId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  /*
+   * 把最新的購物車推給分頁列的徽章。放在這裡而不是每個 handler 裡，
+   * 是因為載入完成與改數量／移除都只是 `cart` 換了一份，一個 effect 全包。
+   *
+   * `cart` 還是 `null`（載入中或失敗）時**不推**：store 的 `null` 意思是
+   * 「不知道幾件」，拿它蓋掉一個已經知道的數字，只會讓徽章在載入中閃掉一次。
+   */
+  useEffect(() => {
+    if (cart) publishCart(cart);
+  }, [cart]);
 
   async function updateQuantity(lineId: string, quantity: number) {
     setBusyLineId(lineId);

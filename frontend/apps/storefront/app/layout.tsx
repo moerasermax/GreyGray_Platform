@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Nunito, Noto_Sans_TC } from 'next/font/google';
 import './globals.css';
 import { MockBootstrap } from './_mock/MockBootstrap';
+import { StorefrontTabBar } from './_components/StorefrontTabBar';
 
 /*
  * 字體用 next/font 自架，不要用 <link> 拉 Google Fonts——
@@ -48,6 +49,20 @@ export default function RootLayout({
       <body>
         <MockBootstrap />
         {children}
+        {/*
+          底部分頁列（#30）。掛在 `{children}` 之後、`<body>` 直屬層，
+          理由是它是**全站的殼**，不屬於任何一個 route group——
+          前台的 (shop)／(checkout)／(account) 沒有共同的中介 layout，
+          這裡是唯一「一處解決全部」的位置。哪幾頁不畫由 `_lib/tabs.ts` 決定。
+
+          ★ 這裡刻意**不再補一層底部留白**。`globals.css` 給 `<body>` 的
+          `padding-bottom: calc(var(--gg-bottom-bar-height) + env(safe-area-inset-bottom, 0px))`
+          已經是全站每一頁都有的留白，而分頁列的高度就寫成同一個算式
+          （`_lib/tabs.ts` 的 `TAB_BAR_HEIGHT`），恰好把它填滿。
+          在這裡再加一次會變成 144px，多出整整一條列的空白。
+          兩邊逐字相同由 `_lib/__tests__/tabBarReservesBottomSpace.test.ts` 釘住。
+        */}
+        <StorefrontTabBar />
       </body>
     </html>
   );

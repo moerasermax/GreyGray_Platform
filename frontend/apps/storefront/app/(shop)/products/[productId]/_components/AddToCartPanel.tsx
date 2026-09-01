@@ -7,6 +7,7 @@ import { formatMoney, ApiError } from '@greygray/api-client';
 import type { components } from '@greygray/api-client/storefront';
 import { browserApi } from '../../../../_lib/apiClient';
 import { usePayloadIdempotency } from '../../../../_lib/usePayloadIdempotency';
+import { publishCart } from '../../../../_lib/cartCountStore';
 
 type S = components['schemas'];
 
@@ -77,8 +78,10 @@ export function AddToCartPanel({ product }: AddToCartPanelProps) {
         campaignOfferId: selectedSku.campaignOfferId ?? null,
         quantity,
       };
-      await addCartLine(browserApi(), body, { idempotencyKey: idempotency.current(body) });
+      const updated = await addCartLine(browserApi(), body, { idempotencyKey: idempotency.current(body) });
       idempotency.complete();
+      // 端點回的就是更新後的整張購物車，直接推給分頁列的徽章——不必等重新整理，也不用自己 +1。
+      publishCart(updated);
       setState('success');
     } catch (cause) {
       setState('error');
