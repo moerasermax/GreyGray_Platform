@@ -51,6 +51,40 @@ Leader 要明講。
 
 ---
 
+派工 BE-39：預購商品的開團資訊補回商品端點（#26）　·　docs/35-後端第二十三波派工書.md
+
+2026-09-01 真 Chrome 逐頁複驗查出：**預購商品從「逛商品」這條路徑永遠買不到，
+而且違反已凍結的契約**。同一個商品、同一個時刻，開團頁 `/campaigns/{id}` 正常顯示
+NT$1,000 可加入購物車，商品列表那張卡卻寫「目前無法購買」、詳情頁寫
+「這個規格尚未定價，請稍後再試。」＋按鈕 disabled。
+
+★ Leader 已查證並裁決：
+① 契約是對的、程式沒跟上——`openapi.storefront.yaml` 明文規定
+   `ProductListItem.campaignId`「`mode = Preorder` 時指向所屬的團」、
+   `ProductDetail.campaign`「附上團的摘要，前端要顯示截團倒數」、
+   `Sku.price`「現貨是標價，**預購是該團的定價**」；
+   但 `M1aEndpoints.cs:1114`／`:1126` **把這三個欄位全部硬編碼 `null`**。
+   **不要改 `docs/api/*.yaml`。**
+② **不要動前端**——`AddToCartPanel.tsx` 已經照契約寫好了，它的註解甚至寫著
+   「沒有附上 campaign 資料時保守視為不可下單」。**前端是對的，是後端沒給**；
+   修好後端，前端零行變更就會動。
+③ **`Sku.available` 預購恆 0 是契約明文**（「前端不要拿這個值擋預購」），**不要改那段**。
+④ `ICampaignStorefront` 目前**沒有**「用 SKU 反查開著的 offer」，要補一個**批次**查詢
+   （列表一次要查一整頁的 SKU，逐一查會變 N+1）。三層都在 Campaign 模組自己家裡。
+⑤ **同一個 SKU 掛多個開著的團**：規則定為取 `ClosesAt` 最早的那一個，
+   **要有專屬測試釘住**；若發現與既有假設衝突，停下來問，不要自己換規則。
+⑥ 補測試釘住那四個欄位——**#26 能活到現在正是因為全 repo 沒有任何測試斷言過它們**，
+   跟 #24（冪等錯誤碼）是同一個形狀。
+
+package: BE-39
+doc: docs/35-後端第二十三波派工書.md
+allow: src/Modules/Campaign/
+allow: src/Hosts/GreyGray.Api.Storefront/M1aEndpoints.cs
+allow: tests/GreyGray.M1a.CampaignPricing.Tests/
+allow: tests/GreyGray.M1a.IdentityCatalog.Tests/
+
+---
+
 <!--
 ★ 2026-09-01 已通過整合驗收並提交（後端 f191120），撤包。原文保留供追溯。
 

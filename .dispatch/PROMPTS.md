@@ -1,6 +1,6 @@
 # 啟動 prompt
 
-**生效中：FE-21（前端樹）。** 後端樹仍是整合者模式，原始碼一律不准寫。
+**生效中：BE-39（後端樹）＋ FE-22（前端樹）。** 兩包平行跑，不同樹、不重疊。
 
 已通過整合驗收並撤包：
 
@@ -14,20 +14,116 @@
 
 | # | 內容 | 在哪棵樹 |
 |---|---|---|
-| **#29** | ★★ 後台首頁的財務數字與最近分錄是**寫死的假資料**，與帳務頁互相矛盾 | 前端（**本波 FE-21**） |
-| #26 | 預購商品從商品路徑永遠買不到（三處硬編碼 `null` 違反契約明文） | 後端（下一波） |
-| #27 | 商品卡收藏心點了會跳到商品頁（缺 `preventDefault`） | 前端（下一波） |
-| #28 | 前台必填欄位只有視覺上的 `*`，輔助技術讀不到 | 前端（下一波） |
+| ~~#29~~ | ~~後台首頁的財務數字是寫死的假資料~~ | ✅ **FE-21 已修**（`ebe074c`），測試 135 → 146 條 |
+| **#26** | 預購商品從商品路徑永遠買不到（三處硬編碼 `null` 違反契約明文） | 後端（**本波 BE-39**） |
+| **#27** | 商品卡收藏心點了會跳到商品頁（缺 `preventDefault`） | 前端（**本波 FE-22**） |
+| **#28** | 前台必填欄位只有視覺上的 `*`，輔助技術讀不到 | 前端（**本波 FE-22**） |
 
 ★ **#25 仍未解**：任何會解析 Payment 模組的端點都在 DI 階段炸掉——
 storefront `GET /v1/cart`、`POST /v1/cart/lines`，**以及 admin `GET /v1/orders/{orderId}`**
 （後台訂單列表點得進去、點開任一張就 500，已在真瀏覽器裡驗證）。卡在 E3。
 
-**下一份後端派工書是 `docs/35-後端第二十三波派工書.md`。**
+**下一份後端派工書是 `docs/36-後端第二十四波派工書.md`；下一份前端派工書是 `docs/26-前端第十二波派工書.md`。**
+
+★ **`pnpm lint` 在這個 workspace 根本跑不起來**（沒裝 ESLint，`next lint` 已棄用且互動式；
+對沒碰過的專案跑也是 exit 1，Leader 已用對照組確認）。**不要再把它列進任何自驗項。**
 
 ---
 
-## FE-21 的啟動 prompt（生效中）
+## BE-39 的啟動 prompt（生效中）
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
+GreyGray Platform 後端。.NET 10 模組化單體，14 個限界上下文，EF Core + Npgsql。
+
+GG_PACKAGE=BE-39
+
+開工前務必先讀：
+  CLAUDE.md                        六條鐵則 ＋ 派工規則
+  docs/35-後端第二十三波派工書.md    §0 事實 ＋ §1 要補什麼與那條規則
+  .dispatch/reports/README.md      ★ 自驗報告的格式，缺標頭會被退回
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/BE-39.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 不准把驗證丟背景、不准排程 wakeup。12 個測試專案逐一在前景個別執行。
+     不要用 dotnet test，用 ops\test.ps1。
+     ★ dev 環境開著時 Host 會鎖住 bin\Debug，用 -Configuration Release 繞開，
+       不要去停掉任何 dev server。
+
+★ 契約是對的、程式沒跟上——不要改 docs/api/*.yaml，不要動前端
+  （AddToCartPanel 已照契約寫好，修好後端前端零行變更就會動）。
+
+★ Sku.available 預購恆 0 是契約明文，不要改那段邏輯。
+
+★ §1 那條「同一個 SKU 掛多個開著的團取哪一個」的規則要有專屬測試釘住；
+  若發現規則與既有假設衝突，停下來寫進報告問，不要自己換一條。
+
+★ 補測試釘住 campaignId／campaign／price／campaignOfferId 這四個欄位——
+  #26 能活到現在正是因為全 repo 沒有任何測試斷言過它們。
+
+★ BOM：維持每個檔案原本的狀態。用 Python 寫檔時不要用 encoding='utf-8-sig'。
+
+檔案所有權：見派工書 §3。
+docs/、management/、STATE.md、CLAUDE.md、AGENTS.md 每一包都寫得了。
+
+不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
+git checkout -- .、以及 git commit。
+
+你不可以自己宣告通過。交付完就停。
+```
+
+---
+
+## FE-22 的啟動 prompt（生效中）
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe
+GreyGray Platform 前端。Next.js 15 ＋ React 19 ＋ Tailwind 4，pnpm workspace。
+
+GG_PACKAGE=FE-22
+
+開工前務必先讀：
+  CLAUDE.md                        前端四條 ＋ 派工規則
+  docs/25-前端第十一波派工書.md      §0（#27）＋ §1（#28）
+  .dispatch/reports/README.md      ★ 自驗報告的格式，缺標頭會被退回
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/FE-22.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 不准把驗證丟背景、不准排程 wakeup。
+
+★ 這個 workspace 沒有 jsdom／@testing-library，也沒有安裝（Leader 已查證）。
+  不要為了寫測試去加相依套件、不要動 pnpm-lock.yaml。
+  #27 的迴歸保證改用「把 handler 抽成可單元測試的小函式」，見派工書 §0。
+
+★ pnpm lint 在這個 workspace 根本跑不起來（沒裝 ESLint），不要列進自驗、
+  也不要假裝通過。測試用 pnpm --recursive test（基準 146 條）。
+
+★ #27 不要把 ProductCard 搬出 <Link>、不要改 ProductCardLink 的結構。
+
+★ #28 只補標了 * 的欄位；register-email 與 register-referral-code 是選填，
+  不要加 required。不改表單的送出行為——若補了 required 之後瀏覽器開始擋送出、
+  使既有錯誤訊息路徑走不到，停下來寫進報告問。
+
+★ 不要動後端、不要動 docs/api/*.yaml。
+
+檔案所有權：見派工書 §3。
+docs/、STATE.md、CLAUDE.md、AGENTS.md 每一包都寫得了。
+
+不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
+git checkout -- .、以及 git commit。
+
+你不可以自己宣告通過。交付完就停。
+```
+
+---
+
+## FE-21 的啟動 prompt（已撤包，保留供參考）
 
 ```
 專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe
