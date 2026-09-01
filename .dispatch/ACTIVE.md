@@ -51,6 +51,35 @@ Leader 要明講。
 
 ---
 
+<!--
+★ 2026-09-01 已通過整合驗收並提交（前端 6f3f380），撤包。原文保留供追溯。
+
+#27／#28 都已解，Leader 用當初查出這兩個 bug 的同一段瀏覽器探針複驗：
+點愛心後網址仍是 `/products`、`aria-pressed` 由 false 變 true（真的切換而不是導航）；
+login 兩個、register 三個標 `*` 的欄位都是 `required: true`，兩個選填的維持 false。
+
+★★ 這一包最值得記住的是**「休眠測試」這個形狀**：
+子代理第一輪把測試寫在 `packages/ui/src/components/__tests__/`，
+但 `packages/ui` **既沒有 `test` script 也沒有 vitest 相依**，
+`pnpm --recursive test` 根本跑不到它——**146 條前後完全沒變**。
+它正確地回報了這件事，也沒有自己去動 `package.json`／`pnpm-lock.yaml`。
+**Leader 的裁決是搬家而不是加相依**：`suppressCardNavigation` 已從 `packages/ui`
+公開入口 export，而 `apps/storefront` 依賴 `@greygray/ui` 且有 vitest。
+搬完 **146 → 150**，而且**先紅後綠在新位置重做**：拿掉 `preventDefault` 之後
+`pnpm --recursive test` 回 **EXIT=1**——搬家前做同樣的破壞，那個指令還是全綠 EXIT=0。
+**那一行 EXIT=1 才是搬家買到的東西。**
+「迴歸保證如果永遠不會跑，就不是保證」，跟 #29 是同一個形狀。
+
+★ 子代理還多做了一步：拿掉 `@ts-expect-error` 後 typecheck 沒紅，
+但它指出「沒紅」不等於「型別在保護測試」——如果 `expect` 仍是 `any` 也不會紅。
+所以故意把 `toHaveBeenCalledTimes(1)` 傳字串，拿到 `TS2345` 才算數。探針已還原。
+
+★ 追蹤項：`register/page.tsx:67` 的文案與 `CLAUDE.md:219`（ADR-019）牴觸
+（那裡明文說註冊頁不要寫「舊訂單請到原平台查詢」）。子代理查到但沒改——
+改文案是產品決定。Leader 裁決維持現況。
+
+詳見 `.dispatch/reports/FE-22.md` 與 `GreyGray_PM/03-驗收紀錄.md` 第二十四次。
+
 派工 FE-22：收藏心的導航攔截與前台必填欄位（#27／#28）　·　docs/25-前端第十一波派工書.md
 
 2026-09-01 真 Chrome 全站逐頁複驗查出的兩個前端小缺陷，一起做掉。
@@ -84,6 +113,7 @@ allow: frontend/packages/ui/src/components/__tests__/
 allow: frontend/apps/storefront/app/(account)/login/page.tsx
 allow: frontend/apps/storefront/app/(account)/register/page.tsx
 allow: frontend/apps/storefront/app/(shop)/_components/__tests__/
+-->
 
 ★ 2026-09-01 補列（第二輪）：子代理正確回報「新測試是休眠的」——
 `packages/ui` 既沒有 `test` script 也沒有 vitest 相依，`pnpm --recursive test`
