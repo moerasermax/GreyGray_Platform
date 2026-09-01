@@ -63,13 +63,24 @@ internal static class M1bFulfillmentEndpoints
                 : BffHttp.Problem(result.Error);
         }).AddEndpointFilter(new M1aEndpoints.StaffRoleFilter(StaffRole.Operator));
 
+        // 冪等鍵自己讀一次再傳進模組（比照 Storefront 的 CompleteCheckoutAsync）：
+        // BffHttp 的冪等在收尾階段出錯時會 abandon 這把鍵，同一把鍵重送就會
+        // 再建一張出貨單，所以 Fulfillment 模組自己也要拿得到它（見 docs/32 §1）。
         api.MapPost("/shipments", async (
             CreateShipmentInput input,
             HttpContext context,
             IFulfillmentApplication fulfillment,
             IIdempotencyStore idempotency,
             CancellationToken cancellationToken) =>
-            await BffHttp.ExecuteIdempotentAsync(
+        {
+            if (!context.Request.Headers.TryGetValue("Idempotency-Key", out var key))
+            {
+                return BffHttp.Problem(
+                    new Error("request.idempotency-key-required", "缺少 Idempotency-Key header。"),
+                    StatusCodes.Status400BadRequest);
+            }
+
+            return await BffHttp.ExecuteIdempotentAsync(
                 context,
                 idempotency,
                 M1aEndpoints.Scope(context, "shipments:create"),
@@ -79,14 +90,15 @@ internal static class M1bFulfillmentEndpoints
                     var created = await fulfillment.CreateAsync(
                         input.OrderIds,
                         input.Method,
+                        key.ToString().Trim(),
                         token);
                     return created.IsSuccess
                         ? created.Value
                         : Result<ShipmentSummary>.Failure(created.Error);
                 },
                 StatusCodes.Status201Created,
-                cancellationToken))
-            .AddEndpointFilter(new M1aEndpoints.StaffRoleFilter(StaffRole.Operator));
+                cancellationToken);
+        }).AddEndpointFilter(new M1aEndpoints.StaffRoleFilter(StaffRole.Operator));
 
         api.MapPost("/shipments/{shipmentId}/dispatch", async (
             string shipmentId,

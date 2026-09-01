@@ -18,12 +18,14 @@ internal sealed class ShipmentAggregate
         TenantId tenantId,
         DeliveryMethod method,
         IReadOnlyList<OrderId> orderIds,
+        string idempotencyKey,
         DateTimeOffset createdAt)
     {
         Id = id;
         TenantId = tenantId;
         Method = method;
         Status = ShipmentStatus.Draft;
+        CreationIdempotencyKey = idempotencyKey;
         CreatedAt = createdAt;
 
         foreach (var orderId in orderIds)
@@ -39,6 +41,13 @@ internal sealed class ShipmentAggregate
     public DeliveryMethod Method { get; private set; }
 
     public ShipmentStatus Status { get; private set; }
+
+    /// <summary>
+    /// 建立這張出貨單時用的冪等鍵。<b>可為 null</b>——`fulfillment.shipment` 在這個欄位
+    /// 出現之前就有既有資料列，它們沒有鍵（比照 <c>Cart.CheckoutIdempotencyKey</c>，
+    /// 不是比照 <c>Order.CheckoutIdempotencyKey</c> 的必填）。
+    /// </summary>
+    public string? CreationIdempotencyKey { get; private set; }
 
     public string? TrackingNumber { get; private set; }
 
@@ -64,15 +73,25 @@ internal sealed class ShipmentAggregate
     /// 建立出貨單。<b>Order 與 Shipment 是 N:M</b>——這是日常，不是邊緣案例：
     /// 同一張訂單可以出現在多張出貨單裡（拆多個包裹），<paramref name="orderIds"/>
     /// 也可以一次帶進同一位客人的多張訂單（合併出貨省運費）。
+    /// <paramref name="idempotencyKey"/> 是呼叫端帶進來的冪等鍵，
+    /// 用來擋掉「同一次動作重送建出第二張」；<b>不是</b>用來擋 N:M 拆包裹。
     /// </summary>
     public static Result<ShipmentAggregate> Create(
         ShipmentId id,
         TenantId tenantId,
         DeliveryMethod method,
         IReadOnlyList<OrderId> orderIds,
+        string idempotencyKey,
         DateTimeOffset createdAt)
     {
         ArgumentNullException.ThrowIfNull(orderIds);
+
+        if (string.IsNullOrWhiteSpace(idempotencyKey) || idempotencyKey.Length > 255)
+        {
+            return Result<ShipmentAggregate>.Failure(
+                "platform.idempotency-key-required",
+                "建立出貨單必須提供 1 到 255 字元的 Idempotency-Key。");
+        }
 
         if (orderIds.Count == 0)
         {
@@ -95,7 +114,7 @@ internal sealed class ShipmentAggregate
                 "配送方式無效。");
         }
 
-        return new ShipmentAggregate(id, tenantId, method, orderIds, createdAt);
+        return new ShipmentAggregate(id, tenantId, method, orderIds, idempotencyKey, createdAt);
     }
 
     /// <summary>
@@ -230,6 +249,15 @@ internal interface IShipmentRepository
     Task<IReadOnlyList<ShipmentAggregate>> GetByOrderAsync(
         TenantId tenantId,
         OrderId orderId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 依建立時的冪等鍵查出貨單，找不到回 null。重播時要回既有那一張的
+    /// <c>orderIds</c>，所以實作一定要 <c>Include(OrderLinks)</c>。
+    /// </summary>
+    Task<ShipmentAggregate?> GetByCreationKeyAsync(
+        TenantId tenantId,
+        string idempotencyKey,
         CancellationToken cancellationToken);
 
     Task<ShipmentQueryPage> ListAsync(

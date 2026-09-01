@@ -30,6 +30,18 @@ internal sealed class FulfillmentRepository(FulfillmentDbContext dbContext) : IS
             .OrderByDescending(shipment => shipment.CreatedAt)
             .ToArrayAsync(cancellationToken);
 
+    public Task<ShipmentAggregate?> GetByCreationKeyAsync(
+        TenantId tenantId,
+        string idempotencyKey,
+        CancellationToken cancellationToken) =>
+        dbContext.Shipments
+            .AsNoTracking()
+            .Include(shipment => shipment.OrderLinks)
+            .SingleOrDefaultAsync(
+                shipment => shipment.TenantId == tenantId
+                    && shipment.CreationIdempotencyKey == idempotencyKey,
+                cancellationToken);
+
     public async Task<ShipmentQueryPage> ListAsync(
         TenantId tenantId,
         AdminShipmentListRequest request,

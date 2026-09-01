@@ -22,6 +22,7 @@ public sealed class ShipmentAggregateTests
             TenantId.Default,
             DeliveryMethod.HomeDelivery,
             orderIds,
+            "key-multi-orders",
             Now);
 
         shipment.IsSuccess.ShouldBeTrue();
@@ -35,9 +36,9 @@ public sealed class ShipmentAggregateTests
         var orderId = OrderId.New();
 
         var first = ShipmentAggregate.Create(
-            ShipmentId.New(), TenantId.Default, DeliveryMethod.ConvenienceStore, [orderId], Now);
+            ShipmentId.New(), TenantId.Default, DeliveryMethod.ConvenienceStore, [orderId], "key-1", Now);
         var second = ShipmentAggregate.Create(
-            ShipmentId.New(), TenantId.Default, DeliveryMethod.HomeDelivery, [orderId], Now);
+            ShipmentId.New(), TenantId.Default, DeliveryMethod.HomeDelivery, [orderId], "key-2", Now);
 
         first.IsSuccess.ShouldBeTrue();
         second.IsSuccess.ShouldBeTrue();
@@ -50,7 +51,7 @@ public sealed class ShipmentAggregateTests
     public void Create_rejects_empty_order_list()
     {
         var result = ShipmentAggregate.Create(
-            ShipmentId.New(), TenantId.Default, DeliveryMethod.SelfPickup, [], Now);
+            ShipmentId.New(), TenantId.Default, DeliveryMethod.SelfPickup, [], "key-empty-orders", Now);
 
         result.IsFailure.ShouldBeTrue();
         result.Error.Code.ShouldBe("fulfillment.order-ids-required");
@@ -62,10 +63,48 @@ public sealed class ShipmentAggregateTests
         var orderId = OrderId.New();
 
         var result = ShipmentAggregate.Create(
-            ShipmentId.New(), TenantId.Default, DeliveryMethod.HomeDelivery, [orderId, orderId], Now);
+            ShipmentId.New(), TenantId.Default, DeliveryMethod.HomeDelivery, [orderId, orderId], "key-dup", Now);
 
         result.IsFailure.ShouldBeTrue();
         result.Error.Code.ShouldBe("fulfillment.duplicate-order-id");
+    }
+
+    [Theory(DisplayName = "沒有冪等鍵就建不出出貨單（null、空字串、全空白）")]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    public void Create_rejects_missing_idempotency_key(string? idempotencyKey)
+    {
+        var result = ShipmentAggregate.Create(
+            ShipmentId.New(), TenantId.Default, DeliveryMethod.HomeDelivery, [OrderId.New()], idempotencyKey!, Now);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("platform.idempotency-key-required");
+    }
+
+    [Fact(DisplayName = "冪等鍵超過 255 個字元也建不出出貨單")]
+    public void Create_rejects_oversized_idempotency_key()
+    {
+        var result = ShipmentAggregate.Create(
+            ShipmentId.New(),
+            TenantId.Default,
+            DeliveryMethod.HomeDelivery,
+            [OrderId.New()],
+            new string('k', 256),
+            Now);
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("platform.idempotency-key-required");
+    }
+
+    [Fact(DisplayName = "建立出貨單會把冪等鍵留在聚合上，之後才查得到重播對象")]
+    public void Create_records_the_idempotency_key()
+    {
+        var shipment = ShipmentAggregate.Create(
+            ShipmentId.New(), TenantId.Default, DeliveryMethod.HomeDelivery, [OrderId.New()], "key-recorded", Now);
+
+        shipment.IsSuccess.ShouldBeTrue();
+        shipment.Value.CreationIdempotencyKey.ShouldBe("key-recorded");
     }
 
     [Fact(DisplayName = "交運成功後 carrierCost 與 shippingFee 是分開的兩個數字")]
@@ -155,5 +194,6 @@ public sealed class ShipmentAggregateTests
             TenantId.Default,
             DeliveryMethod.HomeDelivery,
             [OrderId.New()],
+            "key-draft",
             Now).Value;
 }

@@ -2,7 +2,7 @@
     GreyGray 本機開發環境整備（docs/19 第八波 BE-22）。
 
     只解決 D 階段的阻塞：開發機需要一組能連得到的 PostgreSQL 17 ＋ Garnet，
-    ＋ 套完 0001_～0014_ migrations，讓 FE-12 有真後端可以打。
+    ＋ 套完 0001_～0016_ migrations，讓 FE-12 有真後端可以打。
 
     刻意跟 install-environment.ps1（「正式機環境整備」，見它自己的檔頭）分開，
     不是重複造輪子：那支腳本做的專屬服務帳號、ACL、NSSM 服務、cloudflared tunnel、
@@ -48,7 +48,9 @@ $migrationFiles = @(
     '0004_hello_world.sql', '0005_m1a_payment_ledger.sql', '0006_m1a_core.sql',
     '0007_m1b_procurement.sql', '0008_m1a_line_refund.sql', '0009_m1b_seams.sql',
     '0010_m1b_inventory.sql', '0011_m1b_compensation.sql', '0012_m1b_fulfillment.sql',
-    '0013_m1b_appraisal_period.sql', '0014_m1b_price_inquiry_timeout.sql'
+    '0013_m1b_appraisal_period.sql', '0014_m1b_price_inquiry_timeout.sql',
+    '0015_ordering_partial_purchase_shortfall.sql',
+    '0016_fulfillment_shipment_idempotency.sql'
 ) | ForEach-Object { Join-Path 'db\migrations' $_ }
 # 0001 建的 14 個模組 schema role + platform（共用例外）；audit／reporting 目前沒有
 # 任何 *.Infra 專案讀取對應的 ConnectionStrings 鍵，這一波的三個 Host 用不到，不生密碼。
@@ -312,20 +314,21 @@ do {
 if ($garnetPingResult -ne '+PONG') { throw "Garnet 在 $StartupTimeoutSeconds 秒內沒有回 +PONG（最後一次回應：$garnetPingResult）；看 $logDir\garnet.err.log" }
 Write-Host "PASS Garnet RESP PING：$garnetPingResult"
 
-# ── migrations：0001_～0014_，用既有的 invoke-migrations.ps1（部署帳號用完即丟）──
+# ── migrations：0001_～0016_，用既有的 invoke-migrations.ps1（部署帳號用完即丟）──
 <#
-    ★ 這一段一定要判斷「已經套過就跳過」，不能每次重跑都無條件全部重放。
-    實測發現：db/migrations/0003_channel_seams.sql 對 ledger.account 的 seed row
-    是 INSERT ... ON CONFLICT (tenant_id, code) DO NOTHING，但後面的 migration
-    （0005_m1a_payment_ledger.sql）給 ledger.account 加了一個 NOT NULL、沒有預設值
-    的 id 欄位——PostgreSQL 檢查 NOT NULL 是在建構候選列的時候，早於 ON CONFLICT
-    判斷衝突，所以「已經存在就跳過」這個保護在欄位加了之後**擋不住**：
-    對已經跑過全套 migrations 的資料庫重放 0003，會在建構列時就先因為
-    id 是 NULL 噴 NOT NULL violation，而不是走到 ON CONFLICT 被吞掉。
-    這是 db/migrations/ 既有檔案的問題，不在 BE-22 的 allow 範圍（ops/** 之外），
-    已經寫進「我發現但沒做的事」。這裡用「已經有完整 migrations-applied.json
-    就整批跳過」繞開，不是修那個 SQL 檔——BEGIN/COMMIT 包住整份檔案，
-    失敗會整份 rollback，不會留下半套髒狀態，但仍然不該每次重跑都去踩這個雷。
+    這一段會判斷「已經套過就跳過」。**現在的理由純粹是省時間，不是安全問題。**
+
+    BE-22 當初寫這段時，重放是真的會炸：db/migrations/0003_channel_seams.sql 對
+    ledger.account 的 seed row 是 INSERT ... ON CONFLICT (tenant_id, code) DO NOTHING，
+    但後面的 0005_m1a_payment_ledger.sql 給 ledger.account 加了一個 NOT NULL、
+    沒有預設值的 id 欄位——PostgreSQL 檢查 NOT NULL 是在建構候選列的時候，早於
+    ON CONFLICT 判斷衝突，所以「已經存在就跳過」這個保護在欄位加了之後擋不住，
+    重放 0003 會噴 NOT NULL violation。
+
+    ★ 那個 bug 已經由 BE-24 修掉了（後端 22061a4）：0003 改用 WHERE NOT EXISTS 而不是
+    ON CONFLICT DO NOTHING，那個檔案自己的註解現在明講「重放是常態而不是邊角案例」。
+    **所以 db/migrations 現在整套都可以重放**，不要因為看到這段就以為不行。
+    保留跳過機制是因為重跑一次全套 migrations 要花時間，不是因為它不安全。
 #>
 $migrationsStateFile = Join-Path $stateDir 'migrations-applied.json'
 $migrationsAlreadyApplied = $false
@@ -418,5 +421,5 @@ Write-Host "PASS Identity 個資保護金鑰：$dataProtectionKeyFile（$(if ($d
     HashKey／HashIV，不存在就跳過。正式機那半（ops/deploy.ps1）已經接好了。
 #>
 
-Write-Host "PASS 本機開發環境整備完成：PostgreSQL 17 ($PostgreSqlPort)、Garnet ($GarnetPort)、migrations 0001~0014。"
+Write-Host "PASS 本機開發環境整備完成：PostgreSQL 17 ($PostgreSqlPort)、Garnet ($GarnetPort)、migrations 0001~0016。"
 Write-Host "下一步：ops\start-dev-hosts.ps1 啟動三個 Host；ops\stop-dev-environment.ps1 全部收掉。"

@@ -104,6 +104,7 @@ public sealed class FulfillmentAdminListSortPostgresTests : IAsyncLifetime
                 TenantId.Default,
                 DeliveryMethod.HomeDelivery,
                 [OrderId.New()],
+                $"sort-seed-{id}",
                 Now).Value);
         }
 
@@ -135,6 +136,7 @@ public sealed class FulfillmentAdminListSortPostgresTests : IAsyncLifetime
                      "0001_schemas_and_roles.sql",
                      "0002_platform.sql",
                      "0012_m1b_fulfillment.sql",
+                     "0016_fulfillment_shipment_idempotency.sql",
                  })
         {
             await ExecuteScriptAsync(connectionString, Path.Combine(migrations, name), cancellationToken);

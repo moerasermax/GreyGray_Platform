@@ -61,6 +61,9 @@ internal sealed class FulfillmentDbContext(DbContextOptions<FulfillmentDbContext
             .HasColumnName("status")
             .HasConversion<short>()
             .IsRequired();
+        entity.Property(shipment => shipment.CreationIdempotencyKey)
+            .HasColumnName("creation_idempotency_key")
+            .HasMaxLength(255);
         entity.Property(shipment => shipment.TrackingNumber)
             .HasColumnName("tracking_number")
             .HasMaxLength(100);
@@ -93,6 +96,12 @@ internal sealed class FulfillmentDbContext(DbContextOptions<FulfillmentDbContext
 
         entity.HasIndex(shipment => new { shipment.TenantId, shipment.Status, shipment.CreatedAt })
             .HasDatabaseName("ix_shipment_tenant_status_created");
+        // 過濾式唯一索引：既有資料列沒有鍵（NULL），不能讓它們互相撞在一起。
+        // 逐字對齊 db/migrations/0016_fulfillment_shipment_idempotency.sql。
+        entity.HasIndex(shipment => new { shipment.TenantId, shipment.CreationIdempotencyKey })
+            .IsUnique()
+            .HasFilter("creation_idempotency_key IS NOT NULL")
+            .HasDatabaseName("ux_shipment_tenant_creation_key");
     }
 
     private static void ConfigureShipmentOrderLink(ModelBuilder modelBuilder)

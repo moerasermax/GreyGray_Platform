@@ -33,7 +33,7 @@ namespace GreyGray.M1a.CheckoutOrdering.Tests;
 public sealed class OrderingPaymentConstraintTests : IAsyncLifetime
 {
     /// <summary>目前 db/migrations 的最後一個編號；測試要跑在正式機會有的完整 schema 上。</summary>
-    private const int LastMigration = 15;
+    private const int LastMigration = 16;
 
     private static readonly DateTimeOffset Now = new(2026, 8, 30, 3, 0, 0, TimeSpan.Zero);
 
@@ -85,7 +85,7 @@ public sealed class OrderingPaymentConstraintTests : IAsyncLifetime
             "沒有發生任何退款，CapturePayment 不該碰 RefundedCurrency。");
     }
 
-    [Fact(DisplayName = "真的套過 0001~0015 的 schema 上完成一次結帳付款，不噴 23514")]
+    [Fact(DisplayName = "真的套過 0001~0016 的 schema 上完成一次結帳付款，不噴 23514")]
     public async Task Capture_payment_survives_the_real_migrated_schema()
     {
         var cancellationToken = TestContext.Current.CancellationToken;

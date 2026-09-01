@@ -96,9 +96,17 @@ public interface IFulfillmentApplication
     /// 建立出貨單。<b>Order 與 Shipment 是 N:M</b>——<paramref name="orderIds"/>
     /// 可以是同一張訂單被拆進多個包裹裡的其中之一，也可以是同一客人的多張訂單合併出貨。
     /// </summary>
+    /// <param name="idempotencyKey">
+    /// 建立出貨單的冪等鍵，由呼叫端（Admin BFF 的 <c>Idempotency-Key</c> header）傳進來，
+    /// 1 到 255 個字元。<b>同一把鍵重送只會建出同一張出貨單</b>——BFF 的冪等鍵在收尾階段
+    /// 出錯時會被 abandon，光靠它擋不住重送，所以模組自己也要有一層
+    /// （比照 <c>Cart.CheckoutIdempotencyKey</c>）。
+    /// 這不會破壞 N:M：店員刻意再建一張是新的使用者動作，前端會換一把新鍵。
+    /// </param>
     Task<Result<ShipmentSummary>> CreateAsync(
         IReadOnlyList<OrderId> orderIds,
         DeliveryMethod method,
+        string idempotencyKey,
         CancellationToken cancellationToken);
 
     /// <summary>
