@@ -51,6 +51,38 @@ Leader 要明講。
 
 ---
 
+<!--
+★ 2026-09-01 已通過整合驗收並提交（後端 d43dc1d），撤包。原文保留供追溯。
+
+#26 解掉：預購商品在「逛商品」這條路上買得到了。Leader 真瀏覽器複驗——
+列表那張卡不再顯示「目前無法購買」、改顯示 NT$1,000／50 ml；
+詳情頁顯示「這是預購商品，隨團出貨：BE-32 test campaign」＋「Seoul．查看開團詳情」
+＋ NT$1,000，加入購物車按鈕 `disabled=false`，「這個規格尚未定價」已消失。
+測試 227 → **241 條**全過。**前端一行都沒改**——證實派工書的判斷：
+前端本來就照契約寫對了，是後端沒給。
+
+★★ 兩個設計判斷值得後續波次照抄：
+① **時間規則刻意不下放到 SQL**：`IsAcceptingOrders` 是「狀態 ＋ `IClock`」，
+   抄一份到 SQL 就會有兩份各自漂移的定義。倉儲只用有索引的 `status` 縮範圍，
+   時間由聚合判斷。
+② **「預購 SKU 的售價只能從 offer 來」寫進契約註解**：`SkuSnapshot.ListPrice`
+   是現貨標價，不可以拿來冒充開團凍結價——售價在開團時定死，
+   現場買貴買便宜都不影響已成立訂單。
+
+★ 子代理正確地指出**派工書的一個錯誤假設**：§1 寫「用 SKU 批次反查」，
+但 `StorefrontProductListItem` 根本沒有 SKU 欄位，列表端點手上只有 `ProductId`，
+而 `src/Modules/Catalog/` 不在這包的 allow 裡。它改成以 `ProductId` 為鍵，
+SKU→商品的反查放在 Campaign Core 用**本來就存在**的 `ICatalogQuery` 做
+（csproj 零改動，`ModuleBoundaryTests` 全綠）。Leader 查證後接受。
+
+★ 追蹤項（派工書沒定義、子代理誠實標出）：一個商品的 SKU 分散在多個收單中的團時，
+商品層的 `campaign` 該選哪個沒有定義。目前沿用同一條 tie-break、每個 SKU 的價格
+各自來自它自己的團，後果是詳情頁的 `campaign` 可能不是某個 SKU 的 `campaignOfferId`
+所屬的團。替代做法（先選團、只認那個團的 offer）會讓另一個團裡買得到的規格被畫成
+不能買，更糟。今天的資料兩者結果相同，所以沒有測試釘住這一段。
+
+詳見 `.dispatch/reports/BE-39.md` 與 `GreyGray_PM/03-驗收紀錄.md` 第二十五次。
+
 派工 BE-39：預購商品的開團資訊補回商品端點（#26）　·　docs/35-後端第二十三波派工書.md
 
 2026-09-01 真 Chrome 逐頁複驗查出：**預購商品從「逛商品」這條路徑永遠買不到，
@@ -82,6 +114,7 @@ allow: src/Modules/Campaign/
 allow: src/Hosts/GreyGray.Api.Storefront/M1aEndpoints.cs
 allow: tests/GreyGray.M1a.CampaignPricing.Tests/
 allow: tests/GreyGray.M1a.IdentityCatalog.Tests/
+-->
 
 ---
 
