@@ -51,6 +51,67 @@ Leader 要明講。
 
 ---
 
+派工 FE-22：收藏心的導航攔截與前台必填欄位（#27／#28）　·　docs/25-前端第十一波派工書.md
+
+2026-09-01 真 Chrome 全站逐頁複驗查出的兩個前端小缺陷，一起做掉。
+
+★ Leader 已查證並裁決：
+① **#27 根因是 `stopPropagation()` 擋不住 `<a>` 的預設導航**——
+   `ProductCardLink.tsx:39` 用 `<Link>` 包住整張卡，而 `ProductCard.tsx:97` 的收藏心
+   只包了 `onClick={(e) => e.stopPropagation()}`。要擋導航必須 `preventDefault()`。
+   **不要把 ProductCard 搬出 `<Link>`、不要改 ProductCardLink 的結構**——
+   那會動到整個列表的導航行為，風險遠大於這個 bug。
+② **#28 根因是 `Field` 的 `required` 只負責畫星號、不會傳給 input**——
+   後台 `apps/admin/app/login/page.tsx` 是正確寫法（`<Field required>` **而且**
+   `<Input required>`，第 80／85、91／96 行），前台只寫了前者。照後台補上即可。
+   **只補標了 `*` 的欄位**，`register-email` 與 `register-referral-code` 畫面上寫著
+   「選填」，不要給它們 `required`。
+③ **這個 workspace 沒有 jsdom 也沒有 `@testing-library`，而且沒有安裝**（Leader 已查證）。
+   **不要為了寫測試去加相依套件、不要動 `pnpm-lock.yaml`。**
+   #27 的迴歸保證改用「把 handler 抽成可單元測試的小函式」，用假 event 斷言
+   `preventDefault` 與 `stopPropagation` 兩者都被呼叫。
+④ **不改表單的送出行為**：目前兩個表單都是「空白也送出、由伺服器回 401 並顯示訊息」，
+   那是既有行為（後台那個表單甚至刻意 `noValidate`）。這一包只補無障礙屬性。
+   若補上 `required` 之後瀏覽器開始擋送出、使既有錯誤訊息路徑走不到，**停下來問**。
+⑤ ★ `pnpm lint` 在這個 workspace **根本跑不起來**（沒裝 ESLint，`next lint` 已棄用且
+   互動式；對沒碰過的 storefront 跑也是 exit 1，Leader 已用對照組確認）。
+   **不要把它列進自驗、也不要假裝通過**——FE-21 的子代理正確地回報「做不到」。
+
+package: FE-22
+doc: docs/25-前端第十一波派工書.md
+allow: frontend/packages/ui/src/components/ProductCard.tsx
+allow: frontend/packages/ui/src/components/__tests__/
+allow: frontend/apps/storefront/app/(account)/login/page.tsx
+allow: frontend/apps/storefront/app/(account)/register/page.tsx
+
+---
+
+<!--
+★ 2026-09-01 已通過整合驗收並提交（前端 ebe074c），撤包。原文保留供追溯。
+
+#29 解掉：後台首頁的財務數字與最近分錄不再是寫死的假資料。
+Leader 真瀏覽器複驗：首頁顯示 NT$0 與 -NT$1,920，與同一時刻 API 回傳的
+`customerLiability=0`／`cash=-192000` **逐字相符**；分錄表格 2 列 ＝ API 1 筆分錄的
+借貸兩行；舊假數字 1,280,000／860,000 在畫面上零命中；KPI 四卡維持「尚未提供」。
+測試 135 → **146 條**全過（admin 60→71）。
+
+★★ 這一包最值得記住的兩件事：
+① **「絕對不准 fallback 回寫死的數字」是用型別保證的，不是靠自律**——
+   新的 `LoadState<T>` 只有三態，`ready` 以外的分支在型別上就拿不到 `data`。
+   跟 BE-35 修 #22 時同一個原則：讓錯的寫法編不過，而不是「記得別寫」。
+② **11 條測試才是這一包的主產出**。#29 能活到現在，正是因為**沒有任何測試
+   斷言過「首頁顯示的數字來自 API」**。最關鍵那條是「整頁首次 render
+   （還沒有任何 API 回應）不准出現任何金額」——先紅後綠實跑，
+   HEAD 版的頁面在連一支 API 都還沒打時就已經畫出 13 個金額。
+
+★ 子代理另外主動修了兩處同型的病（都申報了，Leader 接受）：排序表頭本來是死的
+（`handleSortChange` 存在但沒接到 `DataTable`）；「重新整理」按鈕本來只跳一個
+success toast 卻不重新取數——在請求還沒送出時就宣告成功。都是「畫面宣稱了
+不成立的事」，與 #29 同一種病。
+
+★ 子代理正確地拒絕假裝通過一條做不到的自驗（`pnpm lint`），見上面 FE-22 的裁決⑤。
+詳見 `.dispatch/reports/FE-21.md` 與 `GreyGray_PM/03-驗收紀錄.md` 第二十三次。
+
 派工 FE-21：後台首頁接上真的帳務端點（#29）　·　docs/24-前端第十波派工書.md
 
 2026-09-01 使用者登入後台後，Leader 用真 Chrome 逐頁測，查出**後台首頁的財務數字與
@@ -79,6 +140,7 @@ allow: frontend/apps/admin/app/(dash)/page.tsx
 allow: frontend/apps/admin/app/(dash)/_lib/
 allow: frontend/apps/admin/app/(dash)/_components/LiabilityVsCashCard.tsx
 allow: frontend/apps/admin/app/(dash)/__tests__/
+-->
 
 ---
 
