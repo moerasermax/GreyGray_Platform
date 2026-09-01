@@ -1,6 +1,6 @@
 import { formatMoney } from '@greygray/api-client';
-import { WarningIcon } from '@greygray/ui/admin';
-import type { LiabilityVsCash } from '../_lib/dashboardMock';
+import { ErrorState, WarningIcon } from '@greygray/ui/admin';
+import type { LiabilityVsCash, LoadState } from '../_lib/dashboardLedger';
 
 export interface LiabilityVsCashCardProps {
   readonly data: LiabilityVsCash;
@@ -9,6 +9,8 @@ export interface LiabilityVsCashCardProps {
 /**
  * 首頁最重要的一塊。`isBreached = true` 代表正在用還沒交貨的錢過日子——
  * 代購生意最典型的崩壞前兆，放在進來第一眼就看得到的位置，不塞進分頁。
+ *
+ * 這裡只負責畫，`data` 一律由呼叫端從 `GET /v1/ledger/liability-vs-cash` 取得。
  */
 export function LiabilityVsCashCard({ data }: LiabilityVsCashCardProps) {
   const asOfLabel = new Intl.DateTimeFormat('zh-TW', {
@@ -69,4 +71,32 @@ export function LiabilityVsCashCard({ data }: LiabilityVsCashCardProps) {
       ) : null}
     </section>
   );
+}
+
+export interface LiabilityVsCashSectionProps {
+  readonly state: LoadState<LiabilityVsCash>;
+  readonly onRetry: () => void;
+}
+
+/**
+ * 三態外殼。**`ready` 以外的分支一個數字都不畫**——
+ * 載入中或失敗時退回某個「先擺著」的數字，正是 #29 的成因；
+ * 這裡沒有那條路可走，因為 `LoadState` 在型別上就只有 `ready` 拿得到 `data`。
+ */
+export function LiabilityVsCashSection({ state, onRetry }: LiabilityVsCashSectionProps) {
+  if (state.status === 'loading') {
+    return (
+      <div
+        className="h-32 animate-pulse rounded-card bg-surface-sunken"
+        role="status"
+        aria-label="正在讀取負債 vs 現金"
+      />
+    );
+  }
+
+  if (state.status === 'error') {
+    return <ErrorState title={state.title} traceId={state.traceId} onRetry={onRetry} />;
+  }
+
+  return <LiabilityVsCashCard data={state.data} />;
 }
