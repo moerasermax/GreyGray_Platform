@@ -51,6 +51,31 @@ Leader 要明講。
 
 ---
 
+## 生效中：FE-25　「我的」總覽頁 ＋ 登入後回到原頁 ＋ 付款結果頁自動重查
+
+使用者 2026-09-02 拍板：派，併入兩個追蹤項。Leader 查證後兩個追蹤項都**不用改碼**
+（`GET /v1/cart` 對沒有購物車的訪客只回空車、不寫 DB；`gg_cart` cookie 是 HttpOnly，前端讀不到），
+寫進報告即可。真正要做的是「我的」一直沒有家：分頁與首頁頭像都指到 `/orders`、`/wallet` 零入口、
+**全站沒有登出**；登入後一律被丟到 `/orders`，結帳送出撞 401 只顯示錯誤、沒有去登入的路。
+
+★★ 最容易做錯的：① `?next=` 只收站內絕對路徑（`//`、scheme、`\` 一律回 `/me`），用純函式＋測試釘住；
+② 付款結果頁的重查是**有限次**，不准無限輪詢；③ `tabs.test.ts` 那兩段釘「我的 → /orders」的斷言允許改，
+但總條數只能增不能減；④ 不要跑 `next build`（dev server 在跑，共用 `.next`）；⑤ 不要動 `useCartItemCount.ts`。
+
+package: FE-25
+doc: docs/28-前端第十四波派工書.md
+allow: frontend/apps/storefront/app/(account)/
+allow: frontend/apps/storefront/app/(checkout)/checkout/page.tsx
+allow: frontend/apps/storefront/app/(checkout)/payment/
+allow: frontend/apps/storefront/app/(checkout)/_lib/
+allow: frontend/apps/storefront/app/(shop)/_components/HomeSearchHeader.tsx
+allow: frontend/apps/storefront/app/_lib/
+
+> `app/_lib/` 給整個目錄，**但只准動 `tabs.ts`、新檔 `auth.ts` 與 `__tests__/`**；`(checkout)/_lib/` 只准加新檔與它的測試。
+> `checkout/page.tsx` 只准動送出撞 401 那一段；`payment/[orderId]/page.tsx` 只准動 401 導向；`payment/result/page.tsx` 只准加重查與按鈕。
+
+---
+
 <!--
 ★ 2026-09-02 已通過整合驗收並提交（前端 41e9fd7），撤包。原文保留供追溯。
 
