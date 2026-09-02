@@ -51,6 +51,32 @@ Leader 要明講。
 
 ---
 
+## 生效中：FE-26　跟上 ADR-030 契約（重生型別、拿掉 `!`）＋ #36 前端側 ＋ FE-25 ⑦ ＋ 結帳頁登入回跳保留已填內容
+
+使用者 2026-09-02 親自走旅程第一張單（純預購）就撞到 #37：結帳 500、比登入檢查還早。拍板「用第二種方式修」→ ADR-030：
+規則的主人是後端。後端 BE-41 已改契約（`shippingPolicy` 混合才必填、否則可 `null`）並推導；Leader 已把後端樹的
+`docs/api/openapi.storefront.yaml` 與 `docs/05-API契約.md` 逐位元複製進這棵樹。這一包：`pnpm api:generate` 重生型別、
+拿掉 `checkout/page.tsx` 的 `shippingPolicy!`；登出後 `publishCart(null)`（#36 前端側）；`/login?next=` 時分頁列亮 `next` 所屬分頁（FE-25 ⑦）；
+結帳頁被帶去登入再回來時用 `sessionStorage` 保留五個欄位（使用者實測回來要全部重填）。
+
+★★ 最容易做錯的：① 不要改 `docs/api/*.yaml`、`docs/05`（Leader 複製來的，稽核第 ⑦ 項會擋）；② 不要在前端補 `shippingPolicy` 預設值（ADR-030 否決），
+`cartRules.ts` 的判斷不動；③ 前台 dev server 跑著、會 hot reload——不要停它、不要跑 `next build`；④ 草稿用 `sessionStorage` 不用 `localStorage`，只存五個欄位、送出成功就刪；
+⑤ `types.admin.ts` 預期零 diff。
+
+package: FE-26
+doc: docs/29-前端第十五波派工書.md
+allow: frontend/packages/api-client/src/types.storefront.ts
+allow: frontend/packages/api-client/src/types.admin.ts
+allow: frontend/apps/storefront/app/(checkout)/checkout/page.tsx
+allow: frontend/apps/storefront/app/(checkout)/_lib/
+allow: frontend/apps/storefront/app/(account)/me/
+allow: frontend/apps/storefront/app/_lib/tabs.ts
+allow: frontend/apps/storefront/app/_lib/__tests__/tabs.test.ts
+
+> `types.admin.ts` 在 allow 裡只是因為 codegen 會一起重寫它——預期零 diff，有 diff 就停下來回報。
+
+---
+
 <!--
 ★ 2026-09-02 晚已通過整合驗收並提交（前端 668e0b7），撤包。原文保留供追溯。
 

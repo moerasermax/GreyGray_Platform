@@ -1,7 +1,12 @@
 # 啟動 prompt
 
-**生效中的派工（2026-09-02 深夜，第三十波）：後端 BE-41。** 前端 FE-26 不並行——它要吃 BE-41 改完的契約重生型別，等 BE-41 撤包後才派。
-啟動 prompt 在下面「BE-41 的啟動 prompt」一節。
+**生效中的派工（2026-09-02 深夜，第三十波第二段）：前端 FE-26；後端 BE-42（派工書寫好即生效）。** BE-41 已驗收撤包。
+啟動 prompt 在下面「FE-26 的啟動 prompt」與「BE-42 的啟動 prompt」兩節。
+
+★ **FE-26**：跟上 ADR-030 的契約（`pnpm api:generate`、拿掉 `checkout/page.tsx` 的 `shippingPolicy!`）＋ #36 前端側（登出 `publishCart(null)`）
+＋ FE-25 ⑦（`/login?next=` 亮 `next` 所屬分頁）＋ 結帳頁被帶去登入再回來保留已填內容（`sessionStorage`）。契約檔 Leader 已複製進前端樹，不要動。
+★ **BE-42**：串真綠界的前置——`ReturnURL` 改成可由 `Storefront:PublicApiOrigin` 設定（通道／反向代理後面 `Request.Host` 是錯的）、
+`deploy.ps1` 投遞兩個公開 origin、`build-frontends.ps1` 能指定另一棵樹的 `frontend/` 與各 app 的 API base。
 
 ★ **BE-41**：使用者親自走旅程第一張單就撞到 #37（純預購購物車結帳 500，比登入檢查還早）。問「哪一種是治本」後拍板「用第二種方式修」→
 ADR-030：規則的主人是後端——契約 `shippingPolicy` 改成「混合才必填」（向下相容），後端混合沒帶回 422、單一模式依 line 組成推導。
@@ -10,7 +15,107 @@ ADR-030：規則的主人是後端——契約 `shippingPolicy` 改成「混合�
 
 ---
 
-## BE-41 的啟動 prompt（生效中）
+## FE-26 的啟動 prompt（生效中）
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe
+GreyGray Platform 前端。pnpm monorepo：apps/storefront、apps/admin（Next.js App Router）、packages/api-client（openapi-typescript 產生型別）。
+
+GG_PACKAGE=FE-26
+
+開工前務必先讀：
+  CLAUDE.md                         四條鐵則 ＋ 派工規則
+  docs/29-前端第十五波派工書.md      ★ 整份讀完：§0 事實 ＋ §1 四個必做 ＋ §2 不要做的事
+  docs/00-decisions.md              ADR-030（規則的主人是後端，前端不補預設值）
+  .dispatch/reports/README.md       ★ 自驗報告的格式，缺標頭會被退回
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/FE-26.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 不准把驗證丟背景、不准排程 wakeup。pnpm --recursive typecheck 與 pnpm --recursive test
+     在前景跑完、貼原文（基準 376 條，總數只增不減）。
+     ★ 前台／後台 dev server 正在跑（5002／5003）會 hot reload：不要停它們、不要跑 next build。
+
+★ 必做 A：pnpm api:generate 重生型別；拿掉 checkout/page.tsx 第 152 行的 shippingPolicy!；
+  types.admin.ts 預期零 diff，有 diff 就停下來回報。cartRules.ts 的判斷不動、不補預設值。
+★ 必做 B：登出成功後 publishCart(null)。
+★ 必做 C：/login、/register 帶 ?next= 時分頁列亮 next 所屬的分頁（用 safeNext），沒帶就亮「我的」；
+  tabs.test.ts 既有斷言一條都不刪。
+★ 必做 D：結帳頁 401 導向登入前把五個欄位存 sessionStorage（鍵含 cart id），回來時還原、送出成功就刪；
+  純函式＋測試；不用 localStorage、不存整份購物車。
+
+★ 不要改 docs/api/*.yaml、docs/05（Leader 從後端樹複製來的）、.env.local、packages/api-client 手寫的部分。
+
+★ 質疑被鼓勵，但不准自己改方向：派工書寫錯了就停下來寫進報告問，
+  不要一邊照做一邊在報告裡抱怨，也不要自己換一個做法。
+
+檔案所有權：見派工書 §3。
+docs/、management/、STATE.md、CLAUDE.md、AGENTS.md 每一包都寫得了。
+
+不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
+git checkout -- .、以及 git commit。
+
+你不可以自己宣告通過。交付完就停。
+```
+
+---
+
+## BE-42 的啟動 prompt（生效中）
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
+GreyGray Platform 後端。.NET 10 模組化單體，14 個限界上下文，EF Core + Npgsql。
+
+GG_PACKAGE=BE-42
+
+開工前務必先讀：
+  CLAUDE.md                        六條鐵則 ＋ 派工規則
+  docs/38-後端第二十六波派工書.md    ★ 整份讀完：§0 事實 ＋ §1 四個必做 ＋ §2 不要做的事
+  docs/00-decisions.md             ADR-031（拓樸與主機名稱是拍板過的，不要換）
+  .dispatch/reports/README.md      ★ 自驗報告的格式，缺標頭會被退回
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/BE-42.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 不准把驗證丟背景、不准排程 wakeup。12 個測試專案逐一在前景個別執行。
+     不要用 dotnet test，用 ops\test.ps1。
+     ★ dev 三個 Host ＋ 模擬器用 Release 跑著、使用者隨時會用：建置與測試一律
+       -Configuration Debug，不要停掉或重啟任何 dev 行程，不要碰 D:\GreyGray\。
+
+★ 必做 1：ReturnURL 抽成 BuildEcpayReturnUrl(configuration, request)——Storefront:PublicApiOrigin
+  有設就用它（絕對 http(s)、去結尾斜線、壞值丟例外含鍵名），沒設維持 request 的 scheme/host。
+  純函式測試放 tests/GreyGray.M1a.CheckoutOrdering.Tests/。start-dev-hosts.ps1 加選填 -StorefrontPublicApiOrigin。
+★ 必做 2：deploy.ps1 加 Mandatory 的 -StorefrontPublicOrigin／-StorefrontPublicApiOrigin，只注給
+  GreyGray-Storefront；-ValidateOnly 也驗；正式機是 Windows PowerShell 5.1，不准用 7 的語法。
+★ 必做 3：build-frontends.ps1 加 -FrontendRoot／-StorefrontApiBaseUrl／-AdminApiBaseUrl，兩個 app 各自建、
+  各自帶 NEXT_PUBLIC_API_BASE_URL 與 NEXT_PUBLIC_USE_MOCK=0，建完 grep artifact 確認吃到值且沒有 127.0.0.1；
+  環境變數用完 Remove-Item Env:（不要用 $null 還原）。build.ps1 -Publish 傳下去。
+★ 必做 4：docs/14 加「部署五個 app 服務」與「開發機怎麼產 artifact」。
+
+★ 不要在任何一棵樹真的跑 next build；不要碰 cloudflared／通道；不要動 src/Modules/、src/Platform/、
+  docs/api/、docs/05、docs/00-decisions.md、frontend/、install-*.ps1、stop-dev-environment.ps1、verify-environment.ps1。
+
+★ BOM：維持每個檔案原本的狀態。用 Python 寫檔時不要用 encoding='utf-8-sig'。
+
+★ 質疑被鼓勵，但不准自己改方向：派工書寫錯了就停下來寫進報告問，
+  不要一邊照做一邊在報告裡抱怨，也不要自己換一個做法。
+
+檔案所有權：見派工書 §3。
+docs/、management/、STATE.md、CLAUDE.md、AGENTS.md 每一包都寫得了。
+
+不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
+git checkout -- .、以及 git commit。
+
+你不可以自己宣告通過。交付完就停。
+```
+
+---
+
+## BE-41 的啟動 prompt（已撤包，保留供參考）
 
 ```
 專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
