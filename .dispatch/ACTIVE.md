@@ -51,6 +51,33 @@ Leader 要明講。
 
 ---
 
+## 生效中：BE-41　結帳 `shippingPolicy` 混合才必填、單一模式後端推導（#37 治本）＋ 壞 body 回 400 ＋ #36 後端側 ＋ #38 啟動腳本
+
+使用者 2026-09-02 親自走旅程第一張單就撞到 #37（純預購購物車結帳 500，而且比登入檢查還早）。問「哪一種是治本」後拍板
+「那就用第二種方式修」→ ADR-030：**規則的主人是後端**。契約 schema 改成說明文字早就在說的意思（混合才必填，向下相容），
+後端混合沒帶 → 422 `checkout.shipping-policy-required`，單一模式忽略客人的值、依 line 組成推導（純現貨 → `ShipSeparately`、純預購 → `HoldUntilComplete`）。
+併：壞掉的 request body 兩個環境都要 400 problem+json（現在 Development 500、Production 空 400）；#36 登出清 `gg_cart`＋「不是你的車」就換新車；
+#38 兩支 dev 啟動腳本改 `Start-Process -Environment`，不再改父行程的環境變數。
+
+★★ 最容易做錯的：① dev 三個 Host 現在是 **Release** 在跑、使用者正在上面走旅程——建置與測試一律 `-Configuration Debug`，不准停任何 dev 行程、不碰 `D:\GreyGray\`；
+② `CheckoutCompleted.ShippingPolicy`／`Order.ShippingPolicy` 維持不可為 null，Ordering 一行不動、不做 migration；
+③ 單一模式客人送了值**不要報錯**（舊客戶端會送）；④ 400 的證明要走真管線（EndToEnd 的 StartHost 模式），兩個環境各跑一次；
+⑤ 不要動前端 worktree（FE-26 接手重生型別）。
+
+package: BE-41
+doc: docs/37-後端第二十五波派工書.md
+allow: src/Hosts/GreyGray.Api.Storefront/
+allow: src/Hosts/GreyGray.Api.Admin/Program.cs
+allow: src/Modules/Checkout/
+allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
+allow: tests/GreyGray.EndToEnd.Tests/
+allow: ops/start-dev-hosts.ps1
+allow: ops/start-dev-ecpay-simulator.ps1
+
+> `src/Hosts/GreyGray.Api.Admin/Program.cs` 只准做必做 3 的同型接線；`docs/api/openapi.storefront.yaml` 與 `docs/05-API契約.md` 走 docs/ 全域放行。
+
+---
+
 <!--
 ★ 2026-09-02 晚已通過整合驗收並提交（後端 `abdf286`），撤包。原文保留供追溯。
 
