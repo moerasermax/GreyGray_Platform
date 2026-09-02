@@ -68,10 +68,16 @@ allow: ops/verify-environment.ps1
 allow: ops/install-environment.ps1
 allow: ops/environment-self-test.ps1
 allow: ops/self-test.ps1
+allow: ops/lib/Secrets.ps1
 
 > `docs/14-環境整備runbook.md` 走 docs/ 全域放行。
 > 第一輪交付後 Leader 補授權（2026-09-03）：`ops/self-test.ps1` 只准把 `install-tunnel.ps1` 加進正式機腳本 BOM 清單（一行）；
 > `ops/environment-self-test.ps1` 第 8-13 行的 AST 改成跟 `self-test.ps1` 一樣以 UTF-8 讀入再 `ParseInput`（BE-42 修掉的同一個 big5 問題漏了這一支）。
+> 第二輪驗收提交 `47ec987` 後 Leader 在 YC 真的跑了（2026-09-03 01:00）：`GreyGray-Tunnel` 起來了、17 支 migration 全過，但抓到兩個缺陷，同一個 session 續做——
+> 第三輪：`ops/install-tunnel.ps1` 的 `Invoke-IngressValidate` 把 `--config` 放在 `ingress validate` 後面，cloudflared 回「flag provided but not defined」但 exit 0，腳本照印 PASS——
+> 引數順序改成 `tunnel --config <cfg> ingress validate`，而且要看輸出有獨立一行 `OK` 才算過（只准改 `ops/install-tunnel.ps1`，用假的 cloudflared 替身證明三種情況）。
+> 第四輪：`ops/deploy.ps1` 第一次真跑到 migration 之後炸在 `New-SecretPassword`——`ops/lib/Secrets.ps1` 第 37／56 行的 `RandomNumberGenerator::Fill` 是 .NET 5+ 才有，5.1（.NET Framework）沒有；
+> 兩處改成 `::Create()` ＋ `GetBytes`，`ops/self-test.ps1` 加一條「目前 host 下 `New-SecretPassword`／`New-DataProtectionKey` 真的產得出來、後者解碼正好 32 bytes」讓 5.1 那趟會咬到。不准碰 `ops/deploy.ps1`。
 
 ---
 
