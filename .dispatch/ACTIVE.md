@@ -72,8 +72,13 @@ allow: frontend/apps/storefront/app/(checkout)/_lib/
 allow: frontend/apps/storefront/app/(account)/me/
 allow: frontend/apps/storefront/app/_lib/tabs.ts
 allow: frontend/apps/storefront/app/_lib/__tests__/tabs.test.ts
+allow: frontend/packages/api-client/src/endpoints/storefront.ts
+allow: frontend/apps/storefront/app/_components/StorefrontTabBar.tsx
 
 > `types.admin.ts` 在 allow 裡只是因為 codegen 會一起重寫它——預期零 diff，有 diff 就停下來回報。
+> 第一輪交付後 Leader 補授權（2026-09-03）：`endpoints/storefront.ts` 只准改 `CheckoutRequest.shippingPolicy` 那一行（手寫複本跟上契約，`?: … | null`），
+> `StorefrontTabBar.tsx` 只准把查詢字串交給 `activeTabHref`——**不用 `useSearchParams()`**（根 layout 元件會被推進 CSR bailout），
+> 比照 FE-25 `authRedirect.ts` 的做法：掛載後讀 `window.location.search`，SSR 首次渲染仍只看 pathname。
 
 ---
 
