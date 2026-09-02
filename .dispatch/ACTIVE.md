@@ -51,7 +51,41 @@ Leader 要明講。
 
 ---
 
-## 生效中：BE-41　結帳 `shippingPolicy` 混合才必填、單一模式後端推導（#37 治本）＋ 壞 body 回 400 ＋ #36 後端側 ＋ #38 啟動腳本
+## 生效中：BE-42　串真綠界的前置——`ReturnURL` 可由 `Storefront:PublicApiOrigin` 設定 ＋ `deploy.ps1` 投遞公開 origin ＋ `build-frontends.ps1` 建另一棵樹並指定 API base
+
+使用者 2026-09-02 拍板：串綠界＝**佈署到正式機 YC**、先接綠界公開測試商店；拓樸 ADR-031（前台與其 API 同主機名稱、`/v1/*` 分流，
+網域 `greygray.shop`：前台根網域、後台 `admin.greygray.shop`）。通道後面 `Request.Host` 是 `127.0.0.1:5000`，現在的 `ReturnURL`（`GreyGray.Api.Storefront/M1aEndpoints.cs` 第 835 行）綠界打不到；
+`deploy.ps1` 沒有投遞 `Storefront__PublicOrigin`（正式機付款端點會炸）；`build-frontends.ps1` 寫死建這棵樹的舊 `frontend/`、API base 會吃到 `.env.local` 的開發機位址。
+
+★★ 最容易做錯的：① `Storefront:PublicApiOrigin` 是**選填**，沒設維持 request-based（dev 模擬器靠它）；② `deploy.ps1` 是正式機 **PowerShell 5.1** 跑的，不准用 7 的語法；
+③ 不要在任何一棵樹真的跑 `next build`（前端樹 dev server 共用 `.next`）；④ dev Host 是 Release 在跑，一律 `-Configuration Debug`、不停 dev 行程；
+⑤ 不碰 cloudflared／通道（Leader 另外處理）；⑥ 建置期環境變數用完要 `Remove-Item Env:`，不要用 `$null` 還原（#38 的坑）。
+
+package: BE-42
+doc: docs/38-後端第二十六波派工書.md
+allow: src/Hosts/GreyGray.Api.Storefront/M1aEndpoints.cs
+allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
+allow: ops/start-dev-hosts.ps1
+allow: ops/deploy.ps1
+allow: ops/build-frontends.ps1
+allow: ops/build.ps1
+allow: ops/lib/Node.ps1
+
+> `M1aEndpoints.cs` 只准動 `MapPayment` 那段與新的靜態方法；`docs/14-環境整備runbook.md` 走 docs/ 全域放行。
+
+---
+
+<!--
+★ 2026-09-02 深夜已通過整合驗收並提交（後端 `3523904`），撤包。原文保留供追溯。
+
+ADR-030 落地：契約 `shippingPolicy` 混合才必填（向下相容）、後端 `ResolveShippingPolicy` 純函式推導（純現貨 ShipSeparately／純預購 HoldUntilComplete）、
+混合沒帶 422；壞 body 兩個 Host 兩個環境都 400 problem+json（`MalformedRequestExceptionHandler`，Admin 那份是複製、待搬 Platform）；#36 logout 刪 `gg_cart`、
+不是你的車就換新車；#38 兩支腳本改 `Start-Process -Environment`。測試 253 → **270**（Leader 自己重跑 Debug 全套 794 秒）、check-openapi PASS。
+Leader 活體（Release 換上、乾淨 shell）：`shippingPolicy: null` 匿名送出 → 401；壞 body → 400 problem+json；拿別人的車 → 200 空車＋新 cookie；三個行程 `Development`、預檢 204。
+子代理先紅後綠兩段都對（把修法退回就重現派工書 §0.3 的 500／空 400；用 ADR-030 否決的「補預設值」做法會讓純現貨那條紅、混合漏帶被默默放行）。
+留下：`MalformedRequestExceptionHandler` 兩份複製、契約與程式沒有 schema 級機械把關、`ThrowOnBadRequest` 影響面擴大（接受）。
+
+## 生效中（已撤包）：BE-41　結帳 `shippingPolicy` 混合才必填、單一模式後端推導（#37 治本）＋ 壞 body 回 400 ＋ #36 後端側 ＋ #38 啟動腳本
 
 使用者 2026-09-02 親自走旅程第一張單就撞到 #37（純預購購物車結帳 500，而且比登入檢查還早）。問「哪一種是治本」後拍板
 「那就用第二種方式修」→ ADR-030：**規則的主人是後端**。契約 schema 改成說明文字早就在說的意思（混合才必填，向下相容），
@@ -75,6 +109,7 @@ allow: ops/start-dev-hosts.ps1
 allow: ops/start-dev-ecpay-simulator.ps1
 
 > `src/Hosts/GreyGray.Api.Admin/Program.cs` 只准做必做 3 的同型接線；`docs/api/openapi.storefront.yaml` 與 `docs/05-API契約.md` 走 docs/ 全域放行。
+-->
 
 ---
 
@@ -728,6 +763,9 @@ allow: tests/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **BE-41** 結帳 `shippingPolicy` 混合才必填、單一模式後端推導（#37 治本，ADR-030）＋ 壞 body 回 400 ＋ #36 後端側 ＋ #38 dev 啟動腳本　·　2026-09-02 通過　·　`3523904`　·
+  規則的主人是後端：契約向下相容放寬、`ResolveShippingPolicy` 純函式；兩個 Host 兩個環境壞 body 都 400 problem+json；logout 刪 `gg_cart`、不是你的車就換新車；
+  `Start-Process -Environment`。測試 253 → 270，見 `.dispatch/reports/BE-41.md`
 - **BE-40** dev 綠界模擬器（獨立行程）＋ 付款完成後回商店（#33）＋ 非綠界網域守衛　·　2026-09-02 通過　·　`abdf286`　·
   ADR-029：假的是綠界的伺服器，不是我們的 adapter——換回正式綠界＝不設那兩個網址＋真憑證，零程式碼改動。
   順修 #34（`InvariantGlobalization` 下查不到 `Asia/Taipei`，付款發動從沒成功過）與 #35（回呼 +08:00 存進

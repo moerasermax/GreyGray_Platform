@@ -667,3 +667,26 @@ ADR-019 與 `CLAUDE.md` 都寫著「租約到期前要處理、**先把到期日
 
 **附帶**：壞掉的 request body（JSON 解析失敗、enum 值不合法）在 Development 是 500、在 Production 是空 body 的 400——
 兩者都改成 `400` ＋ `application/problem+json`（`platform.malformed-request`），`docs/05` 早就規定錯誤不會是 500。
+
+---
+
+## ADR-031　正式機拓樸：前台網頁與它的 API 同一個主機名稱、`/v1/*` 分流；網域 `greygray.shop`（前台根網域、後台 `admin.greygray.shop`）
+**狀態**：已採納（2026-09-02，使用者拍板：串綠界要「佈署到正式機」；網域 `greygray.shop` 在 Cloudflare Registrar 買的、DNS 已在 Cloudflare；前台用根網域、後台 `admin.`；憑證先用綠界公開測試商店；通道另起本機管理的 `GreyGray-Tunnel`，現有 token 式通道不動）
+
+**問題**（E2，BE-28／FE-12 起就記著）：`gg_session`／`gg_cart` 是 host-only cookie（沒有 `Domain` 屬性）。前台頁面伺服器（Next SSR／middleware）要看得到登入 cookie，
+就必須跟發 cookie 的 BFF **落在完全相同的主機名稱**——契約 `servers` 原本寫的 `api.greygray.tw`（API）與前台分開的做法，SSR 永遠看不到 cookie。
+另外綠界回呼 `ReturnURL` 必須對外可達、只准 80／443。
+
+**決定**：一個主機名稱給一個 app，用路徑分流：
+- `greygray.shop`：`/v1/*` → 本機 `5000`（Storefront Host），其餘 → `5002`（Next storefront）。
+- `admin.greygray.shop`：`/v1/*` → 本機 `5001`（Admin Host），其餘 → `5003`（Next admin）。
+- 綠界 `ReturnURL` ＝ `https://greygray.shop/v1/webhooks/ecpay`；`ClientBackURL` ＝ `https://greygray.shop/payment/result?orderId=…`。
+- 同一個 origin ⇒ 前台對 BFF 的呼叫不是跨源，**CORS 整個不需要**（Production 不設 `Cors:AllowedOrigins`）。
+- 後端新增選填設定 `Storefront:PublicApiOrigin`（BE-42）：有設就用它組 `ReturnURL`，沒設維持用請求的 scheme/host（dev 模擬器）。
+  正式機由 `deploy.ps1` 強制投遞 `Storefront__PublicOrigin` 與 `Storefront__PublicApiOrigin`（兩者在這個拓樸下同值）。
+- 前端 artifact 的 API base 在建置期決定（`NEXT_PUBLIC_API_BASE_URL`），前台建 `https://greygray.shop`、後台建 `https://admin.greygray.shop`。
+
+**否決**：維持 `api.greygray.tw` 分開——要改 cookie `Domain` 屬性與 middleware，多一個後端包，而且把 session cookie 放大到整個網域。
+
+**附帶**：契約 `servers` 裡的 `api.greygray.tw`／`admin.greygray.tw` 是舊寫法，隨部署文件一起改成上面兩個主機名稱。
+通道用哪一種（另起本機管理的 tunnel，或在現有 token 式通道的儀表板加規則）不影響這個 ADR，兩者都做得到同一張路由表。
