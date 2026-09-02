@@ -94,6 +94,7 @@ describe('掃描器本身是活的', () => {
     ['/campaigns'],
     ['/cart'],
     ['/checkout'],
+    ['/me'],
     ['/orders'],
     ['/payment/sample-id'],
     ['/payment/result'],

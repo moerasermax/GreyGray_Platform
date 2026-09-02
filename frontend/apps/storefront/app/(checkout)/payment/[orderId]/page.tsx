@@ -10,11 +10,13 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Button, ErrorState, Spinner } from '@greygray/ui';
+import { ApiError } from '@greygray/api-client';
 import * as api from '@greygray/api-client/endpoints/storefront';
 import type { components } from '@greygray/api-client/storefront';
 import { browserApi } from '../../../_lib/apiClient';
+import { loginHref } from '../../../_lib/auth';
 import { createPayloadIdempotentAction } from '../../_lib/idempotentAction';
 import { describeError, type ErrorDisplay } from '../../_lib/errorDisplay';
 
@@ -23,6 +25,7 @@ type S = components['schemas'];
 export default function PaymentRedirectPage() {
   const params = useParams<{ orderId: string }>();
   const orderId = params.orderId;
+  const router = useRouter();
 
   const [initiation, setInitiation] = useState<S['PaymentInitiation'] | null>(null);
   const [error, setError] = useState<ErrorDisplay | null>(null);
@@ -36,7 +39,18 @@ export default function PaymentRedirectPage() {
   function requestPayment() {
     setError(null);
     setInitiation(null);
-    actionRef.current!.run(orderId).then(setInitiation).catch((cause: unknown) => setError(describeError(cause)));
+    actionRef.current!.run(orderId).then(setInitiation).catch((cause: unknown) => {
+      /*
+       * 初始化付款需要登入。session 過期時原本只會顯示一個 problem title，
+       * 而這一頁**沒有任何出口**（`topBar.ts` 的 `SHELL_EXCEPTIONS` 刻意兩種殼都不放），
+       * 人就真的卡在這裡。回程指回這一頁：登入完直接繼續付這張訂單。
+       */
+      if (cause instanceof ApiError && cause.isUnauthorized) {
+        router.push(loginHref(`/payment/${orderId}`));
+        return;
+      }
+      setError(describeError(cause));
+    });
   }
 
   useEffect(() => {

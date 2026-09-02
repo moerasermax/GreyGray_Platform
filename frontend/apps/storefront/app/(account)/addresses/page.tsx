@@ -17,7 +17,7 @@ import {
   toAddressInput,
   validateAddressForm,
 } from '../_lib/addressSchema';
-import { isUnauthorized } from '../_lib/authRedirect';
+import { isUnauthorized, loginHrefForCurrentPage } from '../_lib/authRedirect';
 import { fieldErrorsFrom, generalErrorMessage, traceIdOf } from '../_lib/formErrors';
 
 type ShippingAddress = components['schemas']['ShippingAddress'];
@@ -47,7 +47,7 @@ export default function AddressesPage() {
       .then(setAddresses)
       .catch((caught: unknown) => {
         if (isUnauthorized(caught)) {
-          router.replace('/login');
+          router.replace(loginHrefForCurrentPage());
           return;
         }
         setError(caught);
@@ -102,7 +102,7 @@ export default function AddressesPage() {
       setFormOpen(false);
     } catch (caught) {
       if (isUnauthorized(caught)) {
-        router.replace('/login');
+        router.replace(loginHrefForCurrentPage());
         return;
       }
       const fromApi = fieldErrorsFrom(caught);
@@ -129,7 +129,7 @@ export default function AddressesPage() {
       setDeleteTarget(null);
     } catch (caught) {
       if (isUnauthorized(caught)) {
-        router.replace('/login');
+        router.replace(loginHrefForCurrentPage());
         return;
       }
       // 刪除失敗留在原地讓使用者看得到，不用另外開錯誤畫面。

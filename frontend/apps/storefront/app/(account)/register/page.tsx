@@ -1,11 +1,12 @@
 'use client';
 
 import * as storefrontApi from '@greygray/api-client/endpoints/storefront';
-import { Button, Card, Field, Input } from '@greygray/ui';
+import { Button, Card, Field, Input, Skeleton } from '@greygray/ui';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
 import { browserApi } from '../../_lib/apiClient';
+import { loginHref, safeNext } from '../../_lib/auth';
 import { usePayloadIdempotency } from '../../_lib/usePayloadIdempotency';
 import { fieldErrorsFrom, generalErrorMessage } from '../_lib/formErrors';
 import {
@@ -16,8 +17,26 @@ import {
   validateRegisterForm,
 } from '../_lib/registerSchema';
 
+const REGISTER_SKELETON = (
+  <main className="mx-auto flex max-w-[480px] flex-col gap-[var(--gg-space-6)] px-[var(--gg-space-4)] py-[var(--gg-space-8)]">
+    <Skeleton variant="block" className="h-[480px] w-full" />
+  </main>
+);
+
+/** `useSearchParams()` 要求 Suspense 邊界。理由與 `login/page.tsx` 相同。 */
 export default function RegisterPage() {
+  return (
+    <Suspense fallback={REGISTER_SKELETON}>
+      <RegisterPageContent />
+    </Suspense>
+  );
+}
+
+function RegisterPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  /** 註冊完要回哪裡。來自網址的值一律過 `safeNext`，見 `_lib/auth.ts`。 */
+  const next = safeNext(searchParams.get('next'));
   const [values, setValues] = useState<RegisterFormValues>(REGISTER_INITIAL_VALUES);
   const [errors, setErrors] = useState<RegisterFieldErrors>({});
   const [generalError, setGeneralError] = useState<string | null>(null);
@@ -45,7 +64,7 @@ export default function RegisterPage() {
         idempotencyKey: idempotency.current(request),
       });
       idempotency.complete();
-      router.push('/orders');
+      router.push(next);
     } catch (error) {
       const fromApi = fieldErrorsFrom(error);
       if (Object.keys(fromApi).length > 0) {
@@ -142,7 +161,8 @@ export default function RegisterPage() {
 
       <p className="text-center text-[length:var(--gg-text-sm)] text-fg-muted">
         已經有帳號了？{' '}
-        <Link href="/login" className="font-bold text-primary-text">
+        {/* 回程要一路帶下去，否則「已經有帳號了」那一步就把它弄丟了。 */}
+        <Link href={loginHref(next)} className="font-bold text-primary-text">
           直接登入
         </Link>
       </p>

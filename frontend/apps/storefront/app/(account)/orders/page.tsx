@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { browserApi } from '../../_lib/apiClient';
-import { isUnauthorized } from '../_lib/authRedirect';
+import { isUnauthorized, loginHrefForCurrentPage } from '../_lib/authRedirect';
 import { generalErrorMessage, traceIdOf } from '../_lib/formErrors';
 import { ORDER_MAIN_LINE, orderStatusLabel } from '../_lib/orderStatus';
 
@@ -43,7 +43,7 @@ export default function OrdersPage() {
         })
         .catch((caught: unknown) => {
           if (isUnauthorized(caught)) {
-            router.replace('/login');
+            router.replace(loginHrefForCurrentPage());
             return;
           }
           setError(caught);
@@ -70,7 +70,7 @@ export default function OrdersPage() {
       setNextCursor(page.nextCursor);
     } catch (caught) {
       if (isUnauthorized(caught)) {
-        router.replace('/login');
+        router.replace(loginHrefForCurrentPage());
         return;
       }
       setError(caught);

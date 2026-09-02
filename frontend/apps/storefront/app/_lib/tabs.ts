@@ -115,19 +115,22 @@ export interface StorefrontTab {
 /**
  * 首頁 · 開團 · 購物車 · 我的（使用者 2026-09-02 拍板的四個）。
  *
- * 「我的」指到 `/orders` 而不是某個帳號首頁，是因為**前台沒有帳號首頁**——
- * `/orders`、`/wallet`、`/addresses` 三頁各自獨立，訂單是其中最常回訪的一頁。
+ * 「我的」指到 `/me`——那是帳號區的總覽頁（`(account)/me/page.tsx`）。
+ * FE-23 當初只能指到 `/orders`，因為**前台根本沒有帳號首頁**：
+ * `/orders`、`/wallet`、`/addresses` 三頁各自獨立，`/wallet` 甚至一個入口都沒有，
+ * 而全站沒有任何地方能登出。`/me` 把這三頁收在一起並補上登出，
+ * 所以「我的」現在有家了，`/orders` 退回成它底下的一頁。
  */
 export const STOREFRONT_TABS: readonly StorefrontTab[] = [
   { href: '/', label: '首頁', icon: 'home', alsoActiveFor: ['/products', '/categories'] },
   { href: '/campaigns', label: '開團', icon: 'campaign', alsoActiveFor: [] },
   { href: '/cart', label: '購物車', icon: 'cart', alsoActiveFor: ['/checkout'] },
   {
-    href: '/orders',
+    href: '/me',
     label: '我的',
     icon: 'account',
     // 登入／註冊算在「我的」底下：未登入的人點「我的」會被 router.replace 丟到 /login。
-    alsoActiveFor: ['/wallet', '/addresses', '/login', '/register'],
+    alsoActiveFor: ['/orders', '/wallet', '/addresses', '/login', '/register'],
   },
 ];
 

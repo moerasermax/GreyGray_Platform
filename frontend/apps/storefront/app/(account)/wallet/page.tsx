@@ -6,7 +6,7 @@ import { Card, ErrorState, PriceDisplay, Skeleton } from '@greygray/ui';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { browserApi } from '../../_lib/apiClient';
-import { isUnauthorized } from '../_lib/authRedirect';
+import { isUnauthorized, loginHrefForCurrentPage } from '../_lib/authRedirect';
 import { generalErrorMessage, traceIdOf } from '../_lib/formErrors';
 
 type Money = components['schemas']['Money'];
@@ -25,7 +25,7 @@ export default function WalletPage() {
       .then((result) => setBalance(result.balance))
       .catch((caught: unknown) => {
         if (isUnauthorized(caught)) {
-          router.replace('/login');
+          router.replace(loginHrefForCurrentPage());
           return;
         }
         setError(caught);

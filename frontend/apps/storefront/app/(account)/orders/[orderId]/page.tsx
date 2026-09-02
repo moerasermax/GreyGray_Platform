@@ -11,7 +11,7 @@ import { usePayloadIdempotency } from '../../../_lib/usePayloadIdempotency';
 import { ConfirmDialog } from '../../_components/ConfirmDialog';
 import { OrderTimeline } from '../../_components/OrderTimeline';
 import { PaymentCountdown } from '../../_components/PaymentCountdown';
-import { isUnauthorized } from '../../_lib/authRedirect';
+import { isUnauthorized, loginHrefForCurrentPage } from '../../_lib/authRedirect';
 import { generalErrorMessage, traceIdOf } from '../../_lib/formErrors';
 import {
   deliveryMethodLabel,
@@ -47,7 +47,7 @@ export default function OrderDetailPage() {
       .then(setOrder)
       .catch((caught: unknown) => {
         if (isUnauthorized(caught)) {
-          router.replace('/login');
+          router.replace(loginHrefForCurrentPage());
           return;
         }
         setError(caught);
@@ -75,7 +75,7 @@ export default function OrderDetailPage() {
       setConfirmCancelOpen(false);
     } catch (caught) {
       if (isUnauthorized(caught)) {
-        router.replace('/login');
+        router.replace(loginHrefForCurrentPage());
         return;
       }
       setActionError(caught);
@@ -96,7 +96,7 @@ export default function OrderDetailPage() {
       submitPaymentForm(initiation);
     } catch (caught) {
       if (isUnauthorized(caught)) {
-        router.replace('/login');
+        router.replace(loginHrefForCurrentPage());
         return;
       }
       setActionError(caught);

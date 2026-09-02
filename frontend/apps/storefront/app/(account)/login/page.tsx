@@ -2,11 +2,12 @@
 
 import { ApiError } from '@greygray/api-client';
 import * as storefrontApi from '@greygray/api-client/endpoints/storefront';
-import { Button, Card, Field, Input } from '@greygray/ui';
+import { Button, Card, Field, Input, Skeleton } from '@greygray/ui';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
 import { browserApi } from '../../_lib/apiClient';
+import { registerHref, safeNext } from '../../_lib/auth';
 import { usePayloadIdempotency } from '../../_lib/usePayloadIdempotency';
 
 /**
@@ -18,8 +19,32 @@ const INVALID_CREDENTIALS_MESSAGE = '手機號碼或密碼錯誤，請再試一�
 const RATE_LIMITED_MESSAGE = '嘗試次數過多，請稍後再試。';
 const UNEXPECTED_MESSAGE = '登入時發生問題，請稍後再試。';
 
+const LOGIN_SKELETON = (
+  <main className="mx-auto flex max-w-[420px] flex-col gap-[var(--gg-space-6)] px-[var(--gg-space-4)] py-[var(--gg-space-8)]">
+    <Skeleton variant="block" className="h-[320px] w-full" />
+  </main>
+);
+
+/**
+ * `useSearchParams()` 要求 Suspense 邊界，否則 `next build` 靜態化這一頁時會報錯
+ * （前例：`(checkout)/payment/result/page.tsx`）。
+ */
 export default function LoginPage() {
+  return (
+    <Suspense fallback={LOGIN_SKELETON}>
+      <LoginPageContent />
+    </Suspense>
+  );
+}
+
+function LoginPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  /*
+   * 登入完要回哪裡。**一定要過 `safeNext`**——這個值來自網址，
+   * 也就是來自任何一個能發連結給使用者的人。細節與威脅模型見 `_lib/auth.ts`。
+   */
+  const next = safeNext(searchParams.get('next'));
   const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +61,7 @@ export default function LoginPage() {
         idempotencyKey: idempotency.current(input),
       });
       idempotency.complete();
-      router.push('/orders');
+      router.push(next);
     } catch (caught) {
       if (caught instanceof ApiError) {
         if (caught.status === 401) {
@@ -101,7 +126,8 @@ export default function LoginPage() {
 
       <p className="text-center text-[length:var(--gg-text-sm)] text-fg-muted">
         還沒有帳號？{' '}
-        <Link href="/register" className="font-bold text-primary-text">
+        {/* 回程要一路帶下去，否則「我還沒有帳號」那一步就把它弄丟了。 */}
+        <Link href={registerHref(next)} className="font-bold text-primary-text">
           註冊新帳號
         </Link>
       </p>

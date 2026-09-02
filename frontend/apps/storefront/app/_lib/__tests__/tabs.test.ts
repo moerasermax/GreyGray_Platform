@@ -129,7 +129,18 @@ describe('四個分頁', () => {
   });
 
   it('每個分頁都指到真的存在的前台路徑', () => {
-    expect(STOREFRONT_TABS.map((tab) => tab.href)).toEqual(['/', '/campaigns', '/cart', '/orders']);
+    expect(STOREFRONT_TABS.map((tab) => tab.href)).toEqual(['/', '/campaigns', '/cart', '/me']);
+  });
+
+  it('★「我的」指到 /me 而不是 /orders——訂單只是它底下的一頁，不是帳號區的家', () => {
+    const account = STOREFRONT_TABS.find((tab) => tab.label === '我的');
+    expect(account?.href).toBe('/me');
+    // `/orders` 沒有消失，它退回成 `alsoActiveFor`：人在訂單頁時「我的」仍然要亮。
+    expect(account?.alsoActiveFor).toContain('/orders');
+  });
+
+  it('/me 有分頁列——它是帳號區的家，走得進去也要走得出來', () => {
+    expect(shouldShowTabBar('/me')).toBe(true);
   });
 
   it('首頁上找得到「購物車」——#30 使用者撞到的正是「首頁連這三個字都沒有」', () => {
@@ -148,19 +159,24 @@ describe('activeTabHref：現在停在哪一個分頁', () => {
     ['/campaigns/abc123', '/campaigns'],
     ['/cart', '/cart'],
     ['/checkout', '/cart'],
-    ['/orders', '/orders'],
-    ['/orders/abc123', '/orders'],
-    ['/wallet', '/orders'],
-    ['/addresses', '/orders'],
-    ['/login', '/orders'],
-    ['/register', '/orders'],
+    ['/me', '/me'],
+    ['/orders', '/me'],
+    ['/orders/abc123', '/me'],
+    ['/wallet', '/me'],
+    ['/addresses', '/me'],
+    ['/login', '/me'],
+    ['/register', '/me'],
   ])('%s 亮的是 %s', (pathname, expected) => {
     expect(activeTabHref(pathname)).toBe(expected);
   });
 
   it("'/' 只吃精確比對——拿它當前綴的話每一頁都會亮首頁", () => {
     expect(activeTabHref('/campaigns')).toBe('/campaigns');
-    expect(activeTabHref('/orders')).toBe('/orders');
+    expect(activeTabHref('/orders')).toBe('/me');
+  });
+
+  it('逐段比對也適用於 /me：/medical 不算在「我的」底下', () => {
+    expect(activeTabHref('/medical')).toBeNull();
   });
 
   it('對不上任何分頁時回 null，而不是硬亮一個', () => {

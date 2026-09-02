@@ -18,8 +18,8 @@ export function HomeSearchHeader() {
   return (
     <div className="flex items-center gap-[var(--gg-space-3)]">
       <SearchBar value={value} onChange={setValue} onSubmit={handleSubmit} className="flex-1" />
-      {/* 會員頁在 FE-5 的範圍，這裡只提供入口。 */}
-      <Link href="/orders" aria-label="會員中心" className="shrink-0">
+      {/* 會員頁是 `(account)/me`——訂單、地址、儲值金與登出都從那裡進去。 */}
+      <Link href="/me" aria-label="會員中心" className="shrink-0">
         <Avatar alt="會員中心" />
       </Link>
     </div>

@@ -25,9 +25,10 @@ import {
 } from '@greygray/ui';
 import * as api from '@greygray/api-client/endpoints/storefront';
 import type { components } from '@greygray/api-client/storefront';
-import type { IdempotentAction, PayloadIdempotentAction } from '@greygray/api-client';
+import { ApiError, type IdempotentAction, type PayloadIdempotentAction } from '@greygray/api-client';
 import { PageTopBar } from '../../_components/PageTopBar';
 import { browserApi } from '../../_lib/apiClient';
+import { loginHref } from '../../_lib/auth';
 import { AddressSelect } from '../_components/AddressSelect';
 import { ConvenienceStoreField } from '../_components/ConvenienceStoreField';
 import { DeliveryMethodPicker } from '../_components/DeliveryMethodPicker';
@@ -164,6 +165,20 @@ function CheckoutPageContent() {
        */
       router.push(`/payment/${order.id}`);
     } catch (cause) {
+      /*
+       * **401 要給一條去登入的路，不能只顯示錯誤訊息。**
+       * 匿名訪客整段流程都走得到這裡（加入購物車、詢價、選地址都不需要登入），
+       * 到「送出訂單」才撞牆——原本畫面上只會多一行 problem title，
+       * 人被留在結帳頁，看不出下一步是什麼。這是 #30／#32 的第三種形狀：
+       * 路是有的，但走到一半被彈開之後回不去。
+       *
+       * 回程寫死 `/checkout`：購物車 cookie 不受登入影響，登入完回來東西還在。
+       * `submitting` 不放掉——導向是非同步的，放掉會讓人在空隙裡再按一次。
+       */
+      if (cause instanceof ApiError && cause.isUnauthorized) {
+        router.push(loginHref('/checkout'));
+        return;
+      }
       setSubmitError(describeError(cause));
       setSubmitting(false);
     }
