@@ -103,30 +103,7 @@ internal static class M1aEndpoints
                 cancellationToken,
                 (me, token) => CreateSessionAsync(context, sessions, me, token)));
 
-        api.MapPost("/auth/logout", async (
-            HttpContext context,
-            ISessionStore sessions,
-            IIdempotencyStore idempotency,
-            CancellationToken cancellationToken) =>
-        {
-            var customer = await GetCustomerAsync(context, sessions, cancellationToken);
-            if (customer is null)
-            {
-                return BffHttp.Unauthorized();
-            }
-
-            return await BffHttp.ExecuteIdempotentAsync(
-                context,
-                idempotency,
-                $"storefront:{customer}:auth:logout",
-                request: null,
-                async token =>
-                {
-                    await BffHttp.DeleteSessionAsync(context, sessions, SessionCookie, token);
-                    return Result.Success();
-                },
-                cancellationToken);
-        });
+        api.MapPost("/auth/logout", LogoutAsync);
     }
 
     private static void MapMe(RouteGroupBuilder api)
@@ -482,57 +459,9 @@ internal static class M1aEndpoints
     {
         var logger = LoggerFor(api);
 
-        api.MapGet("/cart", async (
-            HttpContext context,
-            ISessionStore sessions,
-            ICheckoutApplication checkout,
-            CancellationToken cancellationToken) =>
-        {
-            var cartId = GetOrCreateCartId(context);
-            var customer = await GetCustomerAsync(context, sessions, cancellationToken);
-            var result = await checkout.GetCartAsync(cartId, customer, cancellationToken);
-            return result.IsSuccess ? Results.Ok(ToCart(result.Value)) : BffHttp.Problem(result.Error);
-        });
+        api.MapGet("/cart", GetCartAsync);
 
-        api.MapPost("/cart/lines", async (
-            AddCartLineInput input,
-            HttpContext context,
-            ISessionStore sessions,
-            ICheckoutApplication checkout,
-            IIdempotencyStore idempotency,
-            CancellationToken cancellationToken) =>
-        {
-            var cartId = GetOrCreateCartId(context);
-            var customer = await GetCustomerAsync(context, sessions, cancellationToken);
-            var request = new AddCartLineRequest(
-                cartId,
-                customer,
-                input.SkuId,
-                input.Mode,
-                input.CampaignOfferId,
-                input.Quantity);
-            return await BffHttp.ExecuteIdempotentAsync(
-                context,
-                idempotency,
-                "storefront:cart:lines:add",
-                request,
-                async token =>
-                {
-                    var added = await checkout.AddLineAsync(request, token);
-                    if (added.IsFailure && added.Error.Code == "checkout.cart-already-completed")
-                    {
-                        cartId = CartId.New();
-                        SetCartCookie(context.Response, cartId);
-                        added = await checkout.AddLineAsync(request with { CartId = cartId }, token);
-                    }
-
-                    return added.IsSuccess
-                        ? Result<CartResponse>.Success(ToCart(added.Value))
-                        : Result<CartResponse>.Failure(added.Error);
-                },
-                StatusCodes.Status200OK,
-                cancellationToken);
-        });
+        api.MapPost("/cart/lines", AddCartLineAsync);
 
         api.MapPatch("/cart/lines/{lineId}", async (
             string lineId,
@@ -1026,6 +955,131 @@ internal static class M1aEndpoints
         return cartId;
     }
 
+    /// <summary>
+    /// <c>POST /v1/cart/lines</c>。BE-41 從 <see cref="MapCart"/> 的 inline lambda 抽出來，
+    /// 好讓測試直接呼叫。
+    /// </summary>
+    internal static async Task<IResult> AddCartLineAsync(
+        AddCartLineInput input,
+        HttpContext context,
+        ISessionStore sessions,
+        ICheckoutApplication checkout,
+        IIdempotencyStore idempotency,
+        CancellationToken cancellationToken)
+    {
+        var cartId = GetOrCreateCartId(context);
+        var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+        var request = new AddCartLineRequest(
+            cartId,
+            customer,
+            input.SkuId,
+            input.Mode,
+            input.CampaignOfferId,
+            input.Quantity);
+        return await BffHttp.ExecuteIdempotentAsync(
+            context,
+            idempotency,
+            "storefront:cart:lines:add",
+            request,
+            async token =>
+            {
+                var added = await checkout.AddLineAsync(request, token);
+
+                // #36：cookie 指向的車已結案（下過單）或已經不是這位訪客的了
+                // （登入時建的車，登出後 IsAccessibleBy 為 false → not-found）。
+                // 兩種都是「這顆 cookie 該退休了」，換一顆新車重試一次。
+                if (added.IsFailure &&
+                    added.Error.Code is "checkout.cart-already-completed" or "checkout.cart-not-found")
+                {
+                    cartId = CartId.New();
+                    SetCartCookie(context.Response, cartId);
+                    added = await checkout.AddLineAsync(request with { CartId = cartId }, token);
+                }
+
+                return added.IsSuccess
+                    ? Result<CartResponse>.Success(ToCart(added.Value))
+                    : Result<CartResponse>.Failure(added.Error);
+            },
+            StatusCodes.Status200OK,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// <c>POST /v1/auth/logout</c>。BE-41 從 <see cref="MapAuth"/> 的 inline lambda 抽出來，
+    /// 好讓測試直接呼叫（#36 要驗的是 <c>Set-Cookie</c>，那是 Host 層的事）。
+    /// </summary>
+    internal static async Task<IResult> LogoutAsync(
+        HttpContext context,
+        ISessionStore sessions,
+        IIdempotencyStore idempotency,
+        CancellationToken cancellationToken)
+    {
+        var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+        if (customer is null)
+        {
+            return BffHttp.Unauthorized();
+        }
+
+        return await BffHttp.ExecuteIdempotentAsync(
+            context,
+            idempotency,
+            $"storefront:{customer}:auth:logout",
+            request: null,
+            async token =>
+            {
+                await BffHttp.DeleteSessionAsync(context, sessions, SessionCookie, token);
+
+                // #36：購物車是綁在會員身上的（Cart.IsAccessibleBy），留著這顆 cookie
+                // 只會讓登出後的訪客每次加入商品都拿到「找不到購物車」。
+                ClearCartCookie(context.Response);
+                return Result.Success();
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// <c>GET /v1/cart</c>。BE-41 從 <see cref="MapCart"/> 的 inline lambda 抽出來，
+    /// 比照 <see cref="CompleteCheckoutAsync"/>，好讓測試直接呼叫。
+    /// </summary>
+    /// <remarks>
+    /// #36：<c>gg_cart</c> 指向的車存在、但不屬於現在這位使用者時，Checkout 回
+    /// <c>checkout.cart-not-found</c>（服務層的語意刻意不改——<c>/cart/quote</c>、
+    /// <c>/cart/checkout</c> 仍要回 404）。但「看購物車」不該因此變成 404：
+    /// 換一顆新 cookie、回空購物車，客人就能重新開始。只重試一次。
+    /// </remarks>
+    internal static async Task<IResult> GetCartAsync(
+        HttpContext context,
+        ISessionStore sessions,
+        ICheckoutApplication checkout,
+        CancellationToken cancellationToken)
+    {
+        var hadCartCookie = context.Request.Cookies.ContainsKey(CartCookie);
+        var cartId = GetOrCreateCartId(context);
+        var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+        var result = await checkout.GetCartAsync(cartId, customer, cancellationToken);
+        if (hadCartCookie && result.IsFailure && result.Error.Code == "checkout.cart-not-found")
+        {
+            cartId = CartId.New();
+            SetCartCookie(context.Response, cartId);
+            result = await checkout.GetCartAsync(cartId, customer, cancellationToken);
+        }
+
+        return result.IsSuccess ? Results.Ok(ToCart(result.Value)) : BffHttp.Problem(result.Error);
+    }
+
+    /// <summary>
+    /// 刪 <c>gg_cart</c>。選項要跟 <see cref="SetCartCookie"/> 一致，
+    /// 否則瀏覽器不會認為是同一顆 cookie，刪不掉（比照 <c>BffHttp.ClearSessionCookie</c>）。
+    /// </summary>
+    private static void ClearCartCookie(HttpResponse response) =>
+        response.Cookies.Delete(CartCookie, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = true,
+            SameSite = SameSiteMode.Lax,
+            Path = "/",
+        });
+
     private static void SetCartCookie(HttpResponse response, CartId cartId) =>
         response.Cookies.Append(CartCookie, cartId.ToString(), new CookieOptions
         {
@@ -1392,7 +1446,7 @@ internal static class M1aEndpoints
         string? Description,
         IReadOnlyList<StorefrontCampaignOffer> Offers);
 
-    private sealed record AddCartLineInput(
+    internal sealed record AddCartLineInput(
         SkuId SkuId,
         FulfillmentMode Mode,
         CampaignOfferId? CampaignOfferId,
@@ -1402,9 +1456,15 @@ internal static class M1aEndpoints
 
     private sealed record QuoteCartInput(DeliveryMethod DeliveryMethod);
 
+    /// <param name="ShippingPolicy">
+    /// ADR-030：可為 null。<c>Cart.hasMixedModes</c> 為 true 時才必填（缺了 Checkout 回
+    /// <c>checkout.shipping-policy-required</c> → 422）；單一模式忽略客人送的值，由後端推導。
+    /// <b>不可以改回不可為 null 的 enum</b>——那會讓 JSON <c>null</c> 在綁定期就丟
+    /// <c>JsonException</c>，客人連 401 都拿不到（#37）。
+    /// </param>
     internal sealed record CompleteCheckoutInput(
         DeliveryMethod DeliveryMethod,
-        ShippingPolicy ShippingPolicy,
+        ShippingPolicy? ShippingPolicy,
         AddressId? ShippingAddressId,
         string? ConvenienceStoreCode,
         string? BuyerNote);

@@ -11,7 +11,11 @@
 
     下面三個 DEVFAKE 值不是機密，是刻意的：模擬器拒絕啟動於任何不以 DEVFAKE 開頭的
     MerchantId，而它發出的 TradeNo 也以 DEVFAKE 開頭——在後台與 DB 一眼看得出是模擬的。
+
+    #38：環境變數用 Start-Process -Environment 直接交給子行程，不改父行程
+    （理由見 start-dev-hosts.ps1 的 Start-DevHost）。
 #>
+#Requires -Version 7.4
 [CmdletBinding()]
 param(
     [string]$InstallRoot = 'D:\GreyGray',
@@ -55,20 +59,11 @@ $environment = @{
     'Payment__ECPay__HashIV'       = 'DEVFAKEHASHIV001'
 }
 
-$previous = @{}
-foreach ($key in $environment.Keys) {
-    $previous[$key] = [Environment]::GetEnvironmentVariable($key, 'Process')
-    [Environment]::SetEnvironmentVariable($key, $environment[$key], 'Process')
-}
-try {
-    $proc = Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe) `
-        -RedirectStandardOutput (Join-Path $logDir 'ecpay-simulator.out.log') `
-        -RedirectStandardError (Join-Path $logDir 'ecpay-simulator.err.log') `
-        -WindowStyle Hidden -PassThru
-}
-finally {
-    foreach ($key in $previous.Keys) { [Environment]::SetEnvironmentVariable($key, $previous[$key], 'Process') }
-}
+$proc = Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe) `
+    -Environment $environment `
+    -RedirectStandardOutput (Join-Path $logDir 'ecpay-simulator.out.log') `
+    -RedirectStandardError (Join-Path $logDir 'ecpay-simulator.err.log') `
+    -WindowStyle Hidden -PassThru
 Set-Content -LiteralPath $pidFile -Value $proc.Id
 Write-Host "已啟動 ecpay-simulator（PID $($proc.Id)）"
 

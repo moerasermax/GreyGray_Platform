@@ -258,6 +258,15 @@ internal sealed class CheckoutApplicationService(
             return Result<CheckoutCompleted>.Failure(validatedLines.Error);
         }
 
+        // ADR-030：出貨方式的規則主人是後端。混合購物車才問客人，單一模式一律推導。
+        var shippingPolicy = ResolveShippingPolicy(
+            validatedLines.Value.Select(line => line.Mode).ToArray(),
+            request.ShippingPolicy);
+        if (shippingPolicy.IsFailure)
+        {
+            return Result<CheckoutCompleted>.Failure(shippingPolicy.Error);
+        }
+
         foreach (var line in validatedLines.Value)
         {
             cart.UpdateLine(line.CartLineId, line.Quantity, line.UnitPrice, occurredAt);
@@ -271,7 +280,7 @@ internal sealed class CheckoutApplicationService(
             request.CustomerId,
             request.ShippingAddressId,
             request.DeliveryMethod,
-            request.ShippingPolicy,
+            shippingPolicy.Value,
             frozen.Value,
             validatedLines.Value.Select(line => new CheckoutLine(
                 line.Sku.Id,
@@ -567,8 +576,43 @@ internal sealed class CheckoutApplicationService(
             null)
         {
             GoodsTotal = goods.Value,
-            HasMixedModes = lines.Select(line => line.Mode).Distinct().Count() > 1,
+            HasMixedModes = HasMixedModes(lines.Select(line => line.Mode)),
         };
+    }
+
+    /// <summary>
+    /// 同時含現貨與預購。<c>CartView.HasMixedModes</c> 與結帳時「要不要問客人出貨方式」
+    /// 用的是<b>同一個</b>定義——抄第二份就會有兩份各自漂移的規則（ADR-030）。
+    /// </summary>
+    private static bool HasMixedModes(IEnumerable<FulfillmentMode> modes) =>
+        modes.Distinct().Count() > 1;
+
+    /// <summary>
+    /// ADR-030：決定這張單的出貨方式。純函式，不碰任何相依。
+    /// <list type="bullet">
+    /// <item>混合購物車：<paramref name="requested"/> 必填，缺了回
+    /// <c>checkout.shipping-policy-required</c>（422）。</item>
+    /// <item>單一模式：<b>忽略</b><paramref name="requested"/>（舊客戶端仍會送值，
+    /// 不因此報錯），依 line 組成推導一個如實描述會發生什麼的值。</item>
+    /// </list>
+    /// </summary>
+    internal static Result<ShippingPolicy> ResolveShippingPolicy(
+        IReadOnlyCollection<FulfillmentMode> modes,
+        ShippingPolicy? requested)
+    {
+        if (HasMixedModes(modes))
+        {
+            return requested is null
+                ? Result<ShippingPolicy>.Failure(
+                    "checkout.shipping-policy-required",
+                    "同時有現貨與預購商品時，必須選擇出貨方式。")
+                : requested.Value;
+        }
+
+        // 純現貨沒有什麼好等的，就是現貨先出；純預購一定是等回國一起出。
+        return modes.Contains(FulfillmentMode.Preorder)
+            ? ShippingPolicy.HoldUntilComplete
+            : ShippingPolicy.ShipSeparately;
     }
 
     private static CartView EmptyCart(CartId cartId, CustomerId? customerId) =>

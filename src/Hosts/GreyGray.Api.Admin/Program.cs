@@ -14,6 +14,8 @@ using GreyGray.Modules.Procurement.Infra;
 using GreyGray.Platform;
 using GreyGray.Platform.Http;
 using GreyGray.Platform.Observability;
+using GreyGray.Shared.Kernel;
+using Microsoft.AspNetCore.Diagnostics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
@@ -42,6 +44,12 @@ if (adminFrontendOrigins.Length == 0 && builder.Environment.IsDevelopment())
 
 builder.Services.AddOpenApi(options => options.AddDocumentTransformer<M1aOpenApiComponents>());
 builder.Services.AddProblemDetails();
+
+// 跟 Storefront 同一組接線（#37 附帶）：請求體壞掉時兩個環境都回
+// 400 ＋ application/problem+json（platform.malformed-request），不是 Development 500、
+// Production 空 body 400。理由與細節見 Storefront 的 MalformedRequestExceptionHandler.cs。
+builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
+builder.Services.AddExceptionHandler<MalformedRequestExceptionHandler>();
 if (adminFrontendOrigins.Length > 0)
 {
     builder.Services.AddCors(options => options.AddPolicy(
@@ -138,3 +146,41 @@ app.Use(async (context, next) =>
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "admin" }));
 
 app.Run();
+
+namespace GreyGray.Api.Admin
+{
+    /// <summary>
+    /// 把「請求本身壞掉」翻成契約規定的 <c>400</c> ＋ <c>application/problem+json</c>。
+    /// </summary>
+    /// <remarks>
+    /// 這是 Storefront <c>MalformedRequestExceptionHandler.cs</c> 的第二份——兩個 Host 各自
+    /// 獨立部署、不互相參考，而共同的家（<c>src/Platform/Http/</c>）不在 BE-41 的授權範圍內。
+    /// <b>改一邊就要改另一邊。</b>詳細理由寫在 Storefront 那一份。
+    /// </remarks>
+    internal sealed class MalformedRequestExceptionHandler(
+        ILogger<MalformedRequestExceptionHandler> logger) : IExceptionHandler
+    {
+        public async ValueTask<bool> TryHandleAsync(
+            HttpContext httpContext,
+            Exception exception,
+            CancellationToken cancellationToken)
+        {
+            if (exception is not BadHttpRequestException badRequest)
+            {
+                return false;
+            }
+
+            logger.LogInformation(
+                badRequest,
+                "請求格式錯誤：{Method} {Path}",
+                httpContext.Request.Method,
+                httpContext.Request.Path);
+            await BffHttp
+                .Problem(
+                    new Error("platform.malformed-request", "請求內容格式不正確。"),
+                    badRequest.StatusCode)
+                .ExecuteAsync(httpContext);
+            return true;
+        }
+    }
+}

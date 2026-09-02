@@ -41,6 +41,13 @@ if (storefrontFrontendOrigins.Length == 0 && builder.Environment.IsDevelopment()
 
 builder.Services.AddOpenApi(options => options.AddDocumentTransformer<M1aOpenApiComponents>());
 builder.Services.AddProblemDetails();
+
+// 請求體壞掉時的行為，兩個環境要一模一樣（#37 附帶）。
+// ThrowOnBadRequest 在 Development 預設 true、其他環境預設 false——不明講就會有兩種行為：
+// Development 500、Production 空 body 的 400。一律讓它丟，交給 MalformedRequestExceptionHandler
+// 翻成契約規定的 400 ＋ application/problem+json（platform.malformed-request）。
+builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
+builder.Services.AddExceptionHandler<MalformedRequestExceptionHandler>();
 if (storefrontFrontendOrigins.Length > 0)
 {
     builder.Services.AddCors(options => options.AddPolicy(

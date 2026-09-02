@@ -10,7 +10,11 @@
     連線字串走 ConnectionStrings__<Key> 環境變數（跟 ops/check-openapi.ps1、
     ops/deploy.ps1 同一個慣例），密碼從 install-dev-environment.ps1 落地的
     secrets 檔讀，不進命令列、不印到 console。
+
+    #38：環境變數用 Start-Process -Environment 直接交給子行程，
+    絕對不要改父行程的環境再還原——見 Start-DevHost 上面那一段。
 #>
+#Requires -Version 7.4
 [CmdletBinding()]
 param(
     [string]$InstallRoot = 'D:\GreyGray',
@@ -88,20 +92,20 @@ function Start-DevHost {
         }
     }
 
-    $previous = @{}
-    foreach ($key in $Environment.Keys) {
-        $previous[$key] = [Environment]::GetEnvironmentVariable($key, 'Process')
-        [Environment]::SetEnvironmentVariable($key, $Environment[$key], 'Process')
-    }
-    try {
-        $proc = Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe) `
-            -RedirectStandardOutput (Join-Path $logDir "$Name.out.log") `
-            -RedirectStandardError (Join-Path $logDir "$Name.err.log") `
-            -WindowStyle Hidden -PassThru
-    }
-    finally {
-        foreach ($key in $previous.Keys) { [Environment]::SetEnvironmentVariable($key, $previous[$key], 'Process') }
-    }
+    # #38：直接把環境交給子行程，不碰父行程。
+    #
+    # 原本的做法是「改父行程 → Start-Process 讓子行程繼承 → finally 還原」，有兩個坑：
+    # ① 還原時 $previous[$key] 對本來不存在的變數是 $null，PowerShell 把 $null 傳給
+    #    .NET 的 string 參數會變成**空字串**——還原之後 Test-Path Env:X 是 True、值是空的。
+    # ② Leader 2026-09-02 在同一個 shell「起 → 停 → 再起」，第二次起的三個 Host
+    #    Hosting environment 印成空的，於是 Program.cs 的 IsDevelopment() 為 false、
+    #    CORS 沒開，前台每一個跨源呼叫預檢 OPTIONS 都 405（畫面上是「加入購物車失敗」）。
+    #    第二次為什麼沒進子行程沒有查出來——這裡把整個模式拿掉，讓這一類 bug 沒有地方發生。
+    $proc = Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe) `
+        -Environment $Environment `
+        -RedirectStandardOutput (Join-Path $logDir "$Name.out.log") `
+        -RedirectStandardError (Join-Path $logDir "$Name.err.log") `
+        -WindowStyle Hidden -PassThru
     Set-Content -LiteralPath $pidFile -Value $proc.Id
     Write-Host "已啟動 $Name（PID $($proc.Id)）"
     return $proc.Id

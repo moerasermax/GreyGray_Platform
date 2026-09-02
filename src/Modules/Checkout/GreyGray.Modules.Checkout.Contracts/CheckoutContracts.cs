@@ -104,11 +104,18 @@ public sealed record QuoteCartRequest(
     CustomerId? CustomerId,
     DeliveryMethod DeliveryMethod);
 
+/// <param name="ShippingPolicy">
+/// ADR-030：只有<b>混合購物車</b>（同時有現貨與預購 line）才必須帶值，缺了回
+/// <c>checkout.shipping-policy-required</c>；單一模式時這個值會被<b>忽略</b>，
+/// 由 Checkout 依 line 組成推導（純現貨 → <see cref="ShippingPolicy.ShipSeparately"/>、
+/// 純預購 → <see cref="ShippingPolicy.HoldUntilComplete"/>）。規則的主人是後端，
+/// 不下放給任何客戶端。
+/// </param>
 public sealed record CompleteCheckoutRequest(
     CartId CartId,
     CustomerId CustomerId,
     DeliveryMethod DeliveryMethod,
-    ShippingPolicy ShippingPolicy,
+    ShippingPolicy? ShippingPolicy,
     AddressId? ShippingAddressId,
     string? ConvenienceStoreCode,
     string? BuyerNote,
