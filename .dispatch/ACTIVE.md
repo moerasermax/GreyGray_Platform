@@ -51,7 +51,29 @@ Leader 要明講。
 
 ---
 
-## 生效中：BE-40　dev 綠界模擬器（獨立行程）＋ 付款完成後回商店（#33）＋ 非綠界網域守衛
+<!--
+★ 2026-09-02 晚已通過整合驗收並提交（後端 `abdf286`），撤包。原文保留供追溯。
+
+ADR-029 成立：假的是綠界的伺服器，不是我們的 adapter。Leader 活體對真環境走完三條路——
+模擬付款成功（webhook `200 1|OK` → `payment.payment` status=1、`captured_at` 是 UTC、
+`provider_transaction_id=DEVFAKE…` → outbox `PaymentCaptured`／`OrderPaid` processed →
+訂單「已付款，等待截團」→ 分錄「收款」is_posted）、模擬付款失敗（訂單留在待付款、
+`last_payment_failure_code=10100251`、`PaymentFailed` processed、零分錄）、
+守衛（不開旗標把 `CheckoutUrl` 指到模擬器 → `GET /v1/cart` 500，例外一字不差點名
+`Payment:ECPay:AllowNonEcpayEndpoints`）。測試 241 → **253** 條全過（Release，0 Failed，Skipped 2）。
+
+★★ 這一包途中連撞四個「只在真 DB／真行程才炸」的真缺陷：#34（`InvariantGlobalization=true`
+下 Windows 查不到 `Asia/Taipei`，付款發動從沒成功過——子代理第一條真測試撞到，這包修）、
+#35（回呼把 +08:00 的 `DateTimeOffset` 存進 timestamptz 被 Npgsql 拒收、webhook 500——Leader
+用模擬器走真環境撞到，第二輪修＋真 Postgres 迴歸測試）、#36（登出不清 `gg_cart` cookie，
+訪客加入購物車一律「找不到購物車」）與 #37（契約 `shippingPolicy` required、前端純現貨送 `null`
+→ 結帳 500）留給下一波。同型未修：`Platform/Time/SystemClock.cs:9 TodayInTaipei`（零呼叫者）。
+
+★ 接受子代理超出「`EcpayGateway` 零改動」的時區修正（證據是可執行例外，不修交不出派工書要的測試）、
+拆 `.Core` 類別庫（測試專案是 `Microsoft.NET.Sdk`，直接參考 Web exe 會把框架相依帶進測試行程）、
+兩個工具專案都進 `ModuleBoundaryTests.Hosts`、守衛多測一條仿冒網域 `ecpay.com.tw.evil.test`。
+
+## 生效中（已撤包）：BE-40　dev 綠界模擬器（獨立行程）＋ 付款完成後回商店（#33）＋ 非綠界網域守衛
 
 使用者 2026-09-02 拍板：先做 dev 模擬付款，**但要能隨時換回 adapter——可以換回去就等於可以上線**。
 Leader 的裁決（ADR-029）：假的不是我們的 adapter，**假的是綠界的伺服器**。`EcpayGateway`、回呼處理、
@@ -85,6 +107,7 @@ allow: ops/install-dev-environment.ps1
 
 > `src/Tools/GreyGray.Tools.EcpaySimulator.Core/` 只在派工書必做 5 說的那種情況（測試專案參考 Web exe 不順）才建。
 > `M1aEndpoints.cs` 只准動 `MapPayment` 那一段；`install-dev-environment.ps1` 只准動註解。
+-->
 
 ---
 
@@ -678,6 +701,11 @@ allow: tests/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **BE-40** dev 綠界模擬器（獨立行程）＋ 付款完成後回商店（#33）＋ 非綠界網域守衛　·　2026-09-02 通過　·　`abdf286`　·
+  ADR-029：假的是綠界的伺服器，不是我們的 adapter——換回正式綠界＝不設那兩個網址＋真憑證，零程式碼改動。
+  順修 #34（`InvariantGlobalization` 下查不到 `Asia/Taipei`，付款發動從沒成功過）與 #35（回呼 +08:00 存進
+  timestamptz 被 Npgsql 拒收、webhook 500）——兩個都是「測試全用樁、沒對真 DB／真行程跑過」才活到現在。
+  253 條測試全過；Leader 活體走完成功／失敗／守衛三條路，見 `.dispatch/reports/BE-40.md`
 - **BE-37** 冪等錯誤碼對齊契約（#24）　·　2026-09-01 通過　·　`f8e357f`　·
   六處 `request.` 前綴改成契約規定的 `platform.`，前端的「409 用同一把 key 自動重試」
   第一次真的會觸發。四條迴歸測試逐字釘住 code 與狀態碼（先紅後綠 ＋ SHA256 還原證明）。
