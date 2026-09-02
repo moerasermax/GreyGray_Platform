@@ -51,7 +51,38 @@ Leader 要明講。
 
 ---
 
-## 生效中：BE-42　串真綠界的前置——`ReturnURL` 可由 `Storefront:PublicApiOrigin` 設定 ＋ `deploy.ps1` 投遞公開 origin ＋ `build-frontends.ps1` 建另一棵樹並指定 API base
+## 生效中：BE-43　正式機 GreyGray 自己的 Cloudflare Tunnel（本機管理、進 repo）——`install-tunnel.ps1` ＋ verify 多一項 ＋ `install-environment.ps1` 不碰現有通道
+
+使用者 2026-09-02 拍板「另起一個新的本機管理 tunnel，現有的完全不動」。Leader 已在 YC 上完成需要人授權的部分：`cloudflared tunnel login`（使用者點了）、
+`tunnel create greygray`（id `7daa50aa-8b70-483a-a670-9d44ddc3499c`，憑證在 `C:\Users\moera\.cloudflared\`）、`route dns` 建了 `greygray.shop` 與 `admin.greygray.shop`。
+這一包把剩下可重現的部分寫成腳本：複製憑證到 `C:\GreyGray\cloudflared\`、寫 `config.yml`（四條 ingress ＋ 404）、NSSM 登記 `GreyGray-Tunnel`（GreyGraySvc）。
+`install-environment.ps1` 第 406-423 行會把現有 `cloudflared` 服務的帳號改掉並重啟——**那是使用者 Planner／Portfolio／Knowledge 共用的通道，必須拿掉那段**。
+
+★★ 最容易做錯的：① 絕對不碰 `Cloudflared` 服務／`C:\ProgramData\cloudflared\token`／`CloudflaredWatchdog`；② 正式機只有 PowerShell 5.1；
+③ 不在腳本裡做 login／create／route dns；④ 開發機沒裝 cloudflared，不要 winget install，`ingress validate` 留給 Leader 在 YC 跑；⑤ `install-tunnel.ps1` 要有 UTF-8 BOM（self-test 會斷言正式機腳本有 BOM）。
+
+package: BE-43
+doc: docs/39-後端第二十七波派工書.md
+allow: ops/install-tunnel.ps1
+allow: ops/verify-environment.ps1
+allow: ops/install-environment.ps1
+allow: ops/environment-self-test.ps1
+
+> `docs/14-環境整備runbook.md` 走 docs/ 全域放行；`ops/self-test.ps1` 的 BOM 清單若要把 `install-tunnel.ps1` 加進正式機腳本清單，停下來回報（不在 allow）。
+
+---
+
+<!--
+★ 2026-09-03 已通過整合驗收並提交（後端 `8e6f2c4`），撤包。原文保留供追溯。
+
+ADR-031 前置落地：`BuildEcpayReturnUrl`（有設 `Storefront:PublicApiOrigin` 就用它，沒設維持 request-based——dev 模擬器靠它）＋ 8 條測試；
+`deploy.ps1` Mandatory 兩個公開 origin（只注給 GreyGray-Storefront，5.1 語法、-ValidateOnly 也驗）；`build-frontends.ps1` `-FrontendRoot`／兩個 API base、
+兩個 app 各自帶 NEXT_PUBLIC_* 建、建完 grep artifact；`Invoke-PnpmCommand -Environment` 用 `Remove-Item Env:` 還原；`self-test.ps1` AST 改 UTF-8 讀＋正式機腳本 BOM 斷言＋origin 負向測試；
+CI 前端那步改 `-ValidateOnly`（這條分支的 frontend/ 是 FE-1 骨架）。測試 270 → **278**（Leader 自己重跑 Debug 1088 秒）；self-test 5.1／7 Leader 重跑都 exit 0。
+三輪：第一輪指出 self-test／ci 會被 Mandatory 參數打壞（對）；第二輪查出 5.1 在 big5 機器讀無 BOM 檔會拆錯（既有問題，修 self-test 不加 BOM）與 CI 的 frontend/ 是骨架（改 -ValidateOnly）；第三輪收尾。
+留下：三支 dev 腳本既無 BOM 也沒標 `#Requires 7`（斷言清單寫死，暫可）。
+
+## 生效中（已撤包）：BE-42　串真綠界的前置——`ReturnURL` 可由 `Storefront:PublicApiOrigin` 設定 ＋ `deploy.ps1` 投遞公開 origin ＋ `build-frontends.ps1` 建另一棵樹並指定 API base
 
 使用者 2026-09-02 拍板：串綠界＝**佈署到正式機 YC**、先接綠界公開測試商店；拓樸 ADR-031（前台與其 API 同主機名稱、`/v1/*` 分流，
 網域 `greygray.shop`：前台根網域、後台 `admin.greygray.shop`）。通道後面 `Request.Host` 是 `127.0.0.1:5000`，現在的 `ReturnURL`（`GreyGray.Api.Storefront/M1aEndpoints.cs` 第 835 行）綠界打不到；
@@ -77,6 +108,7 @@ allow: .github/workflows/ci.yml
 > 第一輪交付後 Leader 補授權（2026-09-03）：`ops/self-test.ps1` 第 102／126 行那兩處 `deploy.ps1 -ValidateOnly` 補上兩個 origin 參數；
 > `.github/workflows/ci.yml` 第 71 行那個真建置補 `-FrontendRoot`／兩個 API base（用正式網址 `https://greygray.shop`／`https://admin.greygray.shop`）。
 > `-ValidateOnly` 缺 URL 印出不 throw：Leader 接受。
+-->
 
 ---
 
@@ -768,6 +800,8 @@ allow: tests/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **BE-42** 串真綠界的前置：`ReturnURL` 可由 `Storefront:PublicApiOrigin` 設定、`deploy.ps1` 投遞公開 origin、`build-frontends.ps1` 建另一棵樹並指定 API base、self-test 改 UTF-8 讀＋BOM 斷言、CI 改 -ValidateOnly　·　2026-09-03 通過　·　`8e6f2c4`　·
+  測試 270 → 278；5.1／7 self-test 都 exit 0；三輪交付（第一輪指出 self-test／ci 會被打壞、第二輪查出 big5 讀無 BOM 檔的既有問題與 CI frontend 骨架），見 `.dispatch/reports/BE-42.md`
 - **BE-41** 結帳 `shippingPolicy` 混合才必填、單一模式後端推導（#37 治本，ADR-030）＋ 壞 body 回 400 ＋ #36 後端側 ＋ #38 dev 啟動腳本　·　2026-09-02 通過　·　`3523904`　·
   規則的主人是後端：契約向下相容放寬、`ResolveShippingPolicy` 純函式；兩個 Host 兩個環境壞 body 都 400 problem+json；logout 刪 `gg_cart`、不是你的車就換新車；
   `Start-Process -Environment`。測試 253 → 270，見 `.dispatch/reports/BE-41.md`

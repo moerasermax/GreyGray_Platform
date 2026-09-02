@@ -1,7 +1,11 @@
 # 啟動 prompt
 
-**生效中的派工（2026-09-02 深夜，第三十波第二段）：前端 FE-26；後端 BE-42（派工書寫好即生效）。** BE-41 已驗收撤包。
-啟動 prompt 在下面「FE-26 的啟動 prompt」與「BE-42 的啟動 prompt」兩節。
+**生效中的派工（2026-09-03，第三十波第三段）：後端 BE-43（正式機 GreyGray 自己的 Cloudflare Tunnel 腳本）。** FE-26／BE-42 已驗收撤包；前端樹沒有生效中的派工。
+啟動 prompt 在下面「BE-43 的啟動 prompt」一節。
+
+★ **BE-43**：`ops/install-tunnel.ps1`（5.1 可跑、冪等：複製憑證到 `C:\GreyGray\cloudflared\`、寫 `config.yml` 四條 ingress ＋ 404、NSSM 登記 `GreyGray-Tunnel`）＋
+`verify-environment.ps1` 多一項 ＋ `install-environment.ps1` **拿掉會動到現有 `cloudflared` 服務的那一段**（那是使用者其他應用共用的通道）。
+tunnel `greygray`（`7daa50aa-…`）與兩筆 DNS Leader 已在 YC 上建好；`tunnel login`／`create`／`route dns` 不在腳本裡。
 
 ★ **FE-26**：跟上 ADR-030 的契約（`pnpm api:generate`、拿掉 `checkout/page.tsx` 的 `shippingPolicy!`）＋ #36 前端側（登出 `publishCart(null)`）
 ＋ FE-25 ⑦（`/login?next=` 亮 `next` 所屬分頁）＋ 結帳頁被帶去登入再回來保留已填內容（`sessionStorage`）。契約檔 Leader 已複製進前端樹，不要動。
@@ -15,7 +19,54 @@ ADR-030：規則的主人是後端——契約 `shippingPolicy` 改成「混合�
 
 ---
 
-## FE-26 的啟動 prompt（生效中）
+## BE-43 的啟動 prompt（生效中）
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
+GreyGray Platform 後端。.NET 10 模組化單體，14 個限界上下文，EF Core + Npgsql。這一包只有 ops 腳本與文件，不碰 C#。
+
+GG_PACKAGE=BE-43
+
+開工前務必先讀：
+  CLAUDE.md                        六條鐵則 ＋ 派工規則
+  docs/39-後端第二十七波派工書.md    ★ 整份讀完：§0 事實（正式機現況、cloudflared 本機管理做法）＋ §1 四個必做 ＋ §2 不要做的事
+  docs/00-decisions.md             ADR-031（拓樸與主機名稱：greygray.shop 根網域、admin.greygray.shop）
+  .dispatch/reports/README.md      ★ 自驗報告的格式，缺標頭會被退回
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/BE-43.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 不准把驗證丟背景、不准排程 wakeup。這一包沒有 C# 改動，不必跑 12 個測試專案；
+     要跑的是：三支腳本 Parser::ParseFile（5.1 與 7 各一次）、
+     powershell.exe -NoProfile -File ops\environment-self-test.ps1 OVERALL PASS、
+     pwsh -NoProfile -File ops\self-test.ps1 exit 0（它會斷言正式機腳本有 BOM——install-tunnel.ps1 是正式機腳本，要有 UTF-8 BOM）。
+
+★ 正式機只有 Windows PowerShell 5.1：不用 ??、?.、三元運算子、Start-Process -Environment、#Requires -Version 7。
+★ 絕對不碰現有的 Cloudflared 服務、C:\ProgramData\cloudflared\token、CloudflaredWatchdog（使用者其他應用共用）。
+★ install-tunnel.ps1 不做 tunnel login／create／route dns（Leader 手動，已完成：tunnel greygray、兩筆 CNAME）。
+★ 不在開發機真的登記服務或跑 cloudflared；-ValidateOnly 印出將寫入的 config.yml。開發機沒裝 cloudflared——
+  ingress validate 那一步在報告裡寫「開發機無 cloudflared，留給 Leader 在 YC 跑」，不要自己 winget install。
+★ 不要動 deploy.ps1、src/、docs/api/、docs/00-decisions.md。
+
+★ BOM：install-tunnel.ps1 要有 UTF-8 BOM（正式機腳本）；其他檔維持原本狀態。
+
+★ 質疑被鼓勵，但不准自己改方向：派工書寫錯了就停下來寫進報告問，
+  不要一邊照做一邊在報告裡抱怨，也不要自己換一個做法。
+
+檔案所有權：見派工書 §3。
+docs/、management/、STATE.md、CLAUDE.md、AGENTS.md 每一包都寫得了。
+
+不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
+git checkout -- .、以及 git commit。
+
+你不可以自己宣告通過。交付完就停。
+```
+
+---
+
+## FE-26 的啟動 prompt（已撤包，保留供參考）
 
 ```
 專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe
@@ -62,7 +113,7 @@ git checkout -- .、以及 git commit。
 
 ---
 
-## BE-42 的啟動 prompt（生效中）
+## BE-42 的啟動 prompt（已撤包，保留供參考）
 
 ```
 專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
