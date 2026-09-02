@@ -122,6 +122,17 @@ internal sealed class PaymentModule : IModuleRegistration
             throw new InvalidOperationException("Payment:ECPay:CreditDetailUrl 必須是絕對網址。");
         }
 
+        // ADR-029：dev 用的綠界模擬器（GreyGray.Tools.EcpaySimulator）就是靠上面那兩個網址接進來的。
+        // 這道守衛的用意是「正式機忘了把 dev 設定拿掉時立刻炸」——不開旗標就只准打綠界自己的網域，
+        // 而且只准 https。它在 DI 解析 IEcpayGateway／EcpaySettings 時執行，錯了會整條付款路徑 500，
+        // 不會默默把真客人的錢導去別的地方。
+        var allowNonEcpay = configuration.GetValue("Payment:ECPay:AllowNonEcpayEndpoints", false);
+        if (!allowNonEcpay)
+        {
+            RequireEcpayEndpoint("Payment:ECPay:CheckoutUrl", checkoutUrl);
+            RequireEcpayEndpoint("Payment:ECPay:CreditDetailUrl", creditDetailUrl);
+        }
+
         var initiationMinutes = configuration.GetValue("Payment:ECPay:InitiationLifetimeMinutes", 30);
         var callbackAgeMinutes = configuration.GetValue("Payment:ECPay:CallbackMaxAgeMinutes", 20);
         var allowSimulated = configuration.GetValue("Payment:ECPay:AllowSimulatedPaid", false);
@@ -132,6 +143,27 @@ internal sealed class PaymentModule : IModuleRegistration
             TimeSpan.FromMinutes(initiationMinutes),
             TimeSpan.FromMinutes(callbackAgeMinutes),
             allowSimulated), hashKey, hashIv);
+    }
+
+    /// <summary>
+    /// 兩個綠界端點網址的網域守衛（ADR-029）。<b>只在 <c>Payment:ECPay:AllowNonEcpayEndpoints</c>
+    /// 關著時執行</b>——它是「正式機忘了拿掉 dev 設定」的最後一道攔截，不是設定驗證的全部。
+    /// </summary>
+    private static void RequireEcpayEndpoint(string key, Uri value)
+    {
+        var host = value.Host;
+        var isEcpayHost =
+            string.Equals(host, "ecpay.com.tw", StringComparison.OrdinalIgnoreCase) ||
+            host.EndsWith(".ecpay.com.tw", StringComparison.OrdinalIgnoreCase);
+        if (value.Scheme == Uri.UriSchemeHttps && isEcpayHost)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"設定 '{key}' 目前是 '{value.AbsoluteUri}'，不是 https 的 ecpay.com.tw／*.ecpay.com.tw。" +
+            "正式流程只准打綠界自己的網域；要指到本機模擬器或其他測試端點，" +
+            "必須明確把 'Payment:ECPay:AllowNonEcpayEndpoints' 設成 true。");
     }
 
     private static string Required(IConfiguration configuration, string key)

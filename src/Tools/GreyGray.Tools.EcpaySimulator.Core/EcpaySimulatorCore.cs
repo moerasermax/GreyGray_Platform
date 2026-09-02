@@ -1,0 +1,217 @@
+using System.Globalization;
+using GreyGray.Modules.Payment.Infra;
+
+namespace GreyGray.Tools.EcpaySimulator.Core;
+
+/// <summary>模擬器上「使用者按了哪一顆按鈕」。</summary>
+public enum SimulatedOutcome
+{
+    /// <summary>模擬付款成功。</summary>
+    Success = 1,
+
+    /// <summary>模擬付款失敗。</summary>
+    Failure = 2,
+}
+
+/// <summary>結帳表單的檢查結果。<see cref="IsValid"/> 為 false 時，兩個欄位就是要顯示給人看的錯誤。</summary>
+public sealed record CheckoutValidation(bool IsValid, string RtnCode, string RtnMsg)
+{
+    /// <summary>通過。</summary>
+    public static CheckoutValidation Ok { get; } = new(true, "1", "OK");
+}
+
+/// <summary>
+/// 綠界模擬器的純函式層（ADR-029）：驗結帳表單、組付款結果通知、組退刷回應。
+/// <b>端點只是薄殼</b>——邏輯全部在這裡，測試才碰得到。
+/// </summary>
+/// <remarks>
+/// 這支扮演的是<b>綠界的伺服器</b>，不是我們的 adapter。所以它必須用跟正式碼完全同一套
+/// 簽章演算法（<c>EcpayGateway.ComputeCheckMacValue</c>，走 <c>InternalsVisibleTo</c> 重用），
+/// 否則「模擬器過了」就不代表「真綠界會過」。
+/// </remarks>
+public static class EcpaySimulatorCore
+{
+    /// <summary>模擬器只配假憑證，假的一律用這個前綴——在後台與 DB 一眼看得出來。</summary>
+    public const string FakePrefix = "DEVFAKE";
+
+    /// <summary>綠界的簽章錯誤代碼。</summary>
+    public const string CheckMacValueErrorCode = "10200073";
+
+    /// <summary>綠界的簽章錯誤訊息。</summary>
+    public const string CheckMacValueErrorMessage = "CheckMacValue Error";
+
+    /// <summary>模擬付款失敗時回的代碼（非 1，才會走到 <c>PaymentFailed</c> 那一條）。</summary>
+    public const string FailureRtnCode = "10100251";
+
+    private static readonly string[] RequiredCheckoutFields =
+    [
+        "MerchantID", "MerchantTradeNo", "MerchantTradeDate", "TotalAmount", "ReturnURL",
+    ];
+
+    /// <summary>
+    /// 台北時區。<b>不要直接寫 <c>FindSystemTimeZoneById("Asia/Taipei")</c></b>——
+    /// <c>InvariantGlobalization</c> 關掉 ICU 之後，Windows 上查不到 IANA 那個名字
+    /// （理由與證據見 <c>GreyGray.Modules.Payment.Core.TaipeiTime</c>）。
+    /// 這裡自己留一份，是因為那個型別是 Payment.Core 的 internal，工具不該伸手進去；
+    /// 正確的長期做法是把它搬到 Shared.Kernel 讓全專案共用一份。
+    /// </summary>
+    public static TimeZoneInfo TaipeiTimeZone { get; } = ResolveTaipeiTimeZone();
+
+    /// <summary>把 UTC 時刻換成台北時刻。</summary>
+    public static DateTimeOffset ToTaipei(DateTimeOffset utcNow)
+        => TimeZoneInfo.ConvertTime(utcNow, TaipeiTimeZone);
+
+    /// <summary>用正式碼那一支演算法簽章。</summary>
+    public static string Sign(IReadOnlyDictionary<string, string> fields, string hashKey, string hashIv)
+        => EcpayGateway.ComputeCheckMacValue(fields, hashKey, hashIv);
+
+    /// <summary>驗簽。大小寫不敏感（綠界送的是大寫十六進位）。</summary>
+    public static bool VerifySignature(
+        IReadOnlyDictionary<string, string> fields,
+        string hashKey,
+        string hashIv)
+        => fields.TryGetValue("CheckMacValue", out var supplied) &&
+           supplied.Length == 64 &&
+           string.Equals(supplied, Sign(fields, hashKey, hashIv), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 檢查結帳表單。先驗簽（跟真綠界一樣，簽錯就什麼都不做），再看必要欄位與 MerchantID。
+    /// </summary>
+    public static CheckoutValidation ValidateCheckoutForm(
+        IReadOnlyDictionary<string, string> fields,
+        string merchantId,
+        string hashKey,
+        string hashIv)
+    {
+        if (!VerifySignature(fields, hashKey, hashIv))
+        {
+            return new CheckoutValidation(false, CheckMacValueErrorCode, CheckMacValueErrorMessage);
+        }
+
+        foreach (var key in RequiredCheckoutFields)
+        {
+            if (!fields.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+            {
+                return new CheckoutValidation(false, "10200052", $"缺少必要欄位 {key}。");
+            }
+        }
+
+        if (!StringComparer.Ordinal.Equals(fields["MerchantID"], merchantId))
+        {
+            return new CheckoutValidation(
+                false,
+                "10200002",
+                $"MerchantID '{fields["MerchantID"]}' 與模擬器設定的特店代號不符。");
+        }
+
+        if (!long.TryParse(
+                fields["TotalAmount"],
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out var total) || total <= 0)
+        {
+            return new CheckoutValidation(false, "10200029", "TotalAmount 必須是大於零的整數。");
+        }
+
+        return CheckoutValidation.Ok;
+    }
+
+    /// <summary>
+    /// 產生模擬的綠界交易編號：<c>DEVFAKE</c> ＋ 13 位數字，共 20 字。
+    /// 前綴是刻意的——它會進 <c>ProviderTransactionId</c>，之後在後台與 DB 一眼看得出是模擬的。
+    /// </summary>
+    public static string CreateTradeNo(DateTimeOffset taipeiNow, int randomDigit)
+    {
+        var digits = taipeiNow.ToString("yyMMddHHmmss", CultureInfo.InvariantCulture);
+        return $"{FakePrefix}{digits}{Math.Abs(randomDigit) % 10}";
+    }
+
+    /// <summary>
+    /// 組出綠界 AIO「付款結果通知」的欄位（含 <c>CheckMacValue</c>）。
+    /// <b>刻意不送 <c>SimulatePaid=1</c></b>：那是綠界測試站的旗標，會走到
+    /// <c>AllowSimulatedPaid</c> 那條特例；模擬器要通過的是<b>正式</b>那條判斷。
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> BuildPaymentNotification(
+        IReadOnlyDictionary<string, string> checkoutForm,
+        SimulatedOutcome outcome,
+        string tradeNo,
+        DateTimeOffset paidAtTaipei,
+        string hashKey,
+        string hashIv)
+    {
+        var notification = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["MerchantID"] = checkoutForm.GetValueOrDefault("MerchantID", string.Empty),
+            ["MerchantTradeNo"] = checkoutForm.GetValueOrDefault("MerchantTradeNo", string.Empty),
+            ["StoreID"] = string.Empty,
+            ["RtnCode"] = outcome == SimulatedOutcome.Success ? "1" : FailureRtnCode,
+            ["RtnMsg"] = outcome == SimulatedOutcome.Success ? "交易成功" : "模擬付款失敗",
+            ["TradeNo"] = tradeNo,
+            ["TradeAmt"] = checkoutForm.GetValueOrDefault("TotalAmount", string.Empty),
+            ["PaymentDate"] = paidAtTaipei.ToString("yyyy/MM/dd HH:mm:ss", CultureInfo.InvariantCulture),
+            ["PaymentType"] = "Credit_CreditCard",
+            ["PaymentTypeChargeFee"] = "0",
+            ["TradeDate"] = checkoutForm.GetValueOrDefault("MerchantTradeDate", string.Empty),
+            ["SimulatePaid"] = "0",
+            ["CustomField1"] = string.Empty,
+            ["CustomField2"] = string.Empty,
+            ["CustomField3"] = string.Empty,
+            ["CustomField4"] = string.Empty,
+        };
+        notification["CheckMacValue"] = Sign(notification, hashKey, hashIv);
+        return notification;
+    }
+
+    /// <summary>
+    /// 組出退刷（<c>/CreditDetail/DoAction</c>）的回應本體。
+    /// 形狀是 form-urlencoded，因為 <c>EcpayGateway.ParseFormEncodedResponse</c> 就是這樣讀的。
+    /// </summary>
+    public static string BuildDoActionResponse(
+        IReadOnlyDictionary<string, string> fields,
+        string hashKey,
+        string hashIv)
+    {
+        var merchantId = fields.GetValueOrDefault("MerchantID", string.Empty);
+        var merchantTradeNo = fields.GetValueOrDefault("MerchantTradeNo", string.Empty);
+        var tradeNo = fields.GetValueOrDefault("TradeNo", string.Empty);
+
+        if (!VerifySignature(fields, hashKey, hashIv))
+        {
+            return FormEncode(
+                merchantId, merchantTradeNo, tradeNo, CheckMacValueErrorCode, CheckMacValueErrorMessage);
+        }
+
+        return StringComparer.Ordinal.Equals(fields.GetValueOrDefault("Action", string.Empty), "R")
+            ? FormEncode(merchantId, merchantTradeNo, tradeNo, "1", "OK")
+            : FormEncode(merchantId, merchantTradeNo, tradeNo, "0", "模擬器只支援 Action=R（退刷）。");
+    }
+
+    private static TimeZoneInfo ResolveTaipeiTimeZone()
+    {
+        foreach (var id in new[] { "Asia/Taipei", "Taipei Standard Time" })
+        {
+            try
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById(id);
+            }
+            catch (TimeZoneNotFoundException)
+            {
+                // 換下一個候選名字。
+            }
+        }
+
+        throw new InvalidOperationException("這台機器查不到台北時區（Asia/Taipei／Taipei Standard Time）。");
+    }
+
+    private static string FormEncode(
+        string merchantId,
+        string merchantTradeNo,
+        string tradeNo,
+        string rtnCode,
+        string rtnMsg)
+        => $"MerchantID={Uri.EscapeDataString(merchantId)}" +
+           $"&MerchantTradeNo={Uri.EscapeDataString(merchantTradeNo)}" +
+           $"&TradeNo={Uri.EscapeDataString(tradeNo)}" +
+           $"&RtnCode={Uri.EscapeDataString(rtnCode)}" +
+           $"&RtnMsg={Uri.EscapeDataString(rtnMsg)}";
+}

@@ -866,6 +866,7 @@ internal static class M1aEndpoints
             IOrderingApplication ordering,
             IPaymentCommand payments,
             IIdempotencyStore idempotency,
+            IConfiguration configuration,
             CancellationToken cancellationToken) =>
         {
             var customer = await GetCustomerAsync(context, sessions, cancellationToken);
@@ -880,6 +881,7 @@ internal static class M1aEndpoints
             }
 
             var id = new OrderId(parsed);
+            var clientBackUrl = BuildPaymentResultUrl(configuration, parsed);
             return await BffHttp.ExecuteIdempotentAsync(
                 context,
                 idempotency,
@@ -908,7 +910,8 @@ internal static class M1aEndpoints
                             order.Value.GoodsTotal,
                             order.Value.ShippingFee,
                             $"GreyGray {order.Value.OrderNumber}",
-                            returnUrl),
+                            returnUrl,
+                            clientBackUrl),
                         token);
                 },
                 StatusCodes.Status200OK,
@@ -1047,6 +1050,35 @@ internal static class M1aEndpoints
             role: null,
             cancellationToken);
         BffHttp.SetSessionCookie(context.Response, SessionCookie, token);
+    }
+
+    /// <summary>
+    /// 組出綠界 <c>ClientBackURL</c>（完成頁「返回商店」按鈕）要導回的前台網址：
+    /// <c>{Storefront:PublicOrigin}/payment/result?orderId=…</c>。
+    /// </summary>
+    /// <remarks>
+    /// <b>缺設定就在這裡炸，而且刻意不給 localhost 預設值。</b>
+    /// cookie 是依 hostname 隔離的——dev 的前台跑在 <c>127.0.0.1</c>，猜成 <c>localhost</c>
+    /// 會讓客人導回一個沒有 session 的網域，<c>/payment/result</c> 直接拿 401，
+    /// 而且症狀看起來像「登入壞了」。跟 Payment 設定「清楚地說缺設定」是同一種 fail-fast。
+    /// 驗證放在付款端點而不是 Program.cs 啟動時：ops/check-openapi.ps1 與測試都會起這個 Host，
+    /// 啟動時強制驗會讓它們全部起不來。
+    /// </remarks>
+    private static Uri BuildPaymentResultUrl(IConfiguration configuration, Guid orderId)
+    {
+        var origin = configuration["Storefront:PublicOrigin"];
+        if (string.IsNullOrWhiteSpace(origin) ||
+            !Uri.TryCreate(origin.TrimEnd('/'), UriKind.Absolute, out var publicOrigin))
+        {
+            throw new InvalidOperationException(
+                "缺少設定 'Storefront:PublicOrigin'（前台對外的絕對網址，不含結尾斜線）。" +
+                "綠界完成頁的「返回商店」按鈕要用它組出 /payment/result?orderId=…，" +
+                "沒有它客人付完款就回不了商店。dev 請設成前台實際的 http://127.0.0.1:<port>。");
+        }
+
+        return new Uri(
+            $"{publicOrigin.GetLeftPart(UriPartial.Path).TrimEnd('/')}" +
+            $"/payment/result?orderId={orderId:N}");
     }
 
     private static bool TryId(string raw, out Guid id) => Guid.TryParseExact(raw, "N", out id);

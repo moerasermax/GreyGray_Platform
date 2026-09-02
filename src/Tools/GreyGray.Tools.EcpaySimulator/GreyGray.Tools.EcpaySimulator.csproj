@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <RootNamespace>GreyGray.Tools.EcpaySimulator</RootNamespace>
+    <ModuleLayer>Host</ModuleLayer>
+  </PropertyGroup>
+
+  <!--
+    dev 用的「假綠界伺服器」（ADR-029）。它不是我們的 adapter 的替身，是綠界的替身——
+    EcpayGateway、回呼判斷、事件、outbox、分錄全部照正式碼跑，只有對面那台機器是假的。
+    邏輯在 .Core（純函式，測試碰得到），這裡只有薄薄的端點殼。
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\GreyGray.Tools.EcpaySimulator.Core\GreyGray.Tools.EcpaySimulator.Core.csproj" />
+  </ItemGroup>
+
+</Project>

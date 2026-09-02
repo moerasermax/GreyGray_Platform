@@ -18,6 +18,8 @@
   </Folder>
   <Folder Name="/src/Tools/">
     <Project Path="src/Tools/GreyGray.Tools.StaffBootstrap/GreyGray.Tools.StaffBootstrap.csproj" />
+    <Project Path="src/Tools/GreyGray.Tools.EcpaySimulator.Core/GreyGray.Tools.EcpaySimulator.Core.csproj" />
+    <Project Path="src/Tools/GreyGray.Tools.EcpaySimulator/GreyGray.Tools.EcpaySimulator.csproj" />
   </Folder>
   <Folder Name="/src/Modules/Identity/">
     <Project Path="src/Modules/Identity/GreyGray.Modules.Identity.Contracts/GreyGray.Modules.Identity.Contracts.csproj" />

@@ -187,7 +187,8 @@ public sealed class PaymentLedgerMigrationTests : IAsyncLifetime
                     Money.OfMajor(100, Currency.TWD),
                     Money.OfMajor(60, Currency.TWD),
                     "retry",
-                    new Uri("https://example.test/payment-return")),
+                    new Uri("https://example.test/payment-return"),
+                    new Uri("https://example.test/payment/result?orderId=1")),
                 cancellationToken);
             result.IsSuccess.ShouldBeTrue();
         }
@@ -200,6 +201,81 @@ public sealed class PaymentLedgerMigrationTests : IAsyncLifetime
                 .OrderBy(status => status)
                 .ToArrayAsync(cancellationToken);
             statuses.ShouldBe([PaymentStatus.Pending, PaymentStatus.Failed], ignoreOrder: true);
+        }
+    }
+
+    /// <summary>
+    /// 綠界回呼在<b>真的 Postgres</b> 上把付款寫成 Captured。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 這條的存在理由是 BE-40 第二輪：Leader 用 <c>-UseEcpaySimulator</c> 起真環境走完整條路，
+    /// 回呼端點回 500——
+    /// <c>Cannot write DateTimeOffset with Offset=08:00:00 to PostgreSQL type
+    /// 'timestamp with time zone', only offset 0 (UTC) is supported.</c>
+    /// 綠界的 <c>PaymentDate</c> 是台北的牆上時間，<c>TryGetCallbackTime</c> 把它組成 +08:00 的
+    /// <see cref="DateTimeOffset"/>，一路傳到 <c>CapturedAt</c>（<c>timestamptz</c>），Npgsql 拒收。
+    /// </para>
+    /// <para>
+    /// <b>為什麼之前沒被抓到</b>：回呼那一段的既有測試全部走 in-memory 樁
+    /// （<c>PaymentOrderingEventHandlerTests</c>、<c>EcpaySimulatorTests</c>），
+    /// 沒有一條把回呼的結果真的 <c>SaveChangesAsync</c> 進資料庫。所以這條刻意放在
+    /// Migrations.Tests——這裡有真的 Postgres 與真的 <see cref="PaymentRepository"/>。
+    /// 用的是<b>真的</b> <see cref="EcpayGateway"/>，通知欄位手動組（跟綠界／模擬器同一個形狀）。
+    /// </para>
+    /// </remarks>
+    [Fact(DisplayName = "綠界回呼在真的 Postgres 上寫得進 Captured：台北時間的 PaymentDate 要正規化成 UTC")]
+    public async Task Ecpay_callback_captures_the_payment_in_a_real_database()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var connectionString = await CreateMigratedDatabaseAsync(8, cancellationToken);
+
+        // 台北 2026/09/02 12:00:00 ＝ UTC 2026-09-02T04:00:00Z（同一個瞬間，換算結果不變）。
+        var paidAtTaipei = new DateTimeOffset(2026, 9, 2, 12, 0, 0, TimeSpan.FromHours(8));
+        var now = paidAtTaipei.ToUniversalTime();
+        var orderId = OrderId.New();
+        var settings = DevFakeSettings();
+        using var httpClient = new HttpClient();
+        var gateway = new EcpayGateway(settings, DevFakeHashKey, DevFakeHashIv, httpClient);
+
+        string merchantTradeNo;
+        await using (var context = CreatePaymentDbContext(connectionString))
+        {
+            var initiation = await CreateService(context, gateway, settings, now).InitiateAsync(
+                new PaymentInitiationRequest(
+                    orderId,
+                    Money.OfMajor(100, Currency.TWD),
+                    Money.OfMajor(60, Currency.TWD),
+                    "callback",
+                    new Uri("http://127.0.0.1:5000/v1/webhooks/ecpay"),
+                    new Uri("http://127.0.0.1:5002/payment/result?orderId=1")),
+                cancellationToken);
+            initiation.IsSuccess.ShouldBeTrue();
+            merchantTradeNo = initiation.Value.Fields["MerchantTradeNo"];
+        }
+
+        var notification = SignedPaymentNotification(merchantTradeNo, paidAtTaipei);
+        gateway.VerifyCallback(notification).ShouldBeTrue();
+
+        await using (var context = CreatePaymentDbContext(connectionString))
+        {
+            // 修法拿掉的話，這一行不是回 Result.Failure，而是直接丟 ArgumentException（Npgsql 拒收）。
+            var result = await CreateService(context, gateway, settings, now)
+                .HandleEcpayCallbackAsync(notification, cancellationToken);
+            result.IsSuccess.ShouldBeTrue();
+        }
+
+        await using (var verify = CreatePaymentDbContext(connectionString))
+        {
+            var payment = await verify.Payments
+                .SingleAsync(candidate => candidate.MerchantTradeNo == merchantTradeNo, cancellationToken);
+
+            payment.Status.ShouldBe(PaymentStatus.Captured);
+            payment.ProviderTransactionId.ShouldBe(DevFakeTradeNo);
+            payment.CapturedAt.ShouldNotBeNull();
+            // 同一個瞬間，而且讀回來是 UTC——這才是 timestamptz 存得下的形狀。
+            payment.CapturedAt.Value.ShouldBe(now);
+            payment.CapturedAt.Value.Offset.ShouldBe(TimeSpan.Zero);
         }
     }
 
@@ -229,6 +305,62 @@ public sealed class PaymentLedgerMigrationTests : IAsyncLifetime
         new(new DbContextOptionsBuilder<PaymentDbContext>()
             .UseNpgsql(connectionString)
             .Options);
+
+    private const string DevFakeMerchantId = "DEVFAKE0000";
+    private const string DevFakeHashKey = "DEVFAKEHASHKEY01";
+    private const string DevFakeHashIv = "DEVFAKEHASHIV001";
+    private const string DevFakeTradeNo = "DEVFAKE2609021200000";
+
+    private static EcpaySettings DevFakeSettings() => new(
+        DevFakeMerchantId,
+        new Uri("https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5"),
+        new Uri("https://payment-stage.ecpay.com.tw/CreditDetail/DoAction"),
+        TimeSpan.FromMinutes(30),
+        TimeSpan.FromMinutes(20),
+        false);
+
+    private static PaymentApplicationService CreateService(
+        PaymentDbContext context,
+        IEcpayGateway gateway,
+        EcpaySettings settings,
+        DateTimeOffset now) =>
+        new(new PaymentRepository(context),
+            context,
+            new NoopPublisher(),
+            gateway,
+            settings,
+            new StubClock(now),
+            new StubCorrelationContext());
+
+    /// <summary>
+    /// 綠界 AIO「付款結果通知」的欄位，手動組＋用正式碼那一支演算法簽章。
+    /// <c>PaymentDate</c> 刻意用台北時間字串——綠界與模擬器送過來的就是這個形狀。
+    /// </summary>
+    private static Dictionary<string, string> SignedPaymentNotification(
+        string merchantTradeNo,
+        DateTimeOffset paidAtTaipei)
+    {
+        var notification = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["MerchantID"] = DevFakeMerchantId,
+            ["MerchantTradeNo"] = merchantTradeNo,
+            ["StoreID"] = string.Empty,
+            ["RtnCode"] = "1",
+            ["RtnMsg"] = "交易成功",
+            ["TradeNo"] = DevFakeTradeNo,
+            ["TradeAmt"] = "160",
+            ["PaymentDate"] = paidAtTaipei.ToString(
+                "yyyy/MM/dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
+            ["PaymentType"] = "Credit_CreditCard",
+            ["PaymentTypeChargeFee"] = "0",
+            ["TradeDate"] = paidAtTaipei.ToString(
+                "yyyy/MM/dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
+            ["SimulatePaid"] = "0",
+        };
+        notification["CheckMacValue"] =
+            EcpayGateway.ComputeCheckMacValue(notification, DevFakeHashKey, DevFakeHashIv);
+        return notification;
+    }
 
     private static EcpaySettings Settings() => new(
         "3002607",
@@ -348,6 +480,7 @@ public sealed class PaymentLedgerMigrationTests : IAsyncLifetime
             Money amount,
             string description,
             Uri returnUrl,
+            Uri clientBackUrl,
             DateTimeOffset createdAt) => new Dictionary<string, string>();
 
         public bool VerifyCallback(IReadOnlyDictionary<string, string> fields) => true;

@@ -82,12 +82,21 @@ public sealed record PaymentInitiation(
     IReadOnlyDictionary<string, string> Fields,
     DateTimeOffset ExpiresAt);
 
+/// <summary>
+/// 發動一次綠界付款所需的全部資料。
+/// <para>
+/// <c>ClientBackUrl</c> 是綠界完成頁「返回商店」按鈕的目的地（綠界欄位 <c>ClientBackURL</c>）。
+/// 綠界以 GET 導轉且不帶任何參數，所以網址本身就要帶得出「回到哪一張訂單」——
+/// 由 Host 用 <c>Storefront:PublicOrigin</c> 組出 <c>/payment/result?orderId=…</c>。
+/// </para>
+/// </summary>
 public sealed record PaymentInitiationRequest(
     OrderId OrderId,
     Money GoodsAmount,
     Money ShippingAmount,
     string Description,
-    Uri ReturnUrl);
+    Uri ReturnUrl,
+    Uri ClientBackUrl);
 
 // ── 同步契約 ─────────────────────────────────────────────────────────────
 

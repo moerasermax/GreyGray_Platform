@@ -27,6 +27,7 @@ internal interface IEcpayGateway
         Money amount,
         string description,
         Uri returnUrl,
+        Uri clientBackUrl,
         DateTimeOffset createdAt);
 
     bool VerifyCallback(IReadOnlyDictionary<string, string> fields);
@@ -51,8 +52,9 @@ internal sealed class PaymentApplicationService(
     IClock clock,
     ICorrelationContext correlationContext) : IPaymentCommand, IPaymentQuery
 {
-    private static readonly TimeZoneInfo TaipeiTimeZone =
-        TimeZoneInfo.FindSystemTimeZoneById("Asia/Taipei");
+    // 為什麼不直接 FindSystemTimeZoneById("Asia/Taipei")：見 TaipeiTime 的註解——
+    // InvariantGlobalization 關掉 ICU 之後，Windows 上查不到 IANA 那個名字。
+    private static readonly TimeZoneInfo TaipeiTimeZone = TaipeiTime.Zone;
 
     public async Task<Result<PaymentInitiation>> InitiateAsync(
         PaymentInitiationRequest request,
@@ -134,6 +136,7 @@ internal sealed class PaymentApplicationService(
             payment.Amount,
             request.Description,
             request.ReturnUrl,
+            request.ClientBackUrl,
             payment.CreatedAt);
 
         return new PaymentInitiation(
@@ -309,9 +312,21 @@ internal sealed class PaymentApplicationService(
             return false;
         }
 
+        // ★ 一定要正規化成 UTC 偏移才回去。
+        //
+        // 綠界的 PaymentDate／TradeDate 是「台北的牆上時間」，配上 +08:00 才是正確的瞬間；
+        // 但這個值會一路傳到 Payment.Capture(...) 的 CapturedAt，最後落進 timestamptz 欄位，
+        // 而 Npgsql 只接受偏移為 0 的 DateTimeOffset：
+        //     System.ArgumentException: Cannot write DateTimeOffset with Offset=08:00:00 to
+        //     PostgreSQL type 'timestamp with time zone', only offset 0 (UTC) is supported.
+        // BE-40 第二輪由 Leader 用真環境走完整流程時撞到（回呼端點 500，付款留在 Pending）——
+        // 在此之前所有測試都用 in-memory 樁，沒有一條把回呼寫進真的 DB。
+        //
+        // ToUniversalTime() 不改變「哪一個瞬間」，只換表示法，所以上面 CallbackMaxAge 的
+        // Duration 比較、以及送進事件的時間語意都完全不變。
         callbackTime = new DateTimeOffset(
             local,
-            TaipeiTimeZone.GetUtcOffset(local));
+            TaipeiTimeZone.GetUtcOffset(local)).ToUniversalTime();
         return true;
     }
 

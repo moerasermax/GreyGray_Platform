@@ -20,6 +20,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Modules\Payment\GreyGray.Modules.Payment.Infra\GreyGray.Modules.Payment.Infra.csproj" />
     <ProjectReference Include="..\..\src\Modules\Ledger\GreyGray.Modules.Ledger.Infra\GreyGray.Modules.Ledger.Infra.csproj" />
+    <!-- 綠界模擬器的純函式層（ADR-029）：測試拿它組出來的東西餵給真的 EcpayGateway 與
+         PaymentApplicationService，驗的是「模擬器過得了現在這一套判斷」。 -->
+    <ProjectReference Include="..\..\src\Tools\GreyGray.Tools.EcpaySimulator.Core\GreyGray.Tools.EcpaySimulator.Core.csproj" />
   </ItemGroup>
 
 </Project>

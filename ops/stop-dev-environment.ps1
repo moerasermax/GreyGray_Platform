@@ -20,7 +20,7 @@ if (-not (Test-Path -LiteralPath $stateDir -PathType Container)) {
 # 先收三個 Host 與 Garnet；PostgreSQL 是 Docker 容器（見 install-dev-environment.ps1
 # 裡「postgres.exe 拒絕在 Administrator 帳號下啟動」那段說明），用 docker stop 收，
 # 不是 PID 檔。
-foreach ($name in @('storefront', 'admin', 'worker', 'garnet')) {
+foreach ($name in @('storefront', 'admin', 'worker', 'garnet', 'ecpay-simulator')) {
     $pidFile = Join-Path $stateDir "$name.pid"
     if (-not (Test-Path -LiteralPath $pidFile -PathType Leaf)) { continue }
     $processId = [int](Get-Content -LiteralPath $pidFile)

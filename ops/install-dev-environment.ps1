@@ -414,10 +414,20 @@ if (-not $dataProtectionKeyReused) {
 Write-Host "PASS Identity 個資保護金鑰：$dataProtectionKeyFile（$(if ($dataProtectionKeyReused) { '沿用既有' } else { '本次產生' })，明文不印出）"
 
 <#
-    ★ Payment:ECPay:* 這一波刻意不接（docs/22 §0）：目前沒有任何可用的綠界
-    開發測試特店代號，編一組假值填進去只會讓 Payment 模組從「清楚地說缺設定」
-    變成「拿假憑證去打綠界然後失敗得很難懂」。
-    憑證到手之後的接法：$secretsDir\ecpay.json（格式見 docs/22 §5 必做 4 第 3 點，
+    ★ Payment:ECPay:* 這支腳本仍然不接，但理由變了（BE-40／ADR-029）。
+
+    原本的理由是「假值只會讓失敗得很難懂」——那是還沒有模擬器時的判斷：
+    拿假憑證去打真綠界一定失敗，而且失敗得莫名其妙。
+    現在假值是有目的的：ops\start-dev-ecpay-simulator.ps1 會起一支扮演綠界的
+    行程（預設 5009），ops\start-dev-hosts.ps1 -UseEcpaySimulator 會把三個 Host 的
+    Payment__ECPay__MerchantId／HashKey／HashIV（DEVFAKE 那一組）與兩個端點網址
+    指過去。要用就加那個開關，不加的話行為跟以前完全一樣。
+
+    正式碼不受影響：EcpayGateway、回呼判斷、事件、outbox、分錄全部照跑，
+    dev 只換掉本來就可設定的 CheckoutUrl／CreditDetailUrl；
+    Payment:ECPay:AllowNonEcpayEndpoints（預設 false）會擋住「正式機忘了拿掉 dev 設定」。
+
+    真憑證到手之後的接法沒變：$secretsDir\ecpay.json（格式見 docs/22 §5 必做 4 第 3 點，
     與正式機同一份格式），存在就讀出三個值注入 Payment__ECPay__MerchantId／
     HashKey／HashIV，不存在就跳過。正式機那半（ops/deploy.ps1）已經接好了。
 #>

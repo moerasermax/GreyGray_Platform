@@ -18,9 +18,13 @@ internal sealed class EcpayGateway(
         Money amount,
         string description,
         Uri returnUrl,
+        Uri clientBackUrl,
         DateTimeOffset createdAt)
     {
-        var taipei = TimeZoneInfo.ConvertTimeBySystemTimeZoneId(createdAt, "Asia/Taipei");
+        // 為什麼不用 ConvertTimeBySystemTimeZoneId(createdAt, "Asia/Taipei")：見 TaipeiTime 的註解。
+        // 那個寫法在 Windows ＋ InvariantGlobalization 下丟 TimeZoneNotFoundException，
+        // 也就是說付款發動從來沒有成功過（BE-40 的第一條測試才撞到）。換算結果不變。
+        var taipei = TimeZoneInfo.ConvertTime(createdAt, TaipeiTime.Zone);
         var fields = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["MerchantID"] = settings.MerchantId,
@@ -32,6 +36,9 @@ internal sealed class EcpayGateway(
             ["TradeDesc"] = Normalize(description, 200, "GreyGray order"),
             ["ItemName"] = Normalize(description, 400, "GreyGray order"),
             ["ReturnURL"] = returnUrl.AbsoluteUri,
+            // 綠界完成頁的「返回商店」按鈕。少了它，客人付完款就停在綠界頁上沒有路回來（#33）。
+            // 它跟其他欄位一樣要進 CheckMacValue，所以放在算簽章之前。
+            ["ClientBackURL"] = clientBackUrl.AbsoluteUri,
             ["ChoosePayment"] = "ALL",
             ["EncryptType"] = "1",
         };

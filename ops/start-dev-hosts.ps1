@@ -19,6 +19,12 @@ param(
     [int]$AdminPort = 5001,
     [int]$PostgreSqlPort = 5432,
     [int]$GarnetPort = 6379,
+    # 前台（Next dev server）對外的 port。綠界完成頁的「返回商店」要導回這裡，
+    # 所以 Host 得知道它——Storefront:PublicOrigin 缺了的話付款端點會明確地炸（#33）。
+    [int]$StorefrontPublicPort = 5002,
+    # dev 綠界模擬器（ADR-029）。不加這個開關，行為跟以前完全一樣。
+    [switch]$UseEcpaySimulator,
+    [int]$EcpaySimulatorPort = 5009,
     [int]$StartupTimeoutSeconds = 45
 )
 
@@ -117,9 +123,48 @@ function Wait-HealthOk {
     throw "$Name 的 http://127.0.0.1:$Port/health 在 $StartupTimeoutSeconds 秒內沒有回應。"
 }
 
+# ── dev 綠界模擬器（ADR-029）────────────────────────────────────────────────
+#
+# 假的不是我們的 adapter，假的是綠界的伺服器。這裡只換掉「本來就可設定」的兩個端點網址，
+# 外加明確打開 AllowNonEcpayEndpoints——正式機忘了拿掉這些設定會在 DI 解析期立刻炸。
+# 換回正式綠界 ＝ 不加 -UseEcpaySimulator ＋ 真憑證。沒有任何一行程式碼要改。
+#
+# 退款跑在 Worker（Payment.Infra/OrderingEventHandlers），所以三個 Host 都要拿到這一組。
+$ecpayEnv = @{}
+if ($UseEcpaySimulator) {
+    & (Join-Path $PSScriptRoot 'start-dev-ecpay-simulator.ps1') `
+        -InstallRoot $InstallRoot -Configuration $Configuration -Port $EcpaySimulatorPort `
+        -StartupTimeoutSeconds $StartupTimeoutSeconds | Out-Null
+
+    # 環境已經有值就沿用：Leader 手動投遞過真憑證時，不要被腳本裡的假值蓋掉。
+    $ecpayDefaults = @{
+        'Payment__ECPay__MerchantId' = 'DEVFAKE0000'
+        'Payment__ECPay__HashKey'    = 'DEVFAKEHASHKEY01'
+        'Payment__ECPay__HashIV'     = 'DEVFAKEHASHIV001'
+    }
+    foreach ($key in $ecpayDefaults.Keys) {
+        $existing = [Environment]::GetEnvironmentVariable($key, 'Process')
+        $ecpayEnv[$key] = if ([string]::IsNullOrWhiteSpace($existing)) { $ecpayDefaults[$key] } else { $existing }
+    }
+    $ecpayEnv['Payment__ECPay__CheckoutUrl'] = "http://127.0.0.1:$EcpaySimulatorPort/Cashier/AioCheckOut/V5"
+    $ecpayEnv['Payment__ECPay__CreditDetailUrl'] = "http://127.0.0.1:$EcpaySimulatorPort/CreditDetail/DoAction"
+    $ecpayEnv['Payment__ECPay__AllowNonEcpayEndpoints'] = 'true'
+    Write-Host "已接上綠界模擬器（port $EcpaySimulatorPort），三個 Host 都會拿到 DEVFAKE 那一組設定。"
+}
+
+function Add-EcpayEnvironment {
+    param([Parameter(Mandatory)][hashtable]$Environment)
+    foreach ($key in $ecpayEnv.Keys) { $Environment[$key] = $ecpayEnv[$key] }
+    return $Environment
+}
+
 $storefrontEnv = $sharedConnectionStrings.Clone()
+# 綠界完成頁「返回商店」要導回的前台位址（#33）。刻意用 127.0.0.1 而不是 localhost：
+# cookie 依 hostname 隔離，猜錯的話 /payment/result 會拿 401，症狀看起來像「登入壞了」。
+$storefrontEnv['Storefront__PublicOrigin'] = "http://127.0.0.1:$StorefrontPublicPort"
 $storefrontEnv['ASPNETCORE_ENVIRONMENT'] = 'Development'
 $storefrontEnv['ASPNETCORE_URLS'] = "http://127.0.0.1:$StorefrontPort"
+$storefrontEnv = Add-EcpayEnvironment -Environment $storefrontEnv
 $storefrontPid = Start-DevHost -Name 'storefront' -ProjectName 'GreyGray.Api.Storefront' -Environment $storefrontEnv
 $storefrontHealth = Wait-HealthOk -Port $StorefrontPort -ProcessId $storefrontPid -Name 'storefront'
 Write-Host "PASS storefront /health（PID $storefrontPid）：$storefrontHealth"
@@ -127,6 +172,7 @@ Write-Host "PASS storefront /health（PID $storefrontPid）：$storefrontHealth"
 $adminEnv = $sharedConnectionStrings.Clone()
 $adminEnv['ASPNETCORE_ENVIRONMENT'] = 'Development'
 $adminEnv['ASPNETCORE_URLS'] = "http://127.0.0.1:$AdminPort"
+$adminEnv = Add-EcpayEnvironment -Environment $adminEnv
 $adminPid = Start-DevHost -Name 'admin' -ProjectName 'GreyGray.Api.Admin' -Environment $adminEnv
 $adminHealth = Wait-HealthOk -Port $AdminPort -ProcessId $adminPid -Name 'admin'
 Write-Host "PASS admin /health（PID $adminPid）：$adminHealth"
@@ -136,6 +182,7 @@ Write-Host "PASS admin /health（PID $adminPid）：$adminHealth"
 # 「健康」在這裡等於「啟動驗證沒有丟例外，行程持續存活」，不是打某個 /health。
 $workerEnv = $sharedConnectionStrings.Clone()
 $workerEnv['DOTNET_ENVIRONMENT'] = 'Development'
+$workerEnv = Add-EcpayEnvironment -Environment $workerEnv
 $workerPid = Start-DevHost -Name 'worker' -ProjectName 'GreyGray.Worker' -Environment $workerEnv
 Start-Sleep -Seconds 5
 if ($null -eq (Get-Process -Id $workerPid -ErrorAction SilentlyContinue)) {
@@ -143,4 +190,5 @@ if ($null -eq (Get-Process -Id $workerPid -ErrorAction SilentlyContinue)) {
 }
 Write-Host "PASS worker 存活（PID $workerPid，無 HTTP listener，屬設計如此，見 Program.cs 註解與 service-manifest.ps1）"
 
-Write-Host "PASS 三個 Host 都起來了：storefront=$StorefrontPort admin=$AdminPort worker(no port)"
+$ecpayNote = if ($UseEcpaySimulator) { "，綠界模擬器=$EcpaySimulatorPort" } else { '' }
+Write-Host "PASS 三個 Host 都起來了：storefront=$StorefrontPort admin=$AdminPort worker(no port)$ecpayNote"

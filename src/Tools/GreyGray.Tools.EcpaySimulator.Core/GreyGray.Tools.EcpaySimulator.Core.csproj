@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>GreyGray.Tools.EcpaySimulator.Core</RootNamespace>
+    <ModuleLayer>Host</ModuleLayer>
+  </PropertyGroup>
+
+  <!--
+    綠界模擬器的純函式層。刻意跟 Web 那半分開：測試專案（GreyGray.M1a.PaymentLedger.Tests）
+    是 Microsoft.NET.Sdk，直接參考 Microsoft.NET.Sdk.Web 專案會把 ASP.NET Core 的框架相依
+    帶進測試行程；純函式擺這裡，測試只吃得到 BCL。
+    只參考 Payment.Infra，為的是重用 EcpayGateway.ComputeCheckMacValue（走 InternalsVisibleTo）——
+    模擬器不自己抄一份簽章演算法，兩份會漂移，而官方向量只釘住其中一份。
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\Modules\Payment\GreyGray.Modules.Payment.Infra\GreyGray.Modules.Payment.Infra.csproj" />
+  </ItemGroup>
+
+</Project>

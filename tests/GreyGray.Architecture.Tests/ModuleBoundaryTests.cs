@@ -35,6 +35,10 @@ public sealed class ModuleBoundaryTests
     private static readonly string[] Hosts =
     [
         "GreyGray.Api.Storefront", "GreyGray.Api.Admin", "GreyGray.Worker", "GreyGray.Tools.StaffBootstrap",
+        // dev 用的綠界模擬器（ADR-029）。它跟其他組合根受同一條規則管：可以參考 *.Infra，
+        // 不得直接參考任何模組的 *.Core。Web 那半（GreyGray.Tools.EcpaySimulator）只參考
+        // 自己的 .Core 純函式層，對模組的相依集中在 .Core 一個地方。
+        "GreyGray.Tools.EcpaySimulator", "GreyGray.Tools.EcpaySimulator.Core",
     ];
 
     /// <summary>Contracts 不該碰到的套件。出現任何一個都代表持久層或 Web 相依漏進了公開契約。</summary>
