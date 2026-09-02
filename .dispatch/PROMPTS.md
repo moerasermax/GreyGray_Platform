@@ -1,7 +1,9 @@
 # 啟動 prompt
 
-**生效中的派工（2026-09-02 晚，第二十九波，兩棵樹各一包並行）：後端 BE-40、前端 FE-25。**
-啟動 prompt 在下面「BE-40 的啟動 prompt」與「FE-25 的啟動 prompt」兩節。
+**目前沒有生效中的派工（2026-09-02 晚：第二十九波 BE-40／FE-25 都已驗收撤包）。**
+兩包的啟動 prompt 保留在下面「BE-40 的啟動 prompt」與「FE-25 的啟動 prompt」兩節供下一包參考格式。
+下一波候選（見 `GreyGray_PM/00-進度總表.md`「下一步」）：#36 登出後訪客加不進購物車、#37 純現貨／純預購結帳 500、
+`TaipeiTime` 三份合一搬到 Shared.Kernel、D3 第 5 條「資料能重置」。派之前先看文末「下一波派工前」。
 
 ★ **BE-40**：使用者拍板「先做 dev 模擬付款，但要能隨時換回 adapter」。Leader 的裁決（ADR-029）是
 **假的是綠界的伺服器**——獨立行程的模擬器，`EcpayGateway` 與回呼判斷一個位元組不動，dev 只把
@@ -55,7 +57,7 @@ storefront `GET /v1/cart`、`POST /v1/cart/lines`，**以及 admin `GET /v1/orde
 
 ---
 
-## BE-40 的啟動 prompt（生效中）
+## BE-40 的啟動 prompt（已撤包，保留供參考）
 
 ```
 專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
@@ -110,7 +112,7 @@ git checkout -- .、以及 git commit。
 
 ---
 
-## FE-25 的啟動 prompt（生效中）
+## FE-25 的啟動 prompt（已撤包，保留供參考）
 
 ```
 專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe
