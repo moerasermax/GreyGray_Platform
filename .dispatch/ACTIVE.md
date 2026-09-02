@@ -70,8 +70,13 @@ allow: ops/deploy.ps1
 allow: ops/build-frontends.ps1
 allow: ops/build.ps1
 allow: ops/lib/Node.ps1
+allow: ops/self-test.ps1
+allow: .github/workflows/ci.yml
 
 > `M1aEndpoints.cs` 只准動 `MapPayment` 那段與新的靜態方法；`docs/14-環境整備runbook.md` 走 docs/ 全域放行。
+> 第一輪交付後 Leader 補授權（2026-09-03）：`ops/self-test.ps1` 第 102／126 行那兩處 `deploy.ps1 -ValidateOnly` 補上兩個 origin 參數；
+> `.github/workflows/ci.yml` 第 71 行那個真建置補 `-FrontendRoot`／兩個 API base（用正式網址 `https://greygray.shop`／`https://admin.greygray.shop`）。
+> `-ValidateOnly` 缺 URL 印出不 throw：Leader 接受。
 
 ---
 
