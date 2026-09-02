@@ -50,13 +50,37 @@ function Resolve-PnpmCommand {
 }
 
 function Invoke-PnpmCommand {
-    <# pnpm 通常是 .cmd，不能直接交給 ProcessStartInfo。先保存完整 output/exit code，再 throw。 #>
+    <#
+        pnpm 通常是 .cmd，不能直接交給 ProcessStartInfo。先保存完整 output/exit code，再 throw。
+
+        -Environment（BE-42）：只在這一次呼叫期間存在的環境變數。
+        `next build` 要的 NEXT_PUBLIC_* 兩個 app 值不一樣，所以不能一次設好跑到底。
+        為什麼是「改本行程再還原」而不是 Start-Process -Environment：pnpm 是 .cmd，
+        要靠 PowerShell 的呼叫運算子才跑得起來（見上面那句），而 -Environment 是
+        PowerShell 7 才有的參數，這支腳本要維持 5.1 可讀。
+        還原**一定**要用 Remove-Item Env:——#38 的教訓：把 $null 塞回 Set-Item／
+        [Environment]::SetEnvironmentVariable 會留下一個「存在但是空字串」的變數，
+        那比不存在更難查（Test-Path Env:X 是 True，值卻是空的）。
+    #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$PnpmPath,
         [string[]]$ArgumentList = @(),
-        [Parameter(Mandatory)][string]$WorkingDirectory
+        [Parameter(Mandatory)][string]$WorkingDirectory,
+        [hashtable]$Environment = @{}
     )
+
+    $previousValues = @{}
+    $absentKeys = @()
+    foreach ($key in $Environment.Keys) {
+        if (Test-Path -LiteralPath "Env:$key") {
+            $previousValues[$key] = (Get-Item -LiteralPath "Env:$key").Value
+        }
+        else {
+            $absentKeys += $key
+        }
+        Set-Item -LiteralPath "Env:$key" -Value ([string]$Environment[$key])
+    }
 
     $previousPreference = $ErrorActionPreference
     try {
@@ -68,7 +92,15 @@ function Invoke-PnpmCommand {
         }
         finally { Pop-Location }
     }
-    finally { $ErrorActionPreference = $previousPreference }
+    finally {
+        $ErrorActionPreference = $previousPreference
+        foreach ($key in $previousValues.Keys) {
+            Set-Item -LiteralPath "Env:$key" -Value $previousValues[$key]
+        }
+        foreach ($key in $absentKeys) {
+            Remove-Item -LiteralPath "Env:$key" -ErrorAction SilentlyContinue
+        }
+    }
 
     foreach ($line in $output) { Write-Host ([string]$line) }
     if ($exitCode -ne 0) {

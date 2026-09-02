@@ -26,6 +26,12 @@ param(
     # 前台（Next dev server）對外的 port。綠界完成頁的「返回商店」要導回這裡，
     # 所以 Host 得知道它——Storefront:PublicOrigin 缺了的話付款端點會明確地炸（#33）。
     [int]$StorefrontPublicPort = 5002,
+    # BE-42：綠界 ReturnURL（伺服器對伺服器的回呼）要用的對外 API origin。
+    # dev 預設不給——模擬器跟 Host 同一台，Host 用這一次請求的 scheme/host 組出來的
+    # http://127.0.0.1:5000/v1/webhooks/ecpay 本來就是對的。
+    # 只有在把 5000 透過通道露出去、要打真的綠界測試站時才需要指定
+    # （例如 -StorefrontPublicApiOrigin https://xxx.trycloudflare.com）。
+    [string]$StorefrontPublicApiOrigin,
     # dev 綠界模擬器（ADR-029）。不加這個開關，行為跟以前完全一樣。
     [switch]$UseEcpaySimulator,
     [int]$EcpaySimulatorPort = 5009,
@@ -166,6 +172,10 @@ $storefrontEnv = $sharedConnectionStrings.Clone()
 # 綠界完成頁「返回商店」要導回的前台位址（#33）。刻意用 127.0.0.1 而不是 localhost：
 # cookie 依 hostname 隔離，猜錯的話 /payment/result 會拿 401，症狀看起來像「登入壞了」。
 $storefrontEnv['Storefront__PublicOrigin'] = "http://127.0.0.1:$StorefrontPublicPort"
+if (-not [string]::IsNullOrWhiteSpace($StorefrontPublicApiOrigin)) {
+    $storefrontEnv['Storefront__PublicApiOrigin'] = $StorefrontPublicApiOrigin.TrimEnd('/')
+    Write-Host "綠界 ReturnURL 將用 $($StorefrontPublicApiOrigin.TrimEnd('/'))/v1/webhooks/ecpay（不給這個參數就用請求的 scheme/host）。"
+}
 $storefrontEnv['ASPNETCORE_ENVIRONMENT'] = 'Development'
 $storefrontEnv['ASPNETCORE_URLS'] = "http://127.0.0.1:$StorefrontPort"
 $storefrontEnv = Add-EcpayEnvironment -Environment $storefrontEnv

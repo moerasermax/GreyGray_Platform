@@ -357,3 +357,132 @@ sc.exe start GreyGray-Garnet
 複製——順序反過來，複製出來的檔案一樣不會繼承到 ACL，等於重演一次這個坑。
 `ops/verify-environment.ps1` 也新增了 `<service> binPath 服務帳號可讀取` 這個
 檢查項，直接驗這個根因，不必等服務啟動失敗才發現。
+
+## 11. 2026-09-02 BE-42：部署五個 app 服務（開發機產 artifact → 送到 YC → `deploy.ps1`）
+
+到目前為止，YC 上只有 `GreyGray-PostgreSQL` 與 `GreyGray-Garnet` 兩個服務在跑；
+五個 app 服務（`GreyGray-Storefront`／`GreyGray-Admin`／`GreyGray-Worker`／
+`GreyGray-Web-Storefront`／`GreyGray-Web-Admin`）都還沒登記過，`deploy.ps1` 也從沒真的跑過。
+這一節是「第一次跑」要打的完整指令。
+
+拓樸是 ADR-031：前台網頁與它的 API **同一個主機名稱**（`greygray.shop`，`/v1/*` 進 5000、
+其餘進 5002），後台 `admin.greygray.shop`（`/v1/*` 進 5001、其餘進 5003）。
+所以下面前台的 `-StorefrontPublicOrigin`、`-StorefrontPublicApiOrigin` 與
+`-StorefrontApiBaseUrl` 三個參數是同一個值——**這不是抄錯**。
+通道（cloudflared）怎麼接不在這一節。
+
+### 11.1 開發機：產 artifact
+
+可部署的前端在**前端 worktree**（`GreyGray_Platform-fe\frontend`），不是後端樹裡的
+`frontend\`（那一份是舊的）。API base 是 `next build` 當下 inline 進 bundle 的
+（`NEXT_PUBLIC_*`），事後改不了，所以要在這裡就給對。
+
+```powershell
+# 前端樹的 dev server 要先停掉（它跟建置共用 .next\）
+.\ops\build.ps1 -Configuration Release -Publish `
+    -FrontendRoot 'D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe\frontend' `
+    -StorefrontApiBaseUrl 'https://greygray.shop' `
+    -AdminApiBaseUrl 'https://admin.greygray.shop'
+```
+
+- 兩個 API base **沒給就直接 throw**：正式 artifact 不准默默吃到 `.env.local` 的
+  開發機位址（`http://127.0.0.1:5000`／`5001`）——那種錯不會讓建置失敗，
+  要到正式站整站打不通 API 才會發現。
+- 兩個 app 是**各自**建的（`pnpm --filter @greygray/storefront build` 等），因為兩個值不一樣；
+  共用的 `packages/*` 先一次建完。
+- 建完會 grep artifact 自己：該有的 API base 要在、`127.0.0.1:5000`／`5001` 一個都不准在，
+  否則 throw 並拒絕產出。
+- 產物在 `artifacts\`，五個目錄：`GreyGray.Api.Storefront`／`GreyGray.Api.Admin`／
+  `GreyGray.Worker`／`GreyGray.Web.Storefront`／`GreyGray.Web.Admin`。
+
+只想確認參數解析而不建置：
+
+```powershell
+.\ops\build-frontends.ps1 -ValidateOnly `
+    -FrontendRoot '...\GreyGray_Platform-fe\frontend' `
+    -StorefrontApiBaseUrl 'https://greygray.shop' `
+    -AdminApiBaseUrl 'https://admin.greygray.shop'
+```
+
+### 11.2 把 artifact 送到 YC
+
+YC 是 `192.168.0.92`，同一個內網。用 robocopy（`/MIR` 會鏡像，舊版多出來的檔案會被刪掉，
+這正是要的——`publish -o` 不會自己清）：
+
+```powershell
+robocopy .\artifacts \\192.168.0.92\C$\GreyGray\incoming /MIR /R:2 /W:2
+```
+
+`robocopy` 的 exit code **小於 8 都算成功**（1 = 有複製檔案），不要直接用
+`if ($LASTEXITCODE -ne 0) { throw }` 判斷。沒有管理共用可用時改走 SSH：
+`scp -r .\artifacts <user>@192.168.0.92:C:/GreyGray/incoming`。
+
+### 11.3 YC：`deploy.ps1`
+
+**YC 只有 Windows PowerShell 5.1，沒有 pwsh**，而且實際部署必須在**系統管理員** PowerShell
+執行。`deploy.ps1` 不建置（正式機不得建置），只做「artifact → 版本化 release → NSSM」。
+
+先確認機密就位（`C:\GreyGray\secrets\`）：
+
+| 檔案 | 內容 | 沒有的話 |
+|---|---|---|
+| `ecpay.json` | `{ "MerchantId": "...", "HashKey": "...", "HashIV": "..." }` | 不注入 `Payment__ECPay__*`，Payment 模組會在 DI 解析期明確報缺設定 |
+| `module-role.password`、`identity-dataprotection.key` | `deploy.ps1` 自己生成並重用 | — |
+
+**正式商店代號（E3）到手之前**，`ecpay.json` 先放綠界官方文件公開的「特店測試資料」
+（MerchantID `3002607`、HashKey `pwFHCqoQZGmho4w6`、HashIV `EkRm7iFT261dpevs`，
+見 <https://developers.ecpay.com.tw/?p=2856>）。這樣可以把整條金流路徑串通、用測試卡付款，
+而不會產生真的帳。憑證到手之後**只換這個檔案**，不必改任何程式。
+
+```powershell
+# 系統管理員 PowerShell（5.1）
+$svc = Get-Credential GreyGraySvc            # 服務執行帳號
+$mig = Get-Credential postgres               # migration 用的高權限帳號（只活在子呼叫）
+.\ops\deploy.ps1 `
+    -ArtifactRoot 'C:\GreyGray\incoming' `
+    -InstallRoot 'C:\GreyGray' `
+    -NssmPath 'C:\GreyGray\bin\nssm.exe' `
+    -ServiceCredential $svc `
+    -MigrationCredential $mig `
+    -MigrationFiles @(
+        'db\migrations\0001_schemas_and_roles.sql',
+        # …一路列到目前最新的一份；腳本刻意不猜哪些已經套用過
+        'db\migrations\0017_....sql'
+    ) `
+    -StorefrontPublicOrigin 'https://greygray.shop' `
+    -StorefrontPublicApiOrigin 'https://greygray.shop'
+```
+
+兩個 origin 是 **Mandatory**，而且要是絕對 `https`、不帶結尾斜線、不帶路徑，不合就 throw：
+
+- `Storefront__PublicOrigin`（#33）→ 綠界完成頁「返回商店」按鈕導回
+  `{origin}/payment/result?orderId=…`。
+- `Storefront__PublicApiOrigin`（BE-42）→ 綠界的 `ReturnURL`（伺服器對伺服器的付款結果回呼）
+  `{origin}/v1/webhooks/ecpay`。**通道後面 `Request.Host` 是 `127.0.0.1:5000`**，
+  不由設定指定的話綠界永遠打不回來，而且不會有任何錯誤訊息——症狀只是「付款一直停在待付款」。
+  綠界要求 `ReturnURL` 對外可達且只准 80／443。
+
+兩個都**只注給 `GreyGray-Storefront`**；Admin／Worker 不碰這兩條路。
+不給預設值是刻意的（跟 #33 同一個原則）：正式機猜錯網址的兩種症狀
+（付不了款、付完回不了商店）都不會有錯誤訊息。
+
+先 dry-run 一次（不碰 NSSM／排程／DB，一般權限就能跑）：
+
+```powershell
+.\ops\deploy.ps1 -ArtifactRoot 'C:\GreyGray\incoming' -InstallRoot 'C:\GreyGray' `
+    -NssmPath 'C:\GreyGray\bin\nssm.exe' -ServiceCredential $svc -SkipMigrations -ValidateOnly `
+    -StorefrontPublicOrigin 'https://greygray.shop' -StorefrontPublicApiOrigin 'https://greygray.shop'
+```
+
+### 11.4 部署後檢查
+
+```powershell
+Get-Service GreyGray-* | Format-Table Name, Status
+Invoke-WebRequest http://127.0.0.1:5000/health -UseBasicParsing   # Storefront
+Invoke-WebRequest http://127.0.0.1:5001/health -UseBasicParsing   # Admin
+# 確認兩個 origin 只出現在 Storefront 上
+C:\GreyGray\bin\nssm.exe get GreyGray-Storefront AppEnvironmentExtra
+```
+
+五個服務都 `Running`、兩個 `/health` 都 200、`GreyGray-Worker` 沒有 port
+（設計如此，見 `service-manifest.ps1` 的 `Port = 0`）才算過。

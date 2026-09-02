@@ -13,11 +13,25 @@ param(
 
     [string]$NodePath,
 
-    [string]$PnpmPath
+    [string]$PnpmPath,
+
+    # BE-42：-Publish 時要建的前端在哪一棵樹（可部署的前端在 -fe worktree），
+    # 以及兩個 app 各自的 API base。API base 沒給就 throw——見下面那一段。
+    [string]$FrontendRoot,
+
+    [string]$StorefrontApiBaseUrl,
+
+    [string]$AdminApiBaseUrl
 )
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
+
+# API base 是建置期 inline 進 bundle 的，事後補不回來；沒給就在**最前面**停，
+# 不要先花十幾分鐘建置與跑完整測試，最後才發現參數不齊。
+if ($Publish -and (-not $StorefrontApiBaseUrl -or -not $AdminApiBaseUrl)) {
+    throw '-Publish 必須同時給 -StorefrontApiBaseUrl 與 -AdminApiBaseUrl（ADR-031：https://greygray.shop 與 https://admin.greygray.shop）；正式 artifact 不准吃 .env.local 的開發機位址。'
+}
 
 dotnet build "$repo\GreyGray.slnx" -c $Configuration --nologo
 if ($LASTEXITCODE -ne 0) { throw "建置失敗。" }
@@ -29,8 +43,11 @@ if (-not $Publish) { return }
 
 # 前端是兩個 Next standalone 常駐服務。node/pnpm 任一缺失都要在改動 artifacts 前明確失敗。
 $frontendBuild = @{
-    OutputRoot = (Join-Path $repo 'artifacts')
+    OutputRoot           = (Join-Path $repo 'artifacts')
+    StorefrontApiBaseUrl = $StorefrontApiBaseUrl
+    AdminApiBaseUrl      = $AdminApiBaseUrl
 }
+if ($FrontendRoot) { $frontendBuild.FrontendRoot = $FrontendRoot }
 if ($NodePath) { $frontendBuild.NodePath = $NodePath }
 if ($PnpmPath) { $frontendBuild.PnpmPath = $PnpmPath }
 & "$PSScriptRoot\build-frontends.ps1" @frontendBuild

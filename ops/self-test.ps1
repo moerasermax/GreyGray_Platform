@@ -10,15 +10,56 @@ $repo = Split-Path -Parent $PSScriptRoot
 . "$PSScriptRoot\lib\Process.ps1"
 . "$PSScriptRoot\lib\Deployment.ps1"
 
+# AST 解析：先以 UTF-8 讀進來，再 ParseInput——**不要**用 ParseFile。
+#
+# ParseFile 對「沒有 BOM」的檔案是照**系統 ANSI 代碼頁**讀的。這個 repo 的原始檔一律 UTF-8，
+# 其中幾支 dev-only 腳本刻意沒有 BOM；在中文 Windows（ACP=big5，開發機與 YC 都是）上，
+# UTF-8 的中文位元組會被 big5 重新分組成雙位元組字元，分出來的位元組可能剛好是 " 或 \，
+# 於是完全合法的腳本被判成語法錯誤。BE-42 第二輪實測：五支無 BOM 的在 5.1 全紅、在 7 全綠
+# （7 一律當 UTF-8 讀）。明確指定編碼之後，5.1 與 7 讀到的是同一份文字。
+# ReadAllText 有 BOM 時會自己去掉它，所以兩種檔案都吃得下。
 $parseFailures = @()
-foreach ($script in Get-ChildItem -Path $PSScriptRoot -Filter '*.ps1' -Recurse -File) {
+$scripts = @(Get-ChildItem -Path $PSScriptRoot -Filter '*.ps1' -Recurse -File)
+if ($scripts.Count -eq 0) { throw 'ops 底下找不到任何 *.ps1——這一項等於什麼都沒查。' }
+foreach ($script in $scripts) {
     $tokens = $null
     $errors = $null
-    [void][System.Management.Automation.Language.Parser]::ParseFile($script.FullName, [ref]$tokens, [ref]$errors)
+    $scriptText = [System.IO.File]::ReadAllText($script.FullName, [System.Text.Encoding]::UTF8)
+    [void][System.Management.Automation.Language.Parser]::ParseInput(
+        $scriptText, $script.FullName, [ref]$tokens, [ref]$errors)
     if ($errors.Count -gt 0) { $parseFailures += "$($script.FullName)：$($errors.Message -join ' | ')" }
 }
 if ($parseFailures.Count -gt 0) { throw "PowerShell 靜態解析失敗：$($parseFailures -join "`n")" }
-Write-Host 'PASS PowerShell AST：所有 ops/*.ps1 無語法錯誤'
+Write-Host "PASS PowerShell AST：$($scripts.Count) 個 ops/*.ps1 以 UTF-8 讀入後無語法錯誤"
+
+# 正式機（YC）只有 Windows PowerShell 5.1，而且是中文 Windows（ACP=big5）。
+# 理由同上：5.1 讀沒有 BOM 的 UTF-8 會拆錯，所以**會在正式機上執行的腳本**一定要有 UTF-8 BOM。
+# self-test.ps1 自己也在清單裡——它就是在 5.1 上跑的那一支。
+# dev-only 腳本（檔頭 #Requires -Version 7，只在開發機用 pwsh 跑）不要求，
+# 刻意維持它們現在沒有 BOM 的樣子，不要「順手補齊」。
+$productionScripts = @(
+    'deploy.ps1', 'install-environment.ps1', 'verify-environment.ps1', 'invoke-migrations.ps1',
+    'register-prod-monitor.ps1', 'watchdog.ps1', 'environment-self-test.ps1', 'service-manifest.ps1',
+    'self-test.ps1'
+) + @(Get-ChildItem -Path (Join-Path $PSScriptRoot 'lib') -Filter '*.ps1' -File |
+    ForEach-Object { Join-Path 'lib' $_.Name })
+if ($productionScripts.Count -eq 0) { throw '正式機腳本清單是空的——這一項等於什麼都沒查。' }
+$missingBom = @()
+foreach ($relative in $productionScripts) {
+    $bomPath = Join-Path $PSScriptRoot $relative
+    if (-not (Test-Path -LiteralPath $bomPath -PathType Leaf)) {
+        throw "BOM 斷言列到了不存在的腳本：$bomPath（是清單過期了，不是檔案壞了）"
+    }
+    $prefix = New-Object byte[] 3
+    $stream = [System.IO.File]::OpenRead($bomPath)
+    try { [void]$stream.Read($prefix, 0, 3) } finally { $stream.Dispose() }
+    if ($prefix[0] -ne 0xEF -or $prefix[1] -ne 0xBB -or $prefix[2] -ne 0xBF) { $missingBom += $relative }
+}
+if ($missingBom.Count -gt 0) {
+    throw ('這些會在正式機（5.1／中文 ACP）執行的腳本沒有 UTF-8 BOM：' + ($missingBom -join '、') +
+        '。5.1 會照系統 ANSI 讀它們，中文會被拆錯，甚至拆出 " 或 \ 而變成語法錯誤。')
+}
+Write-Host "PASS 正式機腳本 BOM：$($productionScripts.Count) 支都有 UTF-8 BOM（5.1 在中文 ACP 下讀無 BOM 的 UTF-8 會拆錯）"
 
 $manifest = & "$PSScriptRoot\service-manifest.ps1"
 if ($manifest.Services.Count -ne 5) { throw 'service manifest 必須正好有五個 service。' }
@@ -101,7 +142,8 @@ try {
     try {
         & "$PSScriptRoot\deploy.ps1" -ArtifactRoot $artifactRoot -InstallRoot $installRoot `
             -NssmPath $fakeNssm -NodePath (Join-Path $tempRoot 'missing\node.exe') `
-            -ServiceCredential $credential -SkipMigrations -ValidateOnly
+            -ServiceCredential $credential -SkipMigrations -ValidateOnly `
+            -StorefrontPublicOrigin 'https://greygray.shop' -StorefrontPublicApiOrigin 'https://greygray.shop'
     }
     catch {
         $missingNodeRejected = $_.Exception.Message -match 'node\.exe' -and $_.Exception.Message -match 'M-1'
@@ -125,8 +167,41 @@ try {
 
     & "$PSScriptRoot\deploy.ps1" -ArtifactRoot $artifactRoot -InstallRoot $installRoot `
         -NssmPath $fakeNssm -NodePath $fakeNode `
-        -ServiceCredential $credential -SkipMigrations -ValidateOnly
+        -ServiceCredential $credential -SkipMigrations -ValidateOnly `
+        -StorefrontPublicOrigin 'https://greygray.shop' -StorefrontPublicApiOrigin 'https://greygray.shop'
     Write-Host 'PASS deploy 參數：ValidateOnly 未觸碰 NSSM、排程、DB 或網路'
+
+    # BE-42：兩個對外 origin 是 Mandatory，而且格式一定要驗。
+    # 這一條守的是「正式機不准猜網址」——猜錯的兩種症狀（付不了款、付完回不了商店）
+    # 都不會有錯誤訊息，只會看起來像「金流壞了」。四種壞值各代表一類真的會打錯的輸入。
+    $badOrigins = @('https://greygray.shop/', 'http://greygray.shop', 'greygray.shop', 'https://greygray.shop/v1')
+    foreach ($parameterName in @('StorefrontPublicOrigin', 'StorefrontPublicApiOrigin')) {
+        foreach ($badOrigin in $badOrigins) {
+            $deployArguments = @{
+                ArtifactRoot              = $artifactRoot
+                InstallRoot               = $installRoot
+                NssmPath                  = $fakeNssm
+                NodePath                  = $fakeNode
+                ServiceCredential         = $credential
+                StorefrontPublicOrigin    = 'https://greygray.shop'
+                StorefrontPublicApiOrigin = 'https://greygray.shop'
+            }
+            $deployArguments[$parameterName] = $badOrigin
+            $badOriginRejected = $false
+            try {
+                & "$PSScriptRoot\deploy.ps1" @deployArguments -SkipMigrations -ValidateOnly
+            }
+            catch {
+                # 要求訊息指名是哪一個參數：兩個參數共用同一個驗證函式，
+                # 只看「有沒有 throw」的話，兩個值對調也會通過。
+                $badOriginRejected = $_.Exception.Message -match $parameterName
+            }
+            if (-not $badOriginRejected) {
+                throw "deploy 接受了不合法的 -$parameterName（$badOrigin），或錯誤訊息沒指名參數。"
+            }
+        }
+    }
+    Write-Host 'PASS deploy 對外 origin 負向測試：兩個參數 × 四種壞值（結尾斜線／非 https／相對網址／帶路徑）全部擋下'
 
     & "$PSScriptRoot\invoke-migrations.ps1" `
         -MigrationFiles @(

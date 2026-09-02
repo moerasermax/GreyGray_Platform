@@ -66,9 +66,12 @@ jobs:
         shell: pwsh
         run: dotnet build .\GreyGray.slnx -c Release --no-restore --nologo
 
+      # 這條分支的 frontend/ 是 FE-1 骨架，可部署的前端在 feat/frontend-wave-1；
+      # 正式 artifact 由 build.ps1 -Publish -FrontendRoot <前端樹> 產生（docs/14 §11）。
+      # 兩條分支合併後改回真建置。
       - name: Build Next standalone deployment artifacts
         shell: powershell
-        run: .\ops\build-frontends.ps1 -OutputRoot "$env:RUNNER_TEMP\greygray-artifacts"
+        run: .\ops\build-frontends.ps1 -ValidateOnly -OutputRoot "$env:RUNNER_TEMP\greygray-artifacts" -StorefrontApiBaseUrl https://greygray.shop -AdminApiBaseUrl https://admin.greygray.shop
 
       - name: Validate deployment scripts without deploying
         shell: powershell

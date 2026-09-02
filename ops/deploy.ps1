@@ -8,6 +8,13 @@ param(
     [Parameter(Mandatory)][string]$InstallRoot,
     [Parameter(Mandatory)][string]$NssmPath,
     [Parameter(Mandatory)][pscredential]$ServiceCredential,
+    # 前台網頁的對外 origin（綠界完成頁「返回商店」用，#33）與前台 API 的對外 origin
+    # （綠界 ReturnURL 用，BE-42）。ADR-031 的拓樸下兩者同一個主機名稱，
+    # 但仍然分成兩個參數：日後若把 API 拆到別的主機名稱，這裡不必再改一次腳本。
+    # 刻意是 Mandatory：正式機不准猜網址（跟 #33「不預設 localhost」同一個原則）——
+    # 猜錯的話症狀是「付款永遠停在待付款」或「付完款回不了商店」，兩個都不會有錯誤訊息。
+    [Parameter(Mandatory)][string]$StorefrontPublicOrigin,
+    [Parameter(Mandatory)][string]$StorefrontPublicApiOrigin,
     [string]$NodePath,
     [pscredential]$MigrationCredential,
     [string[]]$MigrationFiles = @(),
@@ -35,6 +42,39 @@ $repo = Split-Path -Parent $PSScriptRoot
 . "$PSScriptRoot\lib\Secrets.ps1"
 $manifestPath = "$PSScriptRoot\service-manifest.ps1"
 $manifest = & $manifestPath
+
+function Assert-PublicOrigin {
+    <#
+        正式機的對外 origin：必須是絕對 https 網址、沒有結尾斜線、沒有路徑／查詢字串。
+        不自動修正而是直接 throw——這兩個值會被 Host 拿去跟 '/payment/result'、
+        '/v1/webhooks/ecpay' 直接串接，悄悄「幫忙」修掉輸入錯誤只會讓錯的部署看起來成功。
+        （Windows PowerShell 5.1 可執行：不用 ??、?.、三元運算子。）
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [string]$Value
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        throw "-$Name 不可空白；正式機的對外網址不猜。"
+    }
+    if ($Value.EndsWith('/')) {
+        throw "-$Name 不可有結尾斜線：$Value"
+    }
+    $uri = $null
+    if (-not [System.Uri]::TryCreate($Value, [System.UriKind]::Absolute, [ref]$uri)) {
+        throw "-$Name 必須是絕對網址（例如 https://greygray.shop）：$Value"
+    }
+    if ($uri.Scheme -ne 'https') {
+        throw "-$Name 必須是 https（綠界只接受 80／443，且正式機一律走 TLS）：$Value"
+    }
+    if ($uri.AbsolutePath -ne '/' -or $uri.Query -or $uri.Fragment) {
+        throw "-$Name 只接受 scheme + 主機名稱，不可帶路徑／查詢字串：$Value"
+    }
+}
+
+Assert-PublicOrigin -Name 'StorefrontPublicOrigin' -Value $StorefrontPublicOrigin
+Assert-PublicOrigin -Name 'StorefrontPublicApiOrigin' -Value $StorefrontPublicApiOrigin
 
 if ($SkipMigrations -and $MigrationFiles.Count -gt 0) { throw '-SkipMigrations 與 -MigrationFiles 不可同時使用。' }
 if (-not $SkipMigrations) {
@@ -70,6 +110,7 @@ if ($ValidateOnly) {
             -MigrationCredential $MigrationCredential -DatabaseHost $DatabaseHost `
             -DatabasePort $DatabasePort -DatabaseName $DatabaseName -PsqlPath $PsqlPath -ValidateOnly
     }
+    Write-Host "✓ 對外 origin：前台 $StorefrontPublicOrigin；前台 API $StorefrontPublicApiOrigin（只注給 GreyGray-Storefront）"
     Write-Host "✓ deploy 參數驗證通過：3 個 win-x64 self-contained + 2 個 Next standalone；node.exe=$resolvedNodePath；未碰 NSSM、排程或 YC。"
     return
 }
@@ -354,6 +395,13 @@ try {
             # NextStandalone 那兩個（上面的分支）不需要，刻意不動。
             foreach ($secretKey in $secretConnectionStrings.Keys) {
                 $environmentArguments += "$secretKey=$($secretConnectionStrings[$secretKey])"
+            }
+            # 只有前台 BFF 需要這兩個：Storefront:PublicOrigin 組綠界完成頁的
+            # ClientBackURL（#33），Storefront:PublicApiOrigin 組綠界的 ReturnURL（BE-42）。
+            # Admin／Worker 不碰這兩條路，多給只會讓「哪個服務需要什麼」更難看清楚。
+            if ($definition.Name -eq 'GreyGray-Storefront') {
+                $environmentArguments += "Storefront__PublicOrigin=$StorefrontPublicOrigin"
+                $environmentArguments += "Storefront__PublicApiOrigin=$StorefrontPublicApiOrigin"
             }
         }
         if ($definition.Kind -eq 'DotNet' -and [int]$definition.Port -gt 0) {

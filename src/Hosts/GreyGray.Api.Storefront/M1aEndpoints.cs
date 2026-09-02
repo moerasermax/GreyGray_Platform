@@ -831,8 +831,7 @@ internal static class M1aEndpoints
                             "已取消的訂單不能付款。");
                     }
 
-                    var returnUrl = new Uri(
-                        $"{context.Request.Scheme}://{context.Request.Host}/v1/webhooks/ecpay");
+                    var returnUrl = BuildEcpayReturnUrl(configuration, context.Request);
                     return await payments.InitiateAsync(
                         new PaymentInitiationRequest(
                             id,
@@ -1133,6 +1132,46 @@ internal static class M1aEndpoints
         return new Uri(
             $"{publicOrigin.GetLeftPart(UriPartial.Path).TrimEnd('/')}" +
             $"/payment/result?orderId={orderId:N}");
+    }
+
+    /// <summary>
+    /// 組出綠界 <c>ReturnURL</c>（綠界伺服器對伺服器打回來的付款結果回呼）：
+    /// <c>{Storefront:PublicApiOrigin}/v1/webhooks/ecpay</c>；沒設這個鍵就退回用
+    /// 這一次請求的 scheme／host（dev 的行為，跟 BE-42 之前完全一樣）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 為什麼要能由設定指定：正式機在 Cloudflare Tunnel 後面，cloudflared 打的是
+    /// <c>http://127.0.0.1:5000</c>，所以 <see cref="HttpRequest.Host"/> 收到的是本機位址，
+    /// 組出來的 <c>ReturnURL</c> 綠界從外面根本打不到（綠界要求 ReturnURL 對外可達且只准 80／443）。
+    /// </para>
+    /// <para>
+    /// 為什麼<b>不</b>做成必填（跟 <c>BuildPaymentResultUrl</c> 不同）：dev 的綠界模擬器
+    /// 跟 Host 同一台，request-based 的 <c>http://127.0.0.1:5000/v1/webhooks/ecpay</c> 本來就是對的，
+    /// 逼 dev 多設一個鍵沒有換到任何安全性。反過來說，設了但格式錯就一定要炸——
+    /// 悄悄退回 request-based 的話，正式機會變成「綠界收到一個打不通的網址」，
+    /// 症狀是付款永遠停在待付款，而且沒有任何錯誤訊息。
+    /// </para>
+    /// </remarks>
+    internal static Uri BuildEcpayReturnUrl(IConfiguration configuration, HttpRequest request)
+    {
+        var origin = configuration["Storefront:PublicApiOrigin"];
+        if (string.IsNullOrWhiteSpace(origin))
+        {
+            return new Uri($"{request.Scheme}://{request.Host}/v1/webhooks/ecpay");
+        }
+
+        if (!Uri.TryCreate(origin.Trim().TrimEnd('/'), UriKind.Absolute, out var publicApiOrigin) ||
+            (publicApiOrigin.Scheme != Uri.UriSchemeHttp && publicApiOrigin.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new InvalidOperationException(
+                $"設定 'Storefront:PublicApiOrigin' 的值 '{origin}' 不是合法的對外 API 網址。" +
+                "它必須是絕對網址、scheme 為 http 或 https（例如 https://greygray.shop），" +
+                "綠界的 ReturnURL 要用它組出 /v1/webhooks/ecpay。留空則退回使用這一次請求的 scheme/host。");
+        }
+
+        return new Uri(
+            $"{publicApiOrigin.GetLeftPart(UriPartial.Path).TrimEnd('/')}/v1/webhooks/ecpay");
     }
 
     private static bool TryId(string raw, out Guid id) => Guid.TryParseExact(raw, "N", out id);
