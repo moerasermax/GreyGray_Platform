@@ -342,7 +342,10 @@ foreach ($definition in $manifest.Services) {
         $portDefinition = $definition
         $portOwnershipValidator = {
             param($token)
-            Add-Member -InputObject $token -NotePropertyName ServiceName -NotePropertyValue $portDefinition.Name
+            # -Force：同一個行程可能已經被 Get-ManagedApplicationTokens 標過 ServiceName
+            # （重複部署時，舊 PID 同時被行程名稱與 port 兩條路抓到）。Add-Member 遇到同名屬性
+            # 會發非終止性錯誤，而這支腳本 $ErrorActionPreference='Stop'，等於整個部署炸掉。
+            Add-Member -InputObject $token -NotePropertyName ServiceName -NotePropertyValue $portDefinition.Name -Force
             Test-DeploymentTokenOwnership -Token $token
         }.GetNewClosure()
         Assert-PortReleased -Port ([int]$definition.Port) -InstallRoot $installFull `
@@ -374,7 +377,24 @@ try {
             Invoke-Nssm -Arguments (@('set', $definition.Name, 'AppParameters') + $applicationArguments) | Out-Null
         }
         else {
-            Invoke-Nssm -Arguments @('reset', $definition.Name, 'AppParameters') | Out-Null
+            <#
+                三個 Kind='DotNet' 的服務 manifest 是 Arguments = @()，要的是「沒有參數」。
+                ★ 不可以用 `nssm reset <svc> AppParameters`：正式機那一版（2.24-101-g897c7ad）
+                一定 heap corruption（exit -1073740940 / 0xC0000374），而且 `set … ''` 會被當成
+                沒給值而印 usage——見 lib\Deployment.ps1 的 Clear-NssmAppParameters 註解與 YC 實測。
+                剛 install 的服務本來就沒有這個值，所以第一次部署這裡什麼都不會做。
+            #>
+            $serviceNameForGet = $definition.Name
+            $getAppParameters = {
+                $getResult = Invoke-Nssm -Arguments @('get', $serviceNameForGet, 'AppParameters') -AllowNonZeroExit
+                if ($getResult.ExitCode -ne 0) {
+                    throw "nssm get $serviceNameForGet AppParameters 失敗（exit $($getResult.ExitCode)）：$($getResult.StdErr.Trim())"
+                }
+                return $getResult.StdOut
+            }.GetNewClosure()
+            if (Clear-NssmAppParameters -ServiceName $definition.Name -GetAppParameters $getAppParameters) {
+                Write-Host "✓ $($definition.Name) 的 AppParameters 已清空（走 registry；這一版 nssm 的 reset AppParameters 會 heap corruption）"
+            }
         }
         Invoke-Nssm -Arguments @('set', $definition.Name, 'Start', 'SERVICE_AUTO_START') | Out-Null
         Invoke-Nssm -Arguments @('set', $definition.Name, 'AppExit', 'Default', 'Restart') | Out-Null
@@ -444,7 +464,17 @@ function Assert-NewApplicationProcess {
 
         foreach ($process in $candidates) {
             $token = Get-GreyGrayProcessToken -Process $process
-            if (-not (Test-ProcessStartedAfter -ProcessStartTime $process.StartTime -RestartBoundaryUtc $restartBoundaryUtc)) {
+            <#
+                $process.StartTime 對取不到權限的行程會丟 Win32Exception
+                （Get-GreyGrayProcessToken 對同一件事就是包 try/catch 的，這裡本來沒包）。
+                拿不到 StartTime 就無法證明它是本次 release 起的——當成「還不是新行程」
+                跳過、繼續輪詢到逾時，而不是讓整支部署當場炸掉。
+                注意這不會放寬判斷：證明不了就不算數，仍然拿不到綠燈。
+            #>
+            $processStartTime = $null
+            try { $processStartTime = $process.StartTime } catch { }
+            if ($null -eq $processStartTime) { continue }
+            if (-not (Test-ProcessStartedAfter -ProcessStartTime $processStartTime -RestartBoundaryUtc $restartBoundaryUtc)) {
                 throw "$($Definition.Name) 由舊 PID $($process.Id) 回應；StartTime 不晚於本次重啟，拒絕假綠。"
             }
             if ($Definition.Kind -eq 'NextStandalone') {
@@ -458,7 +488,7 @@ function Assert-NewApplicationProcess {
             }
 
             if ([int]$Definition.Port -eq 0) {
-                Write-Host "✓ $($Definition.Name) PID $($process.Id)，StartTime=$($process.StartTime.ToString('o'))"
+                Write-Host "✓ $($Definition.Name) PID $($process.Id)，StartTime=$($processStartTime.ToString('o'))"
                 return
             }
 
@@ -466,7 +496,7 @@ function Assert-NewApplicationProcess {
                 $healthUrl = "http://127.0.0.1:$($Definition.Port)$($Definition.HealthPath)"
                 $response = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 5
                 if ($response.StatusCode -eq 200) {
-                    Write-Host "✓ $($Definition.Name) $healthUrl → 200，PID $($process.Id)，StartTime=$($process.StartTime.ToString('o'))"
+                    Write-Host "✓ $($Definition.Name) $healthUrl → 200，PID $($process.Id)，StartTime=$($processStartTime.ToString('o'))"
                     return
                 }
             }

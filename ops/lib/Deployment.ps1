@@ -173,6 +173,69 @@ function Wait-ProcessTokensExit {
     }
 }
 
+function Clear-NssmAppParameters {
+    <#
+        .SYNOPSIS
+        把某個服務的 NSSM AppParameters 清空——**不透過 `nssm reset`**。
+
+        .DESCRIPTION
+        ★ NSSM 2.24-101-g897c7ad（64-bit 2017-04-26，正式機 YC 的 C:\GreyGray\bin\nssm.exe）
+        的 `nssm reset <svc> AppParameters` 一律 heap corruption。Leader 在 YC 逐一實測：
+
+            nssm reset GreyGray-Storefront AppParameters             → exit -1073740940（0xC0000374）
+            nssm set   GreyGray-Storefront AppParameters placeholder → exit 0；get 回 [placeholder]
+            nssm reset GreyGray-Storefront AppParameters             → exit -1073740940，但 get 回 []
+                                                                       （值其實清掉了，crash 在寫完之後）
+            nssm set   GreyGray-Storefront AppParameters ''          → exit 1 印 usage（空字串＝沒給值）
+            nssm reset GreyGray-Storefront AppEnvironmentExtra       → exit 0（其他參數的 reset 正常）
+
+        也就是：這個 crash 只發生在 AppParameters 這一個鍵上，而且空字串也送不進 CLI，
+        所以「用 nssm 清空 AppParameters」這件事在這一版沒有任何可用的 CLI 路徑。
+        改成直接寫 registry——nssm 自己讀的就是
+        HKLM:\SYSTEM\CurrentControlSet\Services\<svc>\Parameters 的 AppParameters 值。
+
+        流程刻意是「先問再動」：剛 `nssm install` 出來的服務本來就沒有 AppParameters，
+        那種情況什麼都不必做（也就不會有任何 registry 寫入）。真的有值才清，清完再問一次驗證。
+
+        .PARAMETER GetAppParameters
+        傳回「目前 AppParameters 值」的 scriptblock。做成參數是為了讓 self-test 能在
+        HKCU 的暫存鍵上驗這支函式，不必碰真的 nssm 或 HKLM。
+
+        .OUTPUTS
+        [bool] 有沒有真的清過（本來就是空的 → $false）。
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$ServiceName,
+        [Parameter(Mandatory)][scriptblock]$GetAppParameters,
+        [string]$ServicesRegistryRoot = 'HKLM:\SYSTEM\CurrentControlSet\Services'
+    )
+
+    <#
+        NSSM 的輸出可能帶 UTF-16 的 NUL 位元組（Invoke-NativeCommand 以 UTF-8 解碼），
+        那會讓「其實是空的」看起來非空，於是白白多寫一次 registry。先濾掉再判斷。
+    #>
+    function Get-NormalizedValue([object]$Raw) {
+        if ($null -eq $Raw) { return '' }
+        return ([string]$Raw).Replace([string][char]0, '').Trim()
+    }
+
+    $current = Get-NormalizedValue (& $GetAppParameters)
+    if ($current.Length -eq 0) { return $false }
+
+    $parametersKey = Join-Path (Join-Path $ServicesRegistryRoot $ServiceName) 'Parameters'
+    if (-not (Test-Path -LiteralPath $parametersKey)) {
+        throw "AppParameters 目前是 '$current' 但找不到 registry 鍵 $parametersKey；拒絕猜測要清哪裡。"
+    }
+    Set-ItemProperty -LiteralPath $parametersKey -Name 'AppParameters' -Value ''
+
+    $after = Get-NormalizedValue (& $GetAppParameters)
+    if ($after.Length -ne 0) {
+        throw "已寫入 $parametersKey 的 AppParameters=''，但重讀仍是 '$after'；不接受清不掉還往下走。"
+    }
+    return $true
+}
+
 function Assert-PortReleased {
     [CmdletBinding()]
     param(

@@ -182,6 +182,68 @@ finally {
     if (Test-Path -LiteralPath $cleanRoot) { Remove-Item -LiteralPath $cleanRoot -Recurse -Force }
 }
 
+<#
+    Clear-NssmAppParameters：正式機那一版 nssm（2.24-101-g897c7ad）的
+    `reset <svc> AppParameters` 一定 heap corruption（exit -1073740940），
+    所以 deploy.ps1 改成「先 get，真的有值才寫 registry 清掉，再 get 驗證」。
+
+    這裡**只在 HKCU 的暫存鍵上驗**：不碰真的 nssm、不碰 HKLM，
+    「目前值」用可注入的 scriptblock 餵進去。
+#>
+$selfTestRegistryRoot = "HKCU:\Software\GreyGray-selftest\$([guid]::NewGuid().ToString('N'))"
+try {
+    $selfTestServiceName = 'GreyGray-Selftest-Service'
+    $selfTestParametersKey = Join-Path (Join-Path $selfTestRegistryRoot $selfTestServiceName) 'Parameters'
+    New-Item -Path $selfTestParametersKey -Force | Out-Null
+    New-ItemProperty -LiteralPath $selfTestParametersKey -Name 'AppParameters' -Value 'x' -PropertyType String -Force | Out-Null
+
+    # 「目前值」直接讀那個暫存鍵，所以下面驗到的是真的寫進去了，不是回傳值自己說了算。
+    $readSelfTestValue = {
+        $item = Get-ItemProperty -LiteralPath $selfTestParametersKey -Name 'AppParameters' -ErrorAction SilentlyContinue
+        if ($null -eq $item) { return '' }
+        return [string]$item.AppParameters
+    }.GetNewClosure()
+
+    # ① 有值 → 清掉、回 $true，而且 registry 真的變空。
+    $cleared = Clear-NssmAppParameters -ServiceName $selfTestServiceName `
+        -GetAppParameters $readSelfTestValue -ServicesRegistryRoot $selfTestRegistryRoot
+    if (-not $cleared) { throw 'Clear-NssmAppParameters 對非空值應回 $true。' }
+    if ((& $readSelfTestValue) -ne '') { throw "AppParameters 應已清空，實得 '$(& $readSelfTestValue)'。" }
+
+    # ② 已經是空的（剛 nssm install 的服務）→ 什麼都不做、回 $false。
+    $clearedAgain = Clear-NssmAppParameters -ServiceName $selfTestServiceName `
+        -GetAppParameters $readSelfTestValue -ServicesRegistryRoot $selfTestRegistryRoot
+    if ($clearedAgain) { throw 'Clear-NssmAppParameters 對本來就空的值不應回報清過。' }
+
+    # ③ UTF-16 的 NUL 位元組不可以被當成「有值」——否則每次部署都白寫一次 registry。
+    $nulOnly = [string][char]0 + "`r`n"
+    $clearedNul = Clear-NssmAppParameters -ServiceName 'GreyGray-Selftest-NoSuchService' `
+        -GetAppParameters { $nulOnly }.GetNewClosure() -ServicesRegistryRoot $selfTestRegistryRoot
+    if ($clearedNul) { throw '只含 NUL／空白的輸出應視為空值。' }
+
+    # ④ 有值但找不到 registry 鍵 → 必須 throw，不可以默默跳過。
+    $missingKeyThrew = $false
+    try {
+        Clear-NssmAppParameters -ServiceName 'GreyGray-Selftest-NoSuchService' `
+            -GetAppParameters { 'still-here' } -ServicesRegistryRoot $selfTestRegistryRoot | Out-Null
+    }
+    catch { $missingKeyThrew = $true }
+    if (-not $missingKeyThrew) { throw '找不到 registry 鍵時應 throw。' }
+
+    Write-Host "PASS Clear-NssmAppParameters（host PowerShell $($PSVersionTable.PSVersion)）：有值→寫 registry 清空並回 true；已空→不動作回 false；純 NUL 視為空；缺 registry 鍵→throw（全程只碰 HKCU 暫存鍵，未觸碰 nssm 或 HKLM）"
+}
+finally {
+    $selfTestRegistryParent = 'HKCU:\Software\GreyGray-selftest'
+    if (Test-Path -LiteralPath $selfTestRegistryRoot) {
+        Remove-Item -LiteralPath $selfTestRegistryRoot -Recurse -Force
+    }
+    # 自己建的父節點空了就一起收掉，不要在使用者的 registry 留垃圾。
+    if ((Test-Path -LiteralPath $selfTestRegistryParent) -and
+        (@(Get-ChildItem -LiteralPath $selfTestRegistryParent -ErrorAction SilentlyContinue).Count -eq 0)) {
+        Remove-Item -LiteralPath $selfTestRegistryParent -Force
+    }
+}
+
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("greygray-ops-selftest-" + [guid]::NewGuid().ToString('N'))
 try {
     $artifactRoot = Join-Path $tempRoot 'artifacts'
