@@ -51,6 +51,25 @@ Leader 要明講。
 
 ---
 
+<!--
+★ 2026-09-02 已通過整合驗收並提交（前端 41e9fd7），撤包。原文保留供追溯。
+
+#32 已解：商品詳情、購物車、結帳三頁各有一條 sticky 頂部列（左返回、中頁名、
+商品頁右邊帶徽章的購物車），提示加「查看購物車」，#31 一併修掉。
+測試 248 → 317 條，typecheck／build EXIT=0（build 由 Leader 停掉 dev server 後跑，跑完重啟）。
+
+整合者真瀏覽器複驗（不採信自述）：商品頁頂部列 sticky top 0、高 56px、返回指向 /、
+徽章 8 件與購物車一致、沒有分頁列；加入購物車後徽章 8→9 就地更新、POST /v1/cart/lines 200、
+提示裡有「查看購物車」連到 /cart；/cart 標題「購物車」返回 /、/checkout 標題「結帳」返回 /cart，
+兩頁都沒有分頁列；新分頁直接打商品網址（referrer 空）按返回回到 /；body padding-bottom 仍 72px；
+開團列表與詳情頁 console 零 hydration 訊息（先塞一個標記訊息當正向對照，確認 console 抓得到）。
+
+★ 子代理五個自主判斷全對：① 第四顆圖示與既有 IconUser 逐字相同，不重複搬；
+② 徽章取數抽成共用 hook，分頁列淨減 30 行、畫面不變；③ 購物車／結帳四個狀態分支都包進頂部列，
+失敗那一頁也有出口；④ 頂部列用白名單，靠「每一條路由恰好有一種殼」的原始碼掃描測試當保證；
+⑤ 新測試第一次跑就抓到它自己寫的順序 bug（/payment/result 被 /payment/:orderId 吃掉），當場修正。
+Leader 這次有照「派工前先 commit 閘門檔」做（aeea661），子代理收工沒有再撞 stop gate。
+
 ## 生效中：FE-24　三頁的頂部列（商品詳情 · 購物車 · 結帳）＋ #31
 
 修「現在卡在哪」**#32**。FE-23 撤包後使用者接著測，問「昨天提到的加入購物車後
@@ -88,6 +107,7 @@ allow: frontend/packages/ui/src/index.ts
 > `packages/ui/src/components/` 給整個目錄是因為 `TopBar.tsx`（新檔）還不存在；
 > **只准動 `packages/ui/src/components/Toast.tsx`、`icons/index.tsx`、`Countdown.tsx` 與新檔 `TopBar.tsx`**，其餘動了會被退回。
 > `apps/storefront/app/layout.tsx` 只在你選 layout 層機制時才動。三頁各自的頁面檔案只加頂部列，不改版面與邏輯。
+-->
 
 ---
 
