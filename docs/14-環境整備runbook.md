@@ -185,7 +185,7 @@ managed block；若設定已有同名、但不在 managed block 的 target，腳
 | PostgreSQL | `Get-Service GreyGray-PostgreSQL`; `pg_isready -h 127.0.0.1 -p 5432` | 見下面「NSSM 服務」那列；不是 WAL junction 問題（§8.3 已不用這個機制） |
 | Garnet | `Get-Service GreyGray-Garnet`; `Get-NetTCPConnection -LocalPort 6379 -State Listen` | 見下面「NSSM 服務」那列 |
 | cloudflared | `Get-Service cloudflared`; `Get-Process ngrok -ErrorAction SilentlyContinue` | 這是使用者其他應用共用的 token 式通道，**不要重裝、不要改帳號**；只用 Event Viewer 看它為什麼停，並移除舊 ngrok 啟動項 |
-| `GreyGray-Tunnel` 服務／config.yml／ingress validate | `Get-Service GreyGray-Tunnel`；`Get-Content C:\GreyGray\cloudflared\config.yml`；`cloudflared tunnel ingress validate --config C:\GreyGray\cloudflared\config.yml` | 見 §12：憑證 JSON 有沒有複製進 `C:\GreyGray\cloudflared\`（ACL）、`install-tunnel.ps1` 有沒有跑過、log 在 `C:\GreyGray\logs\GreyGray-Tunnel.stdout.log` |
+| `GreyGray-Tunnel` 服務／config.yml／ingress validate | `Get-Service GreyGray-Tunnel`；`Get-Content C:\GreyGray\cloudflared\config.yml`；`cloudflared tunnel --config C:\GreyGray\cloudflared\config.yml ingress validate`（**`--config` 要放在 `ingress validate` 前面**，放後面會 `Incorrect Usage` 但仍 exit 0，看起來像過了） | 見 §12：憑證 JSON 有沒有複製進 `C:\GreyGray\cloudflared\`（ACL）、`install-tunnel.ps1` 有沒有跑過、log 在 `C:\GreyGray\logs\GreyGray-Tunnel.stdout.log` |
 | NSSM 服務（含 `GreyGray-PostgreSQL`／`GreyGray-Garnet`／五個 app service） | `Get-CimInstance Win32_Service \| Where-Object Name -like 'GreyGray-*'`；`sc.exe start <name>` 若回**錯誤 5**，先看 §10——多半是 binPath 指到的 `nssm.exe` 對服務帳號沒有讀取權，不是帳號密碼或權限指派問題 | 執行 `deploy.ps1` 接上真 artifact；不可用 LocalSystem |
 | Defender | `(Get-MpPreference).ExclusionPath` | 重跑安裝腳本或用 `Add-MpPreference` 補 data/WAL |
 | Windows Update | `Get-ItemProperty HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU` | 確認群組原則沒有覆蓋本機設定 |
@@ -565,7 +565,13 @@ $svc = Get-Credential -UserName '.\GreyGraySvc' -Message 'GreyGray 專屬 Window
    `C:\GreyGray\cloudflared\<UUID>.json`（來源檔不動）。放在 `C:\GreyGray` 底下才會繼承
    已經授予 `GreyGraySvc` 的 Modify ACL——服務讀不到自己的憑證就是 §10 那個 `sc start` 錯誤 5。
 2. 寫 `C:\GreyGray\cloudflared\config.yml`（UTF-8 無 BOM、LF），然後跑
-   `cloudflared tunnel ingress validate --config <path>`，不過就 throw：
+   `cloudflared tunnel --config <path> ingress validate`，不過就 throw：
+
+   > **`--config` 一定要放在 `ingress validate` 前面**（它是 `tunnel` 這一層的 flag，
+   > USAGE 是 `cloudflared tunnel [--config FILEPATH] ingress validate`）。放到後面會得到
+   > `Incorrect Usage: flag provided but not defined: -config`，而 cloudflared 印完 help
+   > **仍然 exit 0**——只看 exit code 會誤以為驗過了。腳本因此三件事都判：exit code 非 0、
+   > 輸出含 `Incorrect Usage`、輸出沒有獨立一行 `OK`，任何一種都 throw。
 
    ```yaml
    tunnel: <UUID>

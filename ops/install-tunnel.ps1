@@ -91,9 +91,33 @@ if ([string]::IsNullOrWhiteSpace($CloudflaredPath)) {
 $hasCloudflared = (-not [string]::IsNullOrWhiteSpace($CloudflaredPath)) -and (Test-Path -LiteralPath $CloudflaredPath -PathType Leaf)
 
 function Invoke-IngressValidate([string]$Path) {
-    <# 離線驗規則：不連線、不啟動通道。 #>
-    Invoke-NativeCommand -FilePath $CloudflaredPath `
-        -ArgumentList @('tunnel', 'ingress', 'validate', '--config', $Path) -EchoOutput | Out-Null
+    <#
+        離線驗規則：不連線、不啟動通道。通過就靜靜回來，任何一種沒驗到都 throw。
+
+        ★ `--config` 是 `tunnel` 這一層的 flag，必須放在 `ingress validate` **前面**
+        （cloudflared 自己的 USAGE：`cloudflared tunnel [--config FILEPATH] ingress validate`）。
+        放到後面會變成 `Incorrect Usage: flag provided but not defined: -config`，
+        而 cloudflared 印完 help 之後 **exit code 仍然是 0**——只看 exit code 會以為驗過了，
+        其實一條規則都沒驗。BE-43 第一、二輪就是這樣：兩條路都印了「PASS ... ingress validate」，
+        而那個 PASS 是假的（Leader 在 YC 用 cloudflared 2026.8.2 實測出來的）。
+
+        所以這裡三件事都要判，缺一不可：
+          ① exit code 非 0        → 真的驗失敗（例如最後一條 ingress 帶了 hostname），訊息在 stderr
+          ② 輸出含 Incorrect Usage → 用法錯了，根本沒驗（exit 0 騙不過這一條）
+          ③ 輸出沒有獨立一行 OK    → 沒看到成功訊號就不算過，不要對「安靜的成功」給好處
+    #>
+    $result = Invoke-NativeCommand -FilePath $CloudflaredPath `
+        -ArgumentList @('tunnel', '--config', $Path, 'ingress', 'validate') -AllowNonZeroExit -EchoOutput
+    $output = (@($result.StdOut, $result.StdErr) -join "`n").Trim()
+    if ($result.ExitCode -ne 0) {
+        throw "cloudflared ingress validate 失敗（exit $($result.ExitCode)）：$output"
+    }
+    if ($output -match 'Incorrect Usage') {
+        throw "cloudflared 沒有真的驗證（用法錯誤，但 cloudflared 仍以 exit 0 結束），輸出：$output"
+    }
+    if (@($output -split "`r?`n" | Where-Object { $_.Trim() -eq 'OK' }).Count -eq 0) {
+        throw "cloudflared 沒有真的驗證（輸出裡沒有獨立一行 OK），輸出：$output"
+    }
 }
 
 if ($ValidateOnly) {
