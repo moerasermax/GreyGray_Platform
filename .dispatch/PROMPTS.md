@@ -1,9 +1,77 @@
 # 啟動 prompt
 
-**目前沒有生效中的派工（2026-09-02 晚：第二十九波 BE-40／FE-25 都已驗收撤包）。**
-兩包的啟動 prompt 保留在下面「BE-40 的啟動 prompt」與「FE-25 的啟動 prompt」兩節供下一包參考格式。
-下一波候選（見 `GreyGray_PM/00-進度總表.md`「下一步」）：#36 登出後訪客加不進購物車、#37 純現貨／純預購結帳 500、
-`TaipeiTime` 三份合一搬到 Shared.Kernel、D3 第 5 條「資料能重置」。派之前先看文末「下一波派工前」。
+**生效中的派工（2026-09-02 深夜，第三十波）：後端 BE-41。** 前端 FE-26 不並行——它要吃 BE-41 改完的契約重生型別，等 BE-41 撤包後才派。
+啟動 prompt 在下面「BE-41 的啟動 prompt」一節。
+
+★ **BE-41**：使用者親自走旅程第一張單就撞到 #37（純預購購物車結帳 500，比登入檢查還早）。問「哪一種是治本」後拍板「用第二種方式修」→
+ADR-030：規則的主人是後端——契約 `shippingPolicy` 改成「混合才必填」（向下相容），後端混合沒帶回 422、單一模式依 line 組成推導。
+併：壞 body 兩個環境都回 400 problem+json；#36 登出清 `gg_cart`＋「不是你的車」換新車；#38 兩支 dev 啟動腳本改 `Start-Process -Environment`。
+★ dev Host 現在是 Release 在跑、使用者正在走旅程：子代理一律 `-Configuration Debug`，不准停 dev 行程。
+
+---
+
+## BE-41 的啟動 prompt（生效中）
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
+GreyGray Platform 後端。.NET 10 模組化單體，14 個限界上下文，EF Core + Npgsql。
+
+GG_PACKAGE=BE-41
+
+開工前務必先讀：
+  CLAUDE.md                        六條鐵則 ＋ 派工規則
+  docs/37-後端第二十五波派工書.md    ★ 整份讀完：§0 事實 ＋ §1 五個必做 ＋ §2 不要做的事
+  docs/00-decisions.md             ADR-030（這一包的形狀是拍板過的，不要換）
+  .dispatch/reports/README.md      ★ 自驗報告的格式，缺標頭會被退回
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/BE-41.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 不准把驗證丟背景、不准排程 wakeup。12 個測試專案逐一在前景個別執行。
+     不要用 dotnet test，用 ops\test.ps1。
+     ★ dev 三個 Host 現在用 Release 跑著、使用者正在上面走旅程：建置與測試一律
+       -Configuration Debug，不要停掉或重啟任何 dev 行程，不要碰 D:\GreyGray\。
+
+★ 形狀是拍板過的（ADR-030）：規則的主人是後端。契約 shippingPolicy 改成
+  「Cart.hasMixedModes 為 true 才必填，否則可省略或 null」；後端混合沒帶 → 422
+  checkout.shipping-policy-required；單一模式忽略客人的值、依 line 組成推導
+  （純現貨 ShipSeparately、純預購 HoldUntilComplete）。
+  CheckoutCompleted.ShippingPolicy 與 Order.ShippingPolicy 維持不可為 null，
+  Ordering 一行不動、不做 migration。
+
+★ 壞掉的 request body：Development 與 Production 都要 400 + application/problem+json
+  （platform.malformed-request），證明要走真管線（tests/GreyGray.EndToEnd.Tests 的 StartHost 模式）。
+
+★ #36 後端側：/auth/logout 同時刪 gg_cart；GET /v1/cart 與 POST /v1/cart/lines 拿到
+  checkout.cart-not-found 且帶著 cookie 就換新車（服務層的 not-found 語意不要改）。
+
+★ #38：ops/start-dev-hosts.ps1 與 ops/start-dev-ecpay-simulator.ps1 改 Start-Process -Environment，
+  刪掉改父行程再還原那一段，檔頭加 #Requires -Version 7.4。證明用用完即丟的腳本，不進 repo。
+
+★ 不要改前端 worktree、src/Modules/Ordering/、src/Modules/Payment/、src/Platform/、
+  Directory.Packages.props、ops/deploy.ps1、install-dev-environment.ps1、stop-dev-environment.ps1。
+★ 不要新開測試專案。
+
+★ BOM：維持每個檔案原本的狀態。用 Python 寫檔時不要用 encoding='utf-8-sig'。
+
+★ 質疑被鼓勵，但不准自己改方向：派工書寫錯了就停下來寫進報告問，
+  不要一邊照做一邊在報告裡抱怨，也不要自己換一個做法。
+  前幾包就是這樣擋下 Leader 寫錯的段落，而且每次都對。
+
+檔案所有權：見派工書 §3。
+docs/、management/、STATE.md、CLAUDE.md、AGENTS.md 每一包都寫得了。
+
+不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
+git checkout -- .、以及 git commit。
+
+你不可以自己宣告通過。交付完就停。
+```
+
+---
+
+## 上一波（第二十九波，已撤包）的啟動 prompt 保留在下面供參考格式
 
 ★ **BE-40**：使用者拍板「先做 dev 模擬付款，但要能隨時換回 adapter」。Leader 的裁決（ADR-029）是
 **假的是綠界的伺服器**——獨立行程的模擬器，`EcpayGateway` 與回呼判斷一個位元組不動，dev 只把

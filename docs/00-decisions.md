@@ -645,3 +645,25 @@ ADR-019 與 `CLAUDE.md` 都寫著「租約到期前要處理、**先把到期日
 - 模擬器不送 `SimulatePaid=1`，`AllowSimulatedPaid` 維持 false——回呼走的是**正式**那條判斷。
 - 順帶修 #33（付款完成後沒有路回商店）：簽章加 `ClientBackURL`，由 Host 用 `Storefront:PublicOrigin` 組出 `/payment/result?orderId=`。
   不做 `OrderResultURL`（要多一個接受瀏覽器 POST 的端點，留追蹤項）。
+
+---
+
+## ADR-030　結帳的 `shippingPolicy` 只在混合購物車必填；單一模式由後端推導
+**狀態**：已採納（2026-09-02，使用者問「哪一種是治本的方式」後拍板「那就用第二種方式修」）
+
+**問題**（#37）：契約 `POST /v1/cart/checkout` 的說明文字寫「**混合訂單**必須指定 `shippingPolicy`」，schema 卻把它列成**一律必填、不可為 null**；
+後端輸入型別是不可為 null 的 enum；前端照說明文字做（只有混合才問、否則送 `null`）。結果：**只有現貨或只有預購的購物車一律結帳 500**，
+而且炸在 request body 綁定期，比登入檢查還早——沒登入的客人連「請先登入」都看不到。同一條規則有四份、互相打架。
+
+**否決**：「前端補預設值」——快，但把領域規則抄進每一個客戶端（將來 App、LINE 下單都要再抄一次），資料庫裡每張單一模式訂單都存一個客戶端編出來的值，
+而契約仍然自相矛盾。
+
+**決定**：規則的主人是後端（`hasMixedModes` 本來就是後端算的）。
+- 契約：`shippingPolicy` 改為「`Cart.hasMixedModes = true` 時必填，否則可省略或 `null`」——這是把 schema 改成說明文字早就在說的意思，
+  **向下相容**（原本有帶值的客戶端照樣合法）。`Order.shippingPolicy` 維持必填：訂單永遠帶一個值。
+- 後端：混合卻沒帶 → `422 checkout.shipping-policy-required`；單一模式 → 忽略客人送的值，依 line 組成推導一個**如實描述會發生什麼**的值：
+  純現貨 → `ShipSeparately`（現貨先出）、純預購 → `HoldUntilComplete`（等回國一起出）。`ShippingPolicy` 在 `src/` 沒有任何行為分支，推導不改變出貨行為。
+- 前端：重生型別後拿掉 `!`；它現在送 `null` 的行為反而是對的。
+
+**附帶**：壞掉的 request body（JSON 解析失敗、enum 值不合法）在 Development 是 500、在 Production 是空 body 的 400——
+兩者都改成 `400` ＋ `application/problem+json`（`platform.malformed-request`），`docs/05` 早就規定錯誤不會是 500。
