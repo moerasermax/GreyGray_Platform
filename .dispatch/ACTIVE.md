@@ -51,7 +51,16 @@ Leader 要明講。
 
 ---
 
-## 生效中：FE-26　跟上 ADR-030 契約（重生型別、拿掉 `!`）＋ #36 前端側 ＋ FE-25 ⑦ ＋ 結帳頁登入回跳保留已填內容
+<!--
+★ 2026-09-03 已通過整合驗收並提交（前端 `7f052c5`），撤包。原文保留供追溯。
+
+測試 376 → **410**、typecheck／build EXIT=0（build 由 Leader 停前台 dev server 後跑）。Leader 真瀏覽器（匿名、只按畫面）：純預購購物車送出 → 直接到 `/login?next=%2Fcheckout`
+（不再 500，BE-41＋FE-26 合起來的結果）→ 分頁列亮「購物車」→ `sessionStorage` 有 `gg:checkout-draft:<cartId>`（五個欄位）→ 從購物車回到結帳：**超商取貨、門市代號 12321、留言都還原、運費重新試算 NT$60**。
+登出徽章歸零需要登入，留給使用者走。兩輪：第一輪 A 卡在手寫的 `CheckoutRequest`（`endpoints/storefront.ts`）、C 呼叫端 `StorefrontTabBar` 不在 allow——都對，Leader 補授權（`5696606`）後第二輪收尾：
+改一行手寫型別、拿掉 `!`（零命中）、分頁列掛載後讀 `window.location.search`（不用 `useSearchParams`，避免根 layout CSR bailout）。
+留下：整組請求型別都是契約的手寫複本，契約改了不會有東西說話（建議改成從 `paths[...]` 推導）；草稿只在「按了送出才知道要登入」那條路上存。
+
+## 生效中（已撤包）：FE-26　跟上 ADR-030 契約（重生型別、拿掉 `!`）＋ #36 前端側 ＋ FE-25 ⑦ ＋ 結帳頁登入回跳保留已填內容
 
 使用者 2026-09-02 親自走旅程第一張單（純預購）就撞到 #37：結帳 500、比登入檢查還早。拍板「用第二種方式修」→ ADR-030：
 規則的主人是後端。後端 BE-41 已改契約（`shippingPolicy` 混合才必填、否則可 `null`）並推導；Leader 已把後端樹的
@@ -79,6 +88,7 @@ allow: frontend/apps/storefront/app/_components/StorefrontTabBar.tsx
 > 第一輪交付後 Leader 補授權（2026-09-03）：`endpoints/storefront.ts` 只准改 `CheckoutRequest.shippingPolicy` 那一行（手寫複本跟上契約，`?: … | null`），
 > `StorefrontTabBar.tsx` 只准把查詢字串交給 `activeTabHref`——**不用 `useSearchParams()`**（根 layout 元件會被推進 CSR bailout），
 > 比照 FE-25 `authRedirect.ts` 的做法：掛載後讀 `window.location.search`，SSR 首次渲染仍只看 pathname。
+-->
 
 ---
 
@@ -468,6 +478,8 @@ allow: frontend/apps/storefront/app/(checkout)/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **FE-26** 跟上 ADR-030 契約（重生型別、拿掉 `shippingPolicy!`）＋ 登出徽章歸零（#36 前端側）＋ `/login?next=` 亮對分頁（FE-25 ⑦）＋ 結帳頁登入回跳保留已填內容　·　2026-09-03 通過　·　`7f052c5`　·
+  測試 376 → 410；Leader 真瀏覽器：純預購匿名送出 → 登入頁（不再 500）、分頁列亮購物車、回到結帳欄位與運費都還原，見 `.dispatch/reports/FE-26.md`
 - **FE-25** 「我的」總覽頁（`/me`，含登出）＋「我的」改指 `/me` ＋ `?next=` 回跳 ＋ 付款結果頁有限次重查　·　2026-09-02 通過　·　`668e0b7`　·
   測試 317 → 376 條；Leader 真瀏覽器走完登入／登出／結帳 401 回跳；走旅程時撞到 #36、#37（不在此包），見 `.dispatch/reports/FE-25.md`
 - **FE-24** 三頁的頂部列 ＋ 提示加「查看購物車」＋ 修 #31（#32）　·　2026-09-02 通過　·　`41e9fd7`　·
