@@ -1,7 +1,7 @@
 # 啟動 prompt
 
-**生效中的派工（2026-09-03，第三十波第三段）：後端 BE-43（正式機 GreyGray 自己的 Cloudflare Tunnel 腳本）。** FE-26／BE-42 已驗收撤包；前端樹沒有生效中的派工。
-啟動 prompt 在下面「BE-43 的啟動 prompt」一節。
+**目前沒有生效中的派工（2026-09-03 凌晨）。** 第三十波三段——BE-41、FE-26／BE-42、BE-43（七輪：通道腳本、validate 假 PASS、5.1 的 ::Fill、乾淨機器第一次部署、nssm reset AppParameters 崩潰、GetNewClosure 看不到 script 函式）——全部驗收撤包，兩棵樹都乾淨；**正式機 YC 五個服務已上線（greygray.shop／admin.greygray.shop）**。
+下一波派工前先讀 `ACTIVE.md` 的「已經通過」清單與本檔最後一節「下一波派工前」。
 
 ★ **BE-43**：`ops/install-tunnel.ps1`（5.1 可跑、冪等：複製憑證到 `C:\GreyGray\cloudflared\`、寫 `config.yml` 四條 ingress ＋ 404、NSSM 登記 `GreyGray-Tunnel`）＋
 `verify-environment.ps1` 多一項 ＋ `install-environment.ps1` **拿掉會動到現有 `cloudflared` 服務的那一段**（那是使用者其他應用共用的通道）。
@@ -19,7 +19,7 @@ ADR-030：規則的主人是後端——契約 `shippingPolicy` 改成「混合�
 
 ---
 
-## BE-43 的啟動 prompt（生效中）
+## BE-43 的啟動 prompt（已撤包，保留供參考；第三～七輪是 Leader 用同一個 session 補的指示，見 `.dispatch/reports/BE-43.md`）
 
 ```
 專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform

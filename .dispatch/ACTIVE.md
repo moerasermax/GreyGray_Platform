@@ -51,7 +51,16 @@ Leader 要明講。
 
 ---
 
-## 生效中：BE-43　正式機 GreyGray 自己的 Cloudflare Tunnel（本機管理、進 repo）——`install-tunnel.ps1` ＋ verify 多一項 ＋ `install-environment.ps1` 不碰現有通道
+<!--
+★ 2026-09-03 已通過整合驗收並提交（後端 `47ec987` → `34a8f20` → `12da09e` → `b56e1dd` → `9caa2b6` → `eab1898`；閘門補授權 `5e229e7`／`f102dfc`），撤包。原文保留供追溯。
+
+七輪：一二輪通道腳本本體（`install-tunnel.ps1`、verify 多三項、`install-environment.ps1` 不碰共用通道、environment-self-test 改 UTF-8 讀）；
+三輪 ingress validate 的 `--config` 位置錯、cloudflared 回 Incorrect Usage 但 exit 0 → 改順序＋要看到獨立一行 OK；四輪 `lib/Secrets.ps1` 的 `::Fill` 是 .NET 5+ → `::Create()`＋`GetBytes`、self-test 直接呼叫；
+五輪 `Wait-ProcessTokensExit` Mandatory 拒收空陣列（乾淨機器）→ AllowEmptyCollection；六輪 nssm 2.24 `reset AppParameters` heap corruption → registry 清空＋驗證；七輪 `GetNewClosure()` 在「被另一支腳本呼叫」時看不到 script 函式 → 拿掉＋AST 把關。
+後四個都是 Leader 在 YC 真跑 deploy.ps1 抓到的（-ValidateOnly／self-test 永遠碰不到），詳 `.dispatch/reports/BE-43.md` 與 GreyGray_PM/03 第三十一次。
+YC：`GreyGray-Tunnel` Running、五個 app 服務 Running（release `20260902175515538`）、外部 `https://greygray.shop/v1/products` 200、`/v1/me` 401、後台登入頁 200；verify-environment 44 PASS／8 FAIL（全是既有 M-1 環境項目）。
+
+## 生效中（已撤包）：BE-43　正式機 GreyGray 自己的 Cloudflare Tunnel（本機管理、進 repo）——`install-tunnel.ps1` ＋ verify 多一項 ＋ `install-environment.ps1` 不碰現有通道
 
 使用者 2026-09-02 拍板「另起一個新的本機管理 tunnel，現有的完全不動」。Leader 已在 YC 上完成需要人授權的部分：`cloudflared tunnel login`（使用者點了）、
 `tunnel create greygray`（id `7daa50aa-8b70-483a-a670-9d44ddc3499c`，憑證在 `C:\Users\moera\.cloudflared\`）、`route dns` 建了 `greygray.shop` 與 `admin.greygray.shop`。
@@ -85,6 +94,7 @@ allow: ops/deploy.ps1
 > 引數順序改成 `tunnel --config <cfg> ingress validate`，而且要看輸出有獨立一行 `OK` 才算過（只准改 `ops/install-tunnel.ps1`，用假的 cloudflared 替身證明三種情況）。
 > 第四輪：`ops/deploy.ps1` 第一次真跑到 migration 之後炸在 `New-SecretPassword`——`ops/lib/Secrets.ps1` 第 37／56 行的 `RandomNumberGenerator::Fill` 是 .NET 5+ 才有，5.1（.NET Framework）沒有；
 > 兩處改成 `::Create()` ＋ `GetBytes`，`ops/self-test.ps1` 加一條「目前 host 下 `New-SecretPassword`／`New-DataProtectionKey` 真的產得出來、後者解碼正好 32 bytes」讓 5.1 那趟會咬到。不准碰 `ops/deploy.ps1`。
+-->
 
 ---
 
@@ -816,6 +826,8 @@ allow: tests/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **BE-43** 正式機 GreyGray 自己的 Cloudflare Tunnel 腳本（`install-tunnel.ps1`、verify 多三項、`install-environment.ps1` 不碰共用通道）＋ 正式機第一次部署抓到的四個 dry-run 盲點（ingress validate 假 PASS、`::Fill` 5.1 沒有、Mandatory 拒收空陣列、nssm `reset AppParameters` 崩潰、`GetNewClosure` 看不到 script 函式）　·　2026-09-03 通過　·　`47ec987`→`34a8f20`→`12da09e`→`b56e1dd`→`9caa2b6`→`eab1898`（七輪）　·
+  YC 上線：`GreyGray-Tunnel`＋五個服務 Running，外部 `/v1/products` 200、`/v1/me` 401；self-test 從 13 項長到 18 項（乾淨機器、亂數產生器、Clear-NssmAppParameters、無 GetNewClosure），見 `.dispatch/reports/BE-43.md`
 - **BE-42** 串真綠界的前置：`ReturnURL` 可由 `Storefront:PublicApiOrigin` 設定、`deploy.ps1` 投遞公開 origin、`build-frontends.ps1` 建另一棵樹並指定 API base、self-test 改 UTF-8 讀＋BOM 斷言、CI 改 -ValidateOnly　·　2026-09-03 通過　·　`8e6f2c4`　·
   測試 270 → 278；5.1／7 self-test 都 exit 0；三輪交付（第一輪指出 self-test／ci 會被打壞、第二輪查出 big5 讀無 BOM 檔的既有問題與 CI frontend 骨架），見 `.dispatch/reports/BE-42.md`
 - **BE-41** 結帳 `shippingPolicy` 混合才必填、單一模式後端推導（#37 治本，ADR-030）＋ 壞 body 回 400 ＋ #36 後端側 ＋ #38 dev 啟動腳本　·　2026-09-02 通過　·　`3523904`　·
