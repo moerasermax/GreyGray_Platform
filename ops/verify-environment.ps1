@@ -20,11 +20,14 @@ param(
     [switch]$WiredNetworkConfirmed,
     [switch]$UpsConfirmed,
     [int]$StorefrontPort = 5000,
-    [int]$AdminPort = 5001
+    [int]$AdminPort = 5001,
+    [string]$TunnelServiceName = 'GreyGray-Tunnel'
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+. "$PSScriptRoot\lib\Process.ps1"
 $script:failed = 0
 $isLocal = $Profile -eq 'Local'
 function Report([string]$Name, [bool]$Passed, [string]$Detail) {
@@ -151,7 +154,7 @@ if ($null -ne $garnetPort) {
 Report 'Garnet RESP PING' $garnetPing $garnetPingOutput
 
 if ($isLocal) {
-    Write-Host 'SKIP cloudflared／NSSM 服務帳號／Defender／Windows Update／維護窗／prod-monitor／有線網路／UPS - Local profile 是本機開發環境，這些是正式機才有的東西（docs/19 §5 BE-22）'
+    Write-Host "SKIP cloudflared／$TunnelServiceName／NSSM 服務帳號／Defender／Windows Update／維護窗／prod-monitor／有線網路／UPS - Local profile 是本機開發環境，這些是正式機才有的東西（docs/19 §5 BE-22）"
 }
 else {
 
@@ -160,6 +163,33 @@ Report 'cloudflared binary' ($null -ne $cloudflared) $(if ($cloudflared) { $clou
 Report 'cloudflared 單一服務' (Service-IsRunning 'cloudflared') 'cloudflared 必須 Running；不得保留六個 ngrok'
 Report 'ngrok 已退出' (@(Get-Process -Name ngrok -ErrorAction SilentlyContinue).Count -eq 0) 'ngrok process count 必須為 0'
 Report 'NSSM binary' (Has-Command 'nssm.exe') 'nssm.exe 必須可解析'
+
+<#
+    GreyGray 自己的通道（BE-43／ADR-031）。上面那條 `cloudflared 單一服務` 查的是
+    使用者其他應用共用的那支 token 式服務，跟這裡是兩回事，兩條都要在。
+#>
+Report "$TunnelServiceName 服務" (Service-IsRunning $TunnelServiceName) "$TunnelServiceName 必須 Running（GreyGray 自己的 Cloudflare Tunnel，由 install-tunnel.ps1 登記）"
+
+$tunnelConfigPath = Join-Path $InstallRoot 'cloudflared\config.yml'
+$tunnelConfigExists = Test-Path -LiteralPath $tunnelConfigPath -PathType Leaf
+Report "$TunnelServiceName config.yml" $tunnelConfigExists $tunnelConfigPath
+$ingressValid = $false
+$ingressDetail = "沒有 $tunnelConfigPath，無法驗 ingress"
+if ($tunnelConfigExists) {
+    if ($null -eq $cloudflared) { $ingressDetail = '找不到 cloudflared.exe，無法驗 ingress；不可 silently skip' }
+    else {
+        <#
+            離線驗規則，不連線、不重啟任何通道。
+            用 Invoke-NativeCommand 而不是 `2>&1`：5.1 在 ErrorActionPreference=Stop 下
+            會把 native stderr 升格成終止性錯誤，這一項就會變成整支腳本中斷而不是一行 FAIL。
+        #>
+        $ingressResult = Invoke-NativeCommand -FilePath $cloudflared.Source `
+            -ArgumentList @('tunnel', 'ingress', 'validate', '--config', $tunnelConfigPath) -AllowNonZeroExit
+        $ingressValid = $ingressResult.ExitCode -eq 0
+        $ingressDetail = "exit=$($ingressResult.ExitCode); $(($ingressResult.StdOut + ' ' + $ingressResult.StdErr).Trim())"
+    }
+}
+Report "$TunnelServiceName ingress validate" $ingressValid $ingressDetail
 
 function Test-ServiceAccountCanReadBinary([Microsoft.Management.Infrastructure.CimInstance]$Service, [string]$Account) {
     <#

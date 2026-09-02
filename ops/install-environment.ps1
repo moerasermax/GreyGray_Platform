@@ -3,6 +3,11 @@
 
     預設會修改「目前執行這支腳本的 Windows 主機」，不會搜尋或連線其他機器。
     -SimulationRoot 只供開發機驗證冪等控制流，所有狀態都寫在指定沙箱目錄。
+
+    **Cloudflare Tunnel 不在這支腳本裡**（BE-43）：這裡只用 winget 把 cloudflared.exe
+    裝好，不需要 tunnel token，也**不碰正式機上既有的 `cloudflared` 服務**——那是使用者
+    其他應用共用的通道。GreyGray 自己的通道由 `ops/install-tunnel.ps1` 登記成
+    `GreyGray-Tunnel`（本機管理式，見 docs/14 §12 與 ADR-031）。
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
@@ -13,7 +18,6 @@ param(
     [string]$PostgreSqlZipSha256 = '6EABDF00D2893713B75DB4336A23C3FDF505F056E217EC6E2E95D901750CFEA3',
     [pscredential]$PostgresSuperuserCredential,
     [pscredential]$ServiceCredential,
-    [securestring]$CloudflareTunnelToken,
     [string]$ProdMonitorConfigPath,
     [string]$SimulationRoot
 )
@@ -22,6 +26,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $isSimulation = -not [string]::IsNullOrWhiteSpace($SimulationRoot)
+# 'cloudflared' 這一項現在只代表「winget 裝好 cloudflared.exe」，不再代表任何服務——
+# 服務由 install-tunnel.ps1 負責，而且是另一支 GreyGray-Tunnel（BE-43）。
 $managedNames = @(
     'dotnet-sdk-10', 'dotnet-runtime-10', 'aspnet-runtime-10', 'postgresql-17',
     'postgres-data-c', 'postgres-wal-c', 'garnet', 'garnet-copy', 'node-22', 'cloudflared',
@@ -86,7 +92,6 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 }
 if ($null -eq $ServiceCredential) { throw '實際安裝必須提供專屬的 -ServiceCredential。' }
 if ($null -eq $PostgresSuperuserCredential) { throw '實際安裝必須提供 -PostgresSuperuserCredential。' }
-if ($null -eq $CloudflareTunnelToken) { throw '實際安裝必須提供 -CloudflareTunnelToken；腳本不猜 tunnel。' }
 if ([string]::IsNullOrWhiteSpace($ProdMonitorConfigPath)) {
     throw '實際安裝必須提供 -ProdMonitorConfigPath；腳本不猜 prod-monitor 的正式設定檔。'
 }
@@ -403,24 +408,16 @@ elseif ($PSCmdlet.ShouldProcess($maintenanceTask, '建立每週日 03:00 維護�
     Write-Installed 'maintenance-window'
 }
 
-$tokenPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($CloudflareTunnelToken)
-$plainTunnelToken = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($tokenPointer)
-try {
-    if (Get-Service -Name 'cloudflared' -ErrorAction SilentlyContinue) { Write-Existing 'cloudflared-service' }
-    elseif ($PSCmdlet.ShouldProcess('cloudflared', '安裝單一 Cloudflare Tunnel Windows service')) {
-        Invoke-Native (Get-Command cloudflared.exe -ErrorAction Stop).Source @('service', 'install', $plainTunnelToken)
-        Write-Installed 'cloudflared-service'
-    }
-    $cloudflaredInfo = Get-CimInstance Win32_Service -Filter "Name='cloudflared'"
-    if ($cloudflaredInfo.StartName -notlike "*$serviceUser") {
-        Invoke-Native $nssm @('set', 'cloudflared', 'ObjectName', $ServiceCredential.UserName, $plainServicePassword)
-        Restart-Service -Name 'cloudflared'
-    }
-}
-finally {
-    $plainTunnelToken = $null
-    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($tokenPointer)
-}
+<#
+    ★ 這裡曾經用 tunnel token 裝一支 `cloudflared` Windows service，而且在服務已存在時
+    把它的 ObjectName 改成 GreyGraySvc 再 Restart-Service。在 YC 上那支 `cloudflared`
+    是使用者其他應用（Planner／Portfolio／Knowledge／Baby…）共用的通道——這支腳本
+    會直接把別人的線路換帳號並重啟。整段拿掉（BE-43）。
+    GreyGray 自己的通道改由 `ops/install-tunnel.ps1` 另外登記成 `GreyGray-Tunnel`
+    （本機管理式、憑證與 config.yml 都在 $InstallRoot\cloudflared\，見 docs/14 §12）。
+    這支腳本對 cloudflared 只剩一件事：用 winget 確保 cloudflared.exe 裝好（上面的
+    `Install-WinGetPackage 'cloudflared'`），不再需要 tunnel token。
+#>
 $plainServicePassword = $null
 
 & (Join-Path $PSScriptRoot 'register-prod-monitor.ps1') -ConfigPath $ProdMonitorConfigPath

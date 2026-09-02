@@ -40,7 +40,7 @@ Write-Host "PASS PowerShell AST：$($scripts.Count) 個 ops/*.ps1 以 UTF-8 讀�
 $productionScripts = @(
     'deploy.ps1', 'install-environment.ps1', 'verify-environment.ps1', 'invoke-migrations.ps1',
     'register-prod-monitor.ps1', 'watchdog.ps1', 'environment-self-test.ps1', 'service-manifest.ps1',
-    'self-test.ps1'
+    'self-test.ps1', 'install-tunnel.ps1'
 ) + @(Get-ChildItem -Path (Join-Path $PSScriptRoot 'lib') -Filter '*.ps1' -File |
     ForEach-Object { Join-Path 'lib' $_.Name })
 if ($productionScripts.Count -eq 0) { throw '正式機腳本清單是空的——這一項等於什麼都沒查。' }

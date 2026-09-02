@@ -4,14 +4,29 @@ param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+<#
+    AST 解析：先以 UTF-8 讀進來，再 ParseInput——**不要**用 ParseFile。理由與
+    ops/self-test.ps1 第 13-20 行完全相同（那支在 BE-42 第二輪修過，這支漏了）：
+
+    ParseFile 對「沒有 BOM」的檔案是照**系統 ANSI 代碼頁**讀的。這個 repo 的原始檔一律
+    UTF-8，其中幾支 dev-only 腳本刻意沒有 BOM；在中文 Windows（ACP=big5，開發機與 YC
+    都是）上，UTF-8 的中文位元組會被 big5 重新分組成雙位元組字元，分出來的位元組可能剛好
+    是 " 或 \，於是完全合法的腳本被判成語法錯誤——而這支自測本身就是要在正式機的 5.1 上跑的。
+    明確指定編碼之後，5.1 與 7 讀到的是同一份文字。ReadAllText 有 BOM 時會自己去掉它，
+    所以兩種檔案都吃得下。
+#>
 $parseFailures = @()
-foreach ($script in Get-ChildItem -Path $PSScriptRoot -Filter '*.ps1' -Recurse -File) {
+$scripts = @(Get-ChildItem -Path $PSScriptRoot -Filter '*.ps1' -Recurse -File)
+if ($scripts.Count -eq 0) { throw 'ops 底下找不到任何 *.ps1——這一項等於什麼都沒查。' }
+foreach ($script in $scripts) {
     $tokens = $null; $errors = $null
-    [void][Management.Automation.Language.Parser]::ParseFile($script.FullName, [ref]$tokens, [ref]$errors)
+    $scriptText = [IO.File]::ReadAllText($script.FullName, [Text.Encoding]::UTF8)
+    [void][Management.Automation.Language.Parser]::ParseInput(
+        $scriptText, $script.FullName, [ref]$tokens, [ref]$errors)
     if ($errors.Count -gt 0) { $parseFailures += "$($script.Name): $($errors.Message -join ' | ')" }
 }
 if ($parseFailures.Count -gt 0) { throw ($parseFailures -join "`n") }
-Write-Host 'PASS PowerShell AST：ops/**/*.ps1 全部可解析'
+Write-Host "PASS PowerShell AST：$($scripts.Count) 個 ops/**/*.ps1 以 UTF-8 讀入後無語法錯誤"
 
 $temp = Join-Path ([IO.Path]::GetTempPath()) ('greygray-m1-' + [guid]::NewGuid().ToString('N'))
 try {

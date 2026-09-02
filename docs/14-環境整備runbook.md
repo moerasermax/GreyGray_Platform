@@ -31,11 +31,15 @@ Get-PhysicalDisk | Format-Table FriendlyName, MediaType, HealthStatus
 ```powershell
 $serviceCredential = Get-Credential -UserName '.\GreyGraySvc' -Message 'GreyGray 專屬 Windows 服務帳號'
 $postgresCredential = Get-Credential -UserName 'postgres' -Message 'PostgreSQL superuser（只用於首次建 cluster）'
-$tunnelToken = Read-Host 'Cloudflare Tunnel token' -AsSecureString
 ```
 
-- 預期：三個變數均取得值，不顯示明文。
-- 失敗：取消執行並重新取得；腳本不接受缺少的正式機憑證，也不會猜 tunnel。
+- 預期：兩個變數均取得值，不顯示明文。
+- 失敗：取消執行並重新取得；腳本不接受缺少的正式機憑證。
+
+**這裡不再需要 Cloudflare Tunnel token**（BE-43）。`install-environment.ps1` 只負責用
+winget 把 `cloudflared.exe` 裝好；GreyGray 自己的通道是**本機管理式**的，憑證是
+`cloudflared tunnel create` 產出的 `<UUID>.json`，由 §12 的 `install-tunnel.ps1` 處理。
+正式機上既有的 `Cloudflared` 服務是使用者其他應用共用的通道，**整份 runbook 都不碰它**。
 
 ### KV 用 Garnet，不是 Valkey（ADR-022）
 
@@ -77,7 +81,6 @@ Set-Location 'C:\Source\GreyGray_Platform'
   -PostgreSqlZipSha256 $postgresZipSha256 `
   -PostgresSuperuserCredential $postgresCredential `
   -ServiceCredential $serviceCredential `
-  -CloudflareTunnelToken $tunnelToken `
   -ProdMonitorConfigPath $monitorConfig
 ```
 
@@ -95,8 +98,12 @@ Node 22、cloudflared、NSSM、Garnet（`Microsoft.Garnet.DN8`）。PostgreSQL �
 - Garnet 綁定 `127.0.0.1:6379`，不暴露到 LAN。
 - 把 PostgreSQL data/WAL 加進 Defender exclusion。
 - 將 Windows Update 設為人工更新，建立每週日 03:00 的人工維護提醒。
-- 安裝一個 cloudflared Windows service，取代六個 ngrok process。
 - 冪等寫入 prod-monitor 的兩個 Next.js process／port 指紋。
+
+它**不會**做的事（BE-43 拿掉的）：安裝或設定任何 Cloudflare Tunnel 服務。
+以前這裡會用 token 裝一支 `cloudflared` service，而且在服務已存在時把它的帳號改成
+`GreyGraySvc` 再重啟——在 YC 上那支正是使用者其他應用共用的通道，等於直接動別人的線路。
+GreyGray 自己的通道見 §12。
 
 預期輸出：第一次每項為 `已安裝 ...` 或既有項目的 `已存在 ...`，最後為：
 
@@ -110,8 +117,8 @@ PASS M-1 安裝完成。仍須依 runbook 人工確認有線網路與 UPS。
 - PostgreSQL zip SHA-256 不符：丟棄該 artifact，重新向已核准來源取得，不要跳過驗證硬裝。
 - NSSM／服務帳號失敗：用 `Get-CimInstance Win32_Service` 查看 `StartName`，不要改回 LocalSystem；
   若是 `sc start` 錯誤 5，先看 §10，很可能是服務指到的執行檔對服務帳號沒有讀取權。
-- cloudflared 失敗：用 `Get-Service cloudflared` 與 Windows Event Viewer 檢查；Cloudflare 官方 Windows service 說明：
-  <https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/as-a-service/windows/>
+- `cloudflared.exe` 沒裝起來：`winget install Cloudflare.cloudflared`，再確認 `Get-Command cloudflared.exe`。
+  這一步只裝執行檔，不動任何通道服務；通道見 §12。
 
 ## 3. 重跑驗證冪等
 
@@ -177,7 +184,8 @@ managed block；若設定已有同名、但不在 managed block 的 target，腳
 | .NET 10 | `dotnet --list-sdks; dotnet --list-runtimes` | 重跑精確 WinGet package 安裝 |
 | PostgreSQL | `Get-Service GreyGray-PostgreSQL`; `pg_isready -h 127.0.0.1 -p 5432` | 見下面「NSSM 服務」那列；不是 WAL junction 問題（§8.3 已不用這個機制） |
 | Garnet | `Get-Service GreyGray-Garnet`; `Get-NetTCPConnection -LocalPort 6379 -State Listen` | 見下面「NSSM 服務」那列 |
-| cloudflared | `Get-Service cloudflared`; `Get-Process ngrok -ErrorAction SilentlyContinue` | tunnel token、Event Viewer、移除舊 ngrok 啟動項 |
+| cloudflared | `Get-Service cloudflared`; `Get-Process ngrok -ErrorAction SilentlyContinue` | 這是使用者其他應用共用的 token 式通道，**不要重裝、不要改帳號**；只用 Event Viewer 看它為什麼停，並移除舊 ngrok 啟動項 |
+| `GreyGray-Tunnel` 服務／config.yml／ingress validate | `Get-Service GreyGray-Tunnel`；`Get-Content C:\GreyGray\cloudflared\config.yml`；`cloudflared tunnel ingress validate --config C:\GreyGray\cloudflared\config.yml` | 見 §12：憑證 JSON 有沒有複製進 `C:\GreyGray\cloudflared\`（ACL）、`install-tunnel.ps1` 有沒有跑過、log 在 `C:\GreyGray\logs\GreyGray-Tunnel.stdout.log` |
 | NSSM 服務（含 `GreyGray-PostgreSQL`／`GreyGray-Garnet`／五個 app service） | `Get-CimInstance Win32_Service \| Where-Object Name -like 'GreyGray-*'`；`sc.exe start <name>` 若回**錯誤 5**，先看 §10——多半是 binPath 指到的 `nssm.exe` 對服務帳號沒有讀取權，不是帳號密碼或權限指派問題 | 執行 `deploy.ps1` 接上真 artifact；不可用 LocalSystem |
 | Defender | `(Get-MpPreference).ExclusionPath` | 重跑安裝腳本或用 `Add-MpPreference` 補 data/WAL |
 | Windows Update | `Get-ItemProperty HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU` | 確認群組原則沒有覆蓋本機設定 |
@@ -486,3 +494,131 @@ C:\GreyGray\bin\nssm.exe get GreyGray-Storefront AppEnvironmentExtra
 
 五個服務都 `Running`、兩個 `/health` 都 200、`GreyGray-Worker` 沒有 port
 （設計如此，見 `service-manifest.ps1` 的 `Port = 0`）才算過。
+
+---
+
+## 12. GreyGray 自己的 Cloudflare Tunnel（`GreyGray-Tunnel`，BE-43／ADR-031）
+
+### 12.1 先講清楚不准碰什麼
+
+正式機 YC 上已經有一支 Windows 服務 `Cloudflared`（**原生服務，不是 NSSM**）：
+
+```text
+"C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel run --token-file C:\ProgramData\cloudflared\token
+帳號 LocalSystem，Running／Automatic
+```
+
+那是 token 式（遠端管理）通道，路由表在 Cloudflare 儀表板，是使用者其他應用
+（Planner、Portfolio、Knowledge、Baby、AskAnythingBot…，都是排程工作）共用的命脈。
+排程工作 `CloudflaredWatchdog`（`sc.exe start cloudflared`）也是為它存在的。
+
+**任何情況都不准動它**：不改帳號、不重啟、不重裝、不刪 `C:\ProgramData\cloudflared\token`。
+GreyGray 另外起一支**本機管理式**的通道 `GreyGray-Tunnel`，設定與憑證都在
+`C:\GreyGray\cloudflared\`，兩支互不影響。
+
+### 12.2 Leader 手動的三步（要人在瀏覽器點授權，不在腳本裡）
+
+```powershell
+# ① 授權：會印一個網址，貼給使用者在瀏覽器點，選 greygray.shop 這個 zone。
+#    憑證會落在「執行這行的那個 Windows 帳號」的 %USERPROFILE%\.cloudflared\cert.pem。
+#    透過 SSH 跑時要用 ssh -tt 保持連線（見 §8.4 那一類坑）。
+cloudflared tunnel login
+
+# ② 建通道：印出 <UUID> 與憑證 JSON 的路徑（%USERPROFILE%\.cloudflared\<UUID>.json）
+cloudflared tunnel create greygray
+
+# ③ 建 CNAME（兩個主機名稱都要，ADR-031）
+cloudflared tunnel route dns greygray greygray.shop
+cloudflared tunnel route dns greygray admin.greygray.shop
+```
+
+- 預期：`tunnel create` 印出 `Created tunnel greygray with id <UUID>`；`route dns` 各印一筆 CNAME。
+- 失敗：`cloudflared tunnel list` 看通道在不在；CNAME 衝突要在 Cloudflare DNS 先清掉舊紀錄。
+
+### 12.3 `install-tunnel.ps1`
+
+先 dry-run（不建目錄、不複製憑證、不登記服務，一般權限就能跑）：
+
+```powershell
+.\ops\install-tunnel.ps1 -TunnelCredentialsFile "$env:USERPROFILE\.cloudflared\<UUID>.json" -ValidateOnly
+```
+
+- 預期：印出解析後的參數與將寫入的 `config.yml`，五條 ingress 順序正確、最後一條是
+  `- service: http_status:404`；有 `cloudflared.exe` 時還會多一行
+  `PASS cloudflared tunnel ingress validate`（對 OS temp 的暫存檔驗，不碰 `C:\GreyGray`）。
+
+實際安裝（系統管理員 Windows PowerShell 5.1）：
+
+```powershell
+$svc = Get-Credential -UserName '.\GreyGraySvc' -Message 'GreyGray 專屬 Windows 服務帳號'
+.\ops\install-tunnel.ps1 `
+  -InstallRoot 'C:\GreyGray' `
+  -TunnelName 'greygray' `
+  -TunnelCredentialsFile "$env:USERPROFILE\.cloudflared\<UUID>.json" `
+  -ServiceCredential $svc `
+  -NssmPath 'C:\GreyGray\bin\nssm.exe'
+```
+
+它做的事，每一步都先查「已存在」再做，重跑不重做：
+
+1. 建 `C:\GreyGray\cloudflared\`，把憑證 JSON **複製**成
+   `C:\GreyGray\cloudflared\<UUID>.json`（來源檔不動）。放在 `C:\GreyGray` 底下才會繼承
+   已經授予 `GreyGraySvc` 的 Modify ACL——服務讀不到自己的憑證就是 §10 那個 `sc start` 錯誤 5。
+2. 寫 `C:\GreyGray\cloudflared\config.yml`（UTF-8 無 BOM、LF），然後跑
+   `cloudflared tunnel ingress validate --config <path>`，不過就 throw：
+
+   ```yaml
+   tunnel: <UUID>
+   credentials-file: C:\GreyGray\cloudflared\<UUID>.json
+   ingress:
+     - hostname: greygray.shop
+       path: ^/v1/
+       service: http://127.0.0.1:5000
+     - hostname: greygray.shop
+       service: http://127.0.0.1:5002
+     - hostname: admin.greygray.shop
+       path: ^/v1/
+       service: http://127.0.0.1:5001
+     - hostname: admin.greygray.shop
+       service: http://127.0.0.1:5003
+     - service: http_status:404
+   ```
+
+   `path` 是正規表示式，順序就是優先序：每個主機名稱先比 `/v1/`（後端 Host），再吃其餘
+   （Next 網頁）。最後一條沒有 `hostname`，是 cloudflared 要求的 catch-all。
+3. 用 NSSM 登記 `GreyGray-Tunnel`（設定比照 `deploy.ps1` 那五個服務：`SERVICE_AUTO_START`、
+   `AppExit Default Restart`、`AppRestartDelay 60000`、`AppThrottle 1500`、log 輪替到
+   `C:\GreyGray\logs\GreyGray-Tunnel.{stdout,stderr}.log`），以 `GreyGraySvc` 執行。
+   服務已存在就只 `set` 更新，不重新 `install`。
+4. `Start-Service` 並等 `Running`；執行者有 `cert.pem` 時順便印 `cloudflared tunnel info greygray` 的連線數。
+
+它**不做**：`tunnel login`、`tunnel create`、`route dns`（都要人授權，見 §12.2），
+以及任何會碰到 `Cloudflared` 服務、`C:\ProgramData\cloudflared\`、`CloudflaredWatchdog` 的事。
+
+### 12.4 怎麼驗
+
+```powershell
+Get-Service GreyGray-Tunnel | Format-Table Name, Status, StartType
+Get-CimInstance Win32_Service -Filter "Name='GreyGray-Tunnel'" | Select-Object StartName, PathName
+Get-Content C:\GreyGray\logs\GreyGray-Tunnel.stdout.log -Tail 30
+
+# 現有的共用通道必須完全沒被動到：PID／StartTime／帳號跟跑之前一樣
+Get-CimInstance Win32_Service -Filter "Name='Cloudflared'" | Select-Object State, StartName, ProcessId
+```
+
+從**外面**（不是 YC 本機）驗兩個主機名稱：
+
+```bash
+curl -i https://greygray.shop/health          # Storefront Host（/v1/* 以外也走 5002，但 /health 在 BFF 上）
+curl -i https://admin.greygray.shop/health    # Admin Host
+```
+
+- 預期：`GreyGray-Tunnel` 為 `Running`／`Automatic`／`StartName` 是 `.\GreyGraySvc`；
+  log 出現 `Registered tunnel connection`（通常四條）；兩個 `/health` 都 200。
+  既有的 `Cloudflared` 服務 `ProcessId` 與 `StartName` **沒變**。
+- 失敗：`ingress validate` 不過 → 看 `config.yml`；服務起不來且 log 提到憑證 →
+  確認 `C:\GreyGray\cloudflared\<UUID>.json` 在不在、`GreyGraySvc` 讀不讀得到（§10），
+  **不要改回 LocalSystem**；`/health` 通不了但服務 Running → 檢查 CNAME（§12.2 ③）
+  與五個 app 服務是不是都起來了（§11.4）。
+
+最後跑一次完整驗收（§5），新增的 `GreyGray-Tunnel` 三項應該都 PASS。
