@@ -615,3 +615,33 @@ ADR-019 與 `CLAUDE.md` 都寫著「租約到期前要處理、**先把到期日
   那個查詢管道已經不存在。文案改成明講「舊平台已停用，歷史訂單無法查詢」。
 - ADR-019 更正（`0add0dc`）已確認舊平台儲值金餘額為 0，所以**沒有跟著平台一起消失的錢**。
 - `CLAUDE.md`「沒有系統會提醒你的那一件」那一段已經過時，一併更正。
+
+---
+
+## ADR-029　開發環境的付款用「綠界模擬器」獨立行程；正式碼只多一道網域守衛
+**狀態**：已採納（2026-09-02，使用者拍板「先做，但要能隨時更換回 adapter，因為可以更換 adapter 就可以上了」）
+
+**問題**：D 階段「一條完整流程走得完」卡在付款。正規路要等 E3（綠界商店代號）＋ E2（對外可達的回呼網址），
+兩個都不在我們手上；而付款之後的整段路（訂單、出貨、鑑賞期、退款、分錄）從來沒有人用畫面連續走過。
+
+**否決的三個做法**：
+- 「模擬付款成功」開關——會在正式碼裡放一條繞過真實付款的路徑，之後要靠紀律確保它不流到正式環境。
+- 借用 `PaymentProvider.ExternalSettled`——契約寫明那是 M5 通路訂單（蝦皮代收）的位置，借用會汙染語意。
+- 寫一個假的 `IEcpayGateway`——那是在測試裡才該存在的替身；放進 dev 會讓「換回真的」變成程式碼改動。
+
+**決定：假的不是我們的 adapter，假的是綠界的伺服器。**
+`src/Tools/GreyGray.Tools.EcpaySimulator`（獨立行程）扮演綠界：收結帳表單、驗簽、把付款結果通知 POST 回 `ReturnURL`、
+回應退刷 `DoAction`。dev 只靠**本來就可設定**的 `Payment:ECPay:CheckoutUrl`／`CreditDetailUrl` 指過去。
+`EcpayGateway`、回呼處理、事件、outbox、Worker、分錄全部照正式碼跑。
+
+**正式碼唯一新增**：`Payment:ECPay:AllowNonEcpayEndpoints`（預設 false）——兩個網址不是 https 的
+`ecpay.com.tw`／`*.ecpay.com.tw` 就在 DI 解析期拒絕啟用。正式機忘了拿掉 dev 設定會立刻炸，不會默默打到模擬器。
+
+**換回正式** ＝ 不設那兩個網址（或設正式站）＋ 真憑證 ＋ 不開旗標。**沒有任何一行程式碼要改**——
+這就是「可以更換 adapter 就可以上了」的具體形狀。
+
+**附帶**：
+- 模擬器只接受 `DEVFAKE` 開頭的 MerchantId；它發出的 `TradeNo` 以 `DEVFAKE` 開頭，進了 `ProviderTransactionId` 之後在後台與 DB 一眼看得出是模擬的。
+- 模擬器不送 `SimulatePaid=1`，`AllowSimulatedPaid` 維持 false——回呼走的是**正式**那條判斷。
+- 順帶修 #33（付款完成後沒有路回商店）：簽章加 `ClientBackURL`，由 Host 用 `Storefront:PublicOrigin` 組出 `/payment/result?orderId=`。
+  不做 `OrderResultURL`（要多一個接受瀏覽器 POST 的端點，留追蹤項）。

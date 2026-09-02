@@ -51,6 +51,43 @@ Leader 要明講。
 
 ---
 
+## 生效中：BE-40　dev 綠界模擬器（獨立行程）＋ 付款完成後回商店（#33）＋ 非綠界網域守衛
+
+使用者 2026-09-02 拍板：先做 dev 模擬付款，**但要能隨時換回 adapter——可以換回去就等於可以上線**。
+Leader 的裁決（ADR-029）：假的不是我們的 adapter，**假的是綠界的伺服器**。`EcpayGateway`、回呼處理、
+事件、outbox、分錄全部照正式碼跑；dev 只把本來就可設定的 `Payment:ECPay:CheckoutUrl`／`CreditDetailUrl`
+指到一支獨立行程的模擬器。正式碼唯一新增：`Payment:ECPay:AllowNonEcpayEndpoints` 守衛（預設 false）。
+
+★ 派工前查證出的真缺陷 **#33**：`CreateCheckoutFields` 只簽 `ReturnURL`，沒有 `ClientBackURL`／`OrderResultURL`；
+前台 `/payment/result` 檔頭寫著「假設後端會設」——正式環境客人付完款會被留在綠界頁，沒有路回商店。
+併入這一包（`ClientBackURL`；不做 `OrderResultURL`）。
+
+★★ 最容易做錯的：① 不要碰 `AllowSimulatedPaid`、不要讓模擬器送 `SimulatePaid=1`；② 模擬器要通過的是
+**現在這一套**驗簽與回呼判斷，不准為了讓它過而改判斷；③ `Storefront:PublicOrigin` 缺就在付款端點明確炸，
+不要預設 localhost（cookie 依 hostname 隔離，dev 要 127.0.0.1）；④ 不要新開測試專案、不要動
+`Directory.Packages.props`；⑤ Debug 的 bin 被跑著的 Host 鎖住，建置與測試用 `-Configuration Release`，
+不要停任何 dev 行程。
+
+package: BE-40
+doc: docs/36-後端第二十四波派工書.md
+allow: src/Modules/Payment/
+allow: src/Hosts/GreyGray.Api.Storefront/M1aEndpoints.cs
+allow: src/Tools/GreyGray.Tools.EcpaySimulator/
+allow: src/Tools/GreyGray.Tools.EcpaySimulator.Core/
+allow: GreyGray.slnx
+allow: tests/GreyGray.M1a.PaymentLedger.Tests/
+allow: tests/GreyGray.M1a.Migrations.Tests/PaymentLedgerMigrationTests.cs
+allow: tests/GreyGray.Architecture.Tests/ModuleBoundaryTests.cs
+allow: ops/start-dev-hosts.ps1
+allow: ops/start-dev-ecpay-simulator.ps1
+allow: ops/stop-dev-environment.ps1
+allow: ops/install-dev-environment.ps1
+
+> `src/Tools/GreyGray.Tools.EcpaySimulator.Core/` 只在派工書必做 5 說的那種情況（測試專案參考 Web exe 不順）才建。
+> `M1aEndpoints.cs` 只准動 `MapPayment` 那一段；`install-dev-environment.ps1` 只准動註解。
+
+---
+
 <!--
 ★ 2026-09-01 已通過整合驗收並提交（後端 d43dc1d），撤包。原文保留供追溯。
 

@@ -1,6 +1,16 @@
 # 啟動 prompt
 
-**沒有生效中的派工（2026-09-02）。** 兩棵樹都是整合者模式，原始碼一律不准寫。
+**生效中的派工（2026-09-02 晚，第二十九波，兩棵樹各一包並行）：後端 BE-40、前端 FE-25。**
+啟動 prompt 在下面「BE-40 的啟動 prompt」與「FE-25 的啟動 prompt」兩節。
+
+★ **BE-40**：使用者拍板「先做 dev 模擬付款，但要能隨時換回 adapter」。Leader 的裁決（ADR-029）是
+**假的是綠界的伺服器**——獨立行程的模擬器，`EcpayGateway` 與回呼判斷一個位元組不動，dev 只把
+`Payment:ECPay:CheckoutUrl`／`CreditDetailUrl` 指過去；正式碼唯一新增 `AllowNonEcpayEndpoints` 守衛。
+派工前查證出真缺陷 **#33**（簽章沒有 `ClientBackURL`，付完款沒有路回商店），併入。
+
+★ **FE-25**：「我的」一直沒有家（分頁與首頁頭像都指 `/orders`、`/wallet` 零入口、全站沒有登出），
+登入後一律被丟到 `/orders`、結帳送出撞 401 沒有去登入的路。做 `/me`、`?next=` 回跳、付款結果頁有限次重查。
+兩個追蹤項 Leader 查證後不用改碼（`GET /v1/cart` 不寫 DB；cookie HttpOnly 前端讀不到）。
 
 ★ 2026-09-02 使用者從前台測整段下單時撞到 **#30**：加完購物車之後沒有任何按鈕
 回得去，只能按上一頁；首頁上連「購物車」三個字都沒有。根因是當初就沒排——
@@ -37,10 +47,118 @@ Leader 的錯：只寫了「不要顯示」，沒給替代出口。**已由 FE-2
 storefront `GET /v1/cart`、`POST /v1/cart/lines`，**以及 admin `GET /v1/orders/{orderId}`**
 （後台訂單列表點得進去、點開任一張就 500，已在真瀏覽器裡驗證）。卡在 E3。
 
-**下一份後端派工書是 `docs/36-後端第二十四波派工書.md`；下一份前端派工書是 `docs/28-前端第十四波派工書.md`（FE-24 用的是 27）。**
+**這一波的派工書：後端 `docs/36-後端第二十四波派工書.md`（BE-40）、前端 `docs/28-前端第十四波派工書.md`（FE-25）。
+下一份後端派工書是 `docs/37-後端第二十五波派工書.md`；下一份前端派工書是 `docs/29-前端第十五波派工書.md`。**
 
 ★ **`pnpm lint` 在這個 workspace 根本跑不起來**（沒裝 ESLint，`next lint` 已棄用且互動式；
 對沒碰過的專案跑也是 exit 1，Leader 已用對照組確認）。**不要再把它列進任何自驗項。**
+
+---
+
+## BE-40 的啟動 prompt（生效中）
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
+GreyGray Platform 後端。.NET 10 模組化單體，14 個限界上下文，EF Core + Npgsql。
+
+GG_PACKAGE=BE-40
+
+開工前務必先讀：
+  CLAUDE.md                        六條鐵則 ＋ 派工規則
+  docs/36-後端第二十四波派工書.md    ★ 整份讀完：§0 事實 ＋ §1 五個必做 ＋ §2 不要做的事
+  docs/00-decisions.md             ADR-029（這一包的形狀是拍板過的，不要換）
+  .dispatch/reports/README.md      ★ 自驗報告的格式，缺標頭會被退回
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/BE-40.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 不准把驗證丟背景、不准排程 wakeup。12 個測試專案逐一在前景個別執行。
+     不要用 dotnet test，用 ops\test.ps1。
+     ★ dev 環境開著時 Host 會鎖住 bin\Debug，建置與測試都用 -Configuration Release，
+       不要停掉或重啟任何 dev 行程。
+
+★ 形狀是拍板過的：假的是綠界的伺服器（獨立行程的模擬器），不是我們的 adapter。
+  EcpayGateway 與回呼判斷一個位元組都不動；正式碼唯一新增的是
+  Payment:ECPay:AllowNonEcpayEndpoints 守衛（預設 false）。
+
+★ #33 併入：簽章加 ClientBackURL，由 Host 用 Storefront:PublicOrigin 組出
+  {PublicOrigin}/payment/result?orderId=…。缺設定在付款端點明確炸，不要預設 localhost。
+  不做 OrderResultURL。
+
+★ 不要動 AllowSimulatedPaid、不要讓模擬器送 SimulatePaid=1。
+★ 不要改 docs/api/*.yaml、docs/05、frontend/、Directory.Packages.props、ops/deploy.ps1。
+★ 不要新開測試專案；測試放 tests/GreyGray.M1a.PaymentLedger.Tests/。
+★ 模擬器只 ProjectReference Payment.Infra，簽章走 InternalsVisibleTo 重用，不要再抄一份。
+★ 模擬器的 MerchantId 不是 DEVFAKE 開頭就拒絕啟動；TradeNo 以 DEVFAKE 開頭、共 20 字。
+
+★ BOM：維持每個檔案原本的狀態。用 Python 寫檔時不要用 encoding='utf-8-sig'。
+
+★ 質疑被鼓勵，但不准自己改方向：派工書寫錯了就停下來寫進報告問，
+  不要一邊照做一邊在報告裡抱怨，也不要自己換一個做法。
+  前幾包就是這樣擋下 Leader 寫錯的段落，而且每次都對。
+
+檔案所有權：見派工書 §4。
+docs/、management/、STATE.md、CLAUDE.md、AGENTS.md 每一包都寫得了。
+
+不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
+git checkout -- .、以及 git commit。
+
+你不可以自己宣告通過。交付完就停。
+```
+
+---
+
+## FE-25 的啟動 prompt（生效中）
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe
+GreyGray Platform 前端。Next.js 15 ＋ React 19 ＋ Tailwind 4，pnpm workspace。
+
+GG_PACKAGE=FE-25
+
+開工前務必先讀：
+  CLAUDE.md                        前端四條 ＋ 派工規則
+  docs/28-前端第十四波派工書.md      ★ 整份讀完，§0 事實 ＋ §1 A～E
+  .dispatch/reports/FE-24.md       上一包的報告，尤其「我發現但沒做的事」④⑦
+  .dispatch/reports/README.md      ★ 自驗報告的格式，缺標頭會被退回
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/FE-25.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 不准把驗證丟背景、不准排程 wakeup。全部前景跑完再交付。
+
+★ 三件事：A 新頁 /me（含登出）＋ B「我的」改指 /me ＋ C 登入後回到原頁（?next=，只收站內路徑）
+  ＋ D 付款結果頁有限次自動重查。E 兩個追蹤項已由 Leader 查證為不成立／前端做不到，不改碼，只寫進報告。
+
+★ tabs.test.ts 那兩段釘住「我的 → /orders」的斷言允許改（這一包就是要改它），總條數只能增不能減。
+  基準 317 條，交付時必須變多。
+
+★ 不要跑 next build——dev server 在跑，共用 .next，會把整站打成 500。typecheck 與 vitest 就夠。
+
+★ 這個 workspace 沒有 jsdom／@testing-library 也沒安裝，不要為了測試加相依套件、
+  不要動 pnpm-lock.yaml 或任何 package.json。測試放 apps/storefront。pnpm lint 跑不起來，不要列。
+
+★ 不要動後端、docs/api/*.yaml、packages/*、globals.css、TAB_BAR_RULES、TOP_BAR_RULES、
+  useCartItemCount.ts、StorefrontTabBar.tsx、PageTopBar.tsx。
+
+★ 環境提示：dev 全開（前台 5002、後台 5003、API 5000／5001）。不要重啟或停掉任何 dev server。
+  後端同時有另一包（BE-40）在另一棵樹做付款模擬器，跟你無關，不要等它。
+
+檔案所有權：見派工書 §3。
+docs/、STATE.md、CLAUDE.md、AGENTS.md 每一包都寫得了。
+
+不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
+git checkout -- .、以及 git commit。
+
+★ 如果你發現派工書裡有做不到、或方向錯誤的要求，停下來講清楚，不要硬做也不要假裝通過。
+  前幾包就是這樣擋下 Leader 寫錯的段落，而且每次都對。這跟「不准自己擴大範圍」是兩件事。
+
+你不可以自己宣告通過。交付完就停。
+```
 
 ---
 
