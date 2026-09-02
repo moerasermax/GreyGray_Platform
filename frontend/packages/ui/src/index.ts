@@ -42,6 +42,7 @@ export * from './components/Avatar';
 export * from './components/PriceDisplay';
 export * from './components/QuantityStepper';
 export * from './components/BottomActionBar';
+export * from './components/TopBar';
 export * from './components/BottomSheet';
 export * from './components/Dialog';
 export * from './components/Toast';

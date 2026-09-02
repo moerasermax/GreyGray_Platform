@@ -19,16 +19,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useSyncExternalStore } from 'react';
-import { getCart } from '@greygray/api-client/endpoints/storefront';
-import { browserApi } from '../_lib/apiClient';
 import { cartTabAccessibleName, formatCartBadge } from '../_lib/cartBadge';
-import {
-  getCartItemCount,
-  getServerCartItemCount,
-  publishCart,
-  subscribeCartItemCount,
-} from '../_lib/cartCountStore';
 import {
   STOREFRONT_TABS,
   TAB_BAR_HEIGHT,
@@ -36,35 +27,14 @@ import {
   activeTabHref,
   shouldShowTabBar,
 } from '../_lib/tabs';
+import { useCartItemCount } from '../_lib/useCartItemCount';
 import { TabBarIcon } from './TabBarIcons';
 
 export function StorefrontTabBar() {
   const pathname = usePathname();
-  const itemCount = useSyncExternalStore(
-    subscribeCartItemCount,
-    getCartItemCount,
-    getServerCartItemCount,
-  );
-
   const visible = shouldShowTabBar(pathname);
-
-  useEffect(() => {
-    // 已經知道件數就不再問——三個呼叫點會把最新的 Cart 推進 store。
-    if (!visible || getCartItemCount() !== null) return;
-
-    let cancelled = false;
-    getCart(browserApi())
-      .then((cart) => {
-        if (!cancelled) publishCart(cart);
-      })
-      .catch(() => {
-        // 拿不到就維持「不知道」＝不畫徽章。**絕對不要退化成 0。**
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [visible, pathname]);
+  // 取數的規則（何時問、拿不到怎麼辦）與頂部列共用同一支 hook，見 `_lib/useCartItemCount.ts`。
+  const itemCount = useCartItemCount(visible, pathname);
 
   if (!visible) return null;
 

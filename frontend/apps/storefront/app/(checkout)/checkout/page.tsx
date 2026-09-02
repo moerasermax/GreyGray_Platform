@@ -26,6 +26,7 @@ import {
 import * as api from '@greygray/api-client/endpoints/storefront';
 import type { components } from '@greygray/api-client/storefront';
 import type { IdempotentAction, PayloadIdempotentAction } from '@greygray/api-client';
+import { PageTopBar } from '../../_components/PageTopBar';
 import { browserApi } from '../../_lib/apiClient';
 import { AddressSelect } from '../_components/AddressSelect';
 import { ConvenienceStoreField } from '../_components/ConvenienceStoreField';
@@ -42,7 +43,22 @@ type S = components['schemas'];
 
 type CheckoutInput = Parameters<typeof api.checkout>[1];
 
+/*
+ * #32：同 `cart/page.tsx`——分頁列被自己的 `BottomActionBar` 擠掉，
+ * 有東西時畫面上只有「送出訂單」，返回不了也離不開。
+ * 返回指向 `/cart` 而不是 `/`：結帳的上一步就是購物車（見 `_lib/topBar.ts`）。
+ * 四種狀態都要有出口，所以包在外層；內容原封不動搬進 `CheckoutPageContent`。
+ */
 export default function CheckoutPage() {
+  return (
+    <>
+      <PageTopBar title="結帳" />
+      <CheckoutPageContent />
+    </>
+  );
+}
+
+function CheckoutPageContent() {
   const router = useRouter();
   const { cart, loading, error, reload } = useCart();
 

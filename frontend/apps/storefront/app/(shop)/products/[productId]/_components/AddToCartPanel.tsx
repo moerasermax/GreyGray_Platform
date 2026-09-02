@@ -147,7 +147,18 @@ export function AddToCartPanel({ product }: AddToCartPanelProps) {
       </BottomActionBar>
 
       <div className="fixed inset-x-[var(--gg-space-4)] bottom-[calc(var(--gg-bottom-bar-height)+var(--gg-space-3))] z-[var(--gg-z-modal)] mx-auto max-w-sm">
-        <Toast open={state === 'success'} variant="success" message="已加入購物車。" onClose={() => setState('idle')} duration={2500} />
+        {/*
+          #32：提示裡要有一條真的走得到購物車的路。5 秒不是隨手挑的——
+          預設的 2.5 秒是「看一眼」的長度，按不到的按鈕比沒有按鈕更糟。
+        */}
+        <Toast
+          open={state === 'success'}
+          variant="success"
+          message="已加入購物車。"
+          onClose={() => setState('idle')}
+          duration={5000}
+          action={{ label: '查看購物車', href: '/cart' }}
+        />
         <Toast open={state === 'error'} variant="error" message={errorMessage} onClose={() => setState('idle')} duration={4000} />
       </div>
     </div>

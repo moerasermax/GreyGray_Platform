@@ -86,7 +86,15 @@ export function CampaignOfferRow({ offer, isAcceptingOrders }: CampaignOfferRowP
       </div>
 
       <div className="fixed inset-x-[var(--gg-space-4)] bottom-[var(--gg-space-4)] z-[var(--gg-z-modal)] mx-auto max-w-sm">
-        <Toast open={state === 'success'} variant="success" message="已加入購物車。" onClose={() => setState('idle')} duration={2500} />
+        {/* #32：同商品頁，成功提示裡給一條走得到購物車的路；有動作就要留得夠久（5 秒）。 */}
+        <Toast
+          open={state === 'success'}
+          variant="success"
+          message="已加入購物車。"
+          onClose={() => setState('idle')}
+          duration={5000}
+          action={{ label: '查看購物車', href: '/cart' }}
+        />
         <Toast open={state === 'error'} variant="error" message={errorMessage} onClose={() => setState('idle')} duration={4000} />
       </div>
     </div>

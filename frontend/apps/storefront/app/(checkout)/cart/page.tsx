@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { BottomActionBar, Button, Card, EmptyState, ErrorState, PriceDisplay, Skeleton } from '@greygray/ui';
 import * as api from '@greygray/api-client/endpoints/storefront';
+import { PageTopBar } from '../../_components/PageTopBar';
 import { browserApi } from '../../_lib/apiClient';
 import { usePayloadIdempotency } from '../../_lib/usePayloadIdempotency';
 import { publishCart } from '../../_lib/cartCountStore';
@@ -18,7 +19,24 @@ import { useCart } from '../_lib/useCart';
 import { blockingAvailabilityWarning } from '../_lib/cartRules';
 import { describeError } from '../_lib/errorDisplay';
 
+/*
+ * #32：這一頁的分頁列被自己的 `BottomActionBar` 擠掉了，畫面上只有「前往結帳」——
+ * 有東西的購物車一個出口都沒有（「回首頁逛逛」只在空車那個分支）。
+ *
+ * 頂部列包在外層而不是塞進下面每一個 return，是因為載入中、失敗、空車、有東西
+ * **四種狀態都需要出口**——尤其失敗那一頁，除了重試以外原本哪裡都去不了。
+ * 內容原封不動搬進 `CartPageContent`，版面與邏輯零改動。
+ */
 export default function CartPage() {
+  return (
+    <>
+      <PageTopBar title="購物車" />
+      <CartPageContent />
+    </>
+  );
+}
+
+function CartPageContent() {
   const idempotency = usePayloadIdempotency();
   const { cart, loading, error, reload, setCart } = useCart();
   const [busyLineId, setBusyLineId] = useState<string | null>(null);

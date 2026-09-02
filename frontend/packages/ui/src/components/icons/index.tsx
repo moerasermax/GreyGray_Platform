@@ -141,3 +141,46 @@ export function IconUser(props: IconProps) {
     </BaseIcon>
   );
 }
+
+/*
+ * ── 以下三顆是 FE-23 暫放在 `apps/storefront/app/_components/TabBarIcons.tsx`、
+ *    FE-24 搬回來的 ──
+ * 那個檔的檔頭自己寫著「本來就該進來，只是 FE-23 動不了 packages/ui」。
+ * 第四顆（分頁列的「我的」）沒有搬——它的兩條 path 與上面的 `IconUser` **逐字相同**，
+ * 搬過來只會多一顆長得一樣的圖示，違反這個檔案「整包唯一的圖示來源」的用意。
+ * 第五顆不用新增：頂部列的購物車用的就是下面這顆 `IconCart`，與分頁列同一顆。
+ */
+
+/** 首頁。 */
+export function IconHome(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M3.5 10.5 12 3.5l8.5 7" />
+      <path d="M5.5 9.5V20h13V9.5" />
+      <path d="M9.5 20v-5.5h5V20" />
+    </BaseIcon>
+  );
+}
+
+/** 開團。一起買＝一群人，用兩個人的剪影。 */
+export function IconUsers(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <circle cx="9" cy="8" r="3.25" />
+      <path d="M3 19.5c1-3.2 3.4-5 6-5s5 1.8 6 5" />
+      <path d="M16 5.5a3.25 3.25 0 0 1 0 6.4" />
+      <path d="M17.5 14.9c1.9.7 3.2 2.3 3.8 4.6" />
+    </BaseIcon>
+  );
+}
+
+/** 購物車。分頁列與頂部列共用**同一顆**。 */
+export function IconCart(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M3 4h2.2l2.3 10.5h9.4L19 7H6" />
+      <circle cx="9.5" cy="19" r="1.4" />
+      <circle cx="16.5" cy="19" r="1.4" />
+    </BaseIcon>
+  );
+}
