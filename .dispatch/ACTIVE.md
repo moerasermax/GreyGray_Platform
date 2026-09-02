@@ -51,6 +51,46 @@ Leader 要明講。
 
 ---
 
+## 生效中：FE-24　三頁的頂部列（商品詳情 · 購物車 · 結帳）＋ #31
+
+修「現在卡在哪」**#32**。FE-23 撤包後使用者接著測，問「昨天提到的加入購物車後
+沒有按鈕可以返回首頁，這個沒優化嗎？」——答案是**沒有**：FE-23 把分頁列放上了
+首頁、列表、我的訂單，但使用者撞到的那三頁（商品詳情、購物車、結帳）正好是
+分頁列刻意隱藏的三頁，一頁都沒修到。商品詳情頁 HTML 裡**零**內部連結（預購商品
+才有一條「查看開團」），購物車與結帳有東西時只有「前往結帳」／「送出訂單」。
+
+★ 這是 Leader 的錯：FE-23 派工書只寫「這三頁不要顯示分頁列」，沒有給替代出口。
+手機電商商品頁不放分頁列的同時一定有一條頂部列（返回＋購物車）。
+驗收時 Leader 用工具直接跳網址，不需要在畫面上找路，所以又沒抓到——跟 #30 同一個形狀。
+
+★★ 這一包最容易做錯的：① 「每一條路由恰好有一種殼」要用原始碼掃描的測試釘住
+（照 `bottomActionBarCollision.test.ts` 的做法），不要再抄一份清單；② 返回在直接打網址
+進來時也要有地方去（商品→`/`、購物車→`/`、結帳→`/cart`）；③ 不要動 `globals.css:88` 那行
+body 留白（上一包的 144px 教訓）；④ 不要跑 `next build`（dev server 在跑，共用 `.next`）。
+
+★ `Toast` 後台也在用，新 prop 必須選填。`packages/ui` 沒有 vitest，測試寫在 `apps/storefront`。
+基準 **248 條**，交付時必須變多。
+
+package: FE-24
+doc: docs/27-前端第十三波派工書.md
+allow: frontend/apps/storefront/app/layout.tsx
+allow: frontend/apps/storefront/app/_components/
+allow: frontend/apps/storefront/app/_lib/
+allow: frontend/apps/storefront/app/(shop)/products/[productId]/page.tsx
+allow: frontend/apps/storefront/app/(shop)/products/[productId]/_components/AddToCartPanel.tsx
+allow: frontend/apps/storefront/app/(shop)/campaigns/[campaignId]/_components/CampaignOfferRow.tsx
+allow: frontend/apps/storefront/app/(checkout)/cart/page.tsx
+allow: frontend/apps/storefront/app/(checkout)/checkout/page.tsx
+allow: frontend/packages/ui/src/components/
+allow: frontend/packages/ui/src/tokens/soft-seoul.css
+allow: frontend/packages/ui/src/index.ts
+
+> `packages/ui/src/components/` 給整個目錄是因為 `TopBar.tsx`（新檔）還不存在；
+> **只准動 `packages/ui/src/components/Toast.tsx`、`icons/index.tsx`、`Countdown.tsx` 與新檔 `TopBar.tsx`**，其餘動了會被退回。
+> `apps/storefront/app/layout.tsx` 只在你選 layout 層機制時才動。三頁各自的頁面檔案只加頂部列，不改版面與邏輯。
+
+---
+
 <!--
 ★ 2026-09-02 已通過整合驗收並提交（前端 5b2db68），撤包。原文保留供追溯。
 
