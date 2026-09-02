@@ -130,6 +130,58 @@ if (Test-ProcessStartedAfter -ProcessStartTime $boundary.AddSeconds(-1) -Restart
 }
 Write-Host 'PASS process takeover：新 StartTime 通過；舊 StartTime 被拒絕'
 
+<#
+    「乾淨機器第一次部署」——機器上沒有任何舊行程、沒有任何 port 被佔。
+
+    這條路 deploy.ps1 -ValidateOnly 驗不到（它在複製 artifact 之前就 return），
+    開發機也從來沒用 deploy.ps1 部署過，所以直到正式機 YC 第二次真跑、
+    17 支 migration 與全部機密都備好之後，才炸在
+    「無法將引數繫結至 'Tokens' 參數，因為它是一個空陣列」——
+    Mandatory 參數預設拒收空集合，而乾淨機器上 Get-ManagedApplicationTokens 回的就是 @()。
+    5.1 與 7 都一樣。這裡把「空集合」這條路釘住，兩個 host 各驗一次。
+#>
+$cleanRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("greygray-clean-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $cleanRoot -Force | Out-Null
+try {
+    # ① 沒有任何舊行程要等：空陣列必須合法，而且立刻回來（不能等滿 TimeoutSeconds）。
+    $waitStopwatch = [Diagnostics.Stopwatch]::StartNew()
+    Wait-ProcessTokensExit -Tokens @() -InstallRoot $cleanRoot -TimeoutSeconds 30
+    $waitStopwatch.Stop()
+    if ($waitStopwatch.Elapsed.TotalSeconds -gt 5) {
+        throw "Wait-ProcessTokensExit -Tokens @() 應立刻 return，實際等了 $($waitStopwatch.Elapsed.TotalSeconds) 秒。"
+    }
+
+    # ② 沒人聽的 port：Get-PortOwnerProcess 回空、Assert-PortReleased 直接放行。
+    $freePort = 0
+    foreach ($candidatePort in 49500..49600) {
+        if (@(Get-NetTCPConnection -State Listen -LocalPort $candidatePort -ErrorAction SilentlyContinue).Count -eq 0) {
+            $freePort = $candidatePort
+            break
+        }
+    }
+    if ($freePort -eq 0) { throw '49500-49600 找不到任何空 port——這一項等於什麼都沒查。' }
+    if (@(Get-PortOwnerProcess -Port $freePort).Count -ne 0) {
+        throw "Get-PortOwnerProcess -Port $freePort 應為空。"
+    }
+    Assert-PortReleased -Port $freePort -InstallRoot $cleanRoot
+
+    # ③ releases\ 還不存在（或只有殘留目錄）：列舉不可以炸，回空集合即可。
+    $releasesRoot = Join-Path $cleanRoot 'releases'
+    if (@(Get-ChildItem -LiteralPath $releasesRoot -Directory -ErrorAction SilentlyContinue).Count -ne 0) {
+        throw '不存在的 releases\ 應列舉出空集合。'
+    }
+
+    # ④ 沒有這個名字的行程：Get-Process 不可以炸，回空集合即可。
+    if (@(Get-Process -Name 'GreyGray.Api.Storefront.selftest-absent' -ErrorAction SilentlyContinue).Count -ne 0) {
+        throw '不存在的行程名稱應回空集合。'
+    }
+
+    Write-Host "PASS 乾淨機器第一次部署（host PowerShell $($PSVersionTable.PSVersion)）：Wait-ProcessTokensExit 收空陣列並立刻 return；空 port $freePort 直接放行；releases\ 與行程名稱查不到時回空集合"
+}
+finally {
+    if (Test-Path -LiteralPath $cleanRoot) { Remove-Item -LiteralPath $cleanRoot -Recurse -Force }
+}
+
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("greygray-ops-selftest-" + [guid]::NewGuid().ToString('N'))
 try {
     $artifactRoot = Join-Path $tempRoot 'artifacts'

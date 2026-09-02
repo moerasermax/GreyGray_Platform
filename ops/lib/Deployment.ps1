@@ -123,13 +123,28 @@ function Get-PortOwnerProcess {
 }
 
 function Wait-ProcessTokensExit {
+    <#
+        .DESCRIPTION
+        ★ [AllowEmptyCollection()] 不是可有可無：Mandatory 參數預設**拒收空集合**，
+        錯誤是「無法將引數繫結至 'Tokens' 參數，因為它是一個空陣列」。
+        而「第一次部署、機器上什麼都沒有」正是空集合最自然的樣子——deploy.ps1 的
+        Get-ManagedApplicationTokens 在乾淨機器上找不到任何舊行程、5000-5003 也沒人聽，
+        回傳的就是 @()。這條路 self-test 驗不到（deploy.ps1 -ValidateOnly 在更前面就 return），
+        所以直到正式機 YC 第二次真跑、17 支 migration 與全部機密都備好之後才炸出來。
+        5.1 與 7 都一樣，不是版本差異。
+
+        呼叫端仍然必須明確傳 -Tokens（維持 Mandatory），只是允許它是空的；
+        空的代表「沒有舊行程要等」，直接 return。
+    #>
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][object[]]$Tokens,
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Tokens,
         [Parameter(Mandatory)][string]$InstallRoot,
         [int]$TimeoutSeconds = 30,
         [scriptblock]$OwnershipValidator
     )
+
+    if ($Tokens.Count -eq 0) { return }
 
     $deadline = [datetime]::UtcNow.AddSeconds($TimeoutSeconds)
     do {
