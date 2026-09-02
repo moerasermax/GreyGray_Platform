@@ -61,6 +61,47 @@ if ($missingBom.Count -gt 0) {
 }
 Write-Host "PASS 正式機腳本 BOM：$($productionScripts.Count) 支都有 UTF-8 BOM（5.1 在中文 ACP 下讀無 BOM 的 UTF-8 會拆錯）"
 
+<#
+    lib/Secrets.ps1 的兩個產生器，**在目前這個 host 上直接呼叫**。
+
+    為什麼一定要真的叫下去，而不是靜態檢查：這兩個函式原本用
+    [RandomNumberGenerator]::Fill($bytes)，那是 .NET Core 3.0／.NET 5+ 才有的靜態方法。
+    Windows PowerShell 5.1 跑在 .NET Framework 4.x 上，呼叫下去會得到
+    「不包含名為 'Fill' 的方法」。而 deploy.ps1 -ValidateOnly 在更前面就 return，
+    所以這兩個函式在 5.1 下**從來沒有被呼叫過**——直到正式機 YC 第一次真的部署，
+    17 支 migration 全部成功之後才炸在 deploy.ps1 第 184 行的 New-SecretPassword。
+    self-test 本身 5.1 與 7 各跑一趟，這一項就會在兩個 runtime 上各驗一次。
+#>
+. "$PSScriptRoot\lib\Secrets.ps1"
+
+# New-SecretPassword：Base64 之後把 + / = 換成 x，所以字元集只剩 A-Za-z0-9x，
+# 長度是 Base64 的長度＝4 * ceil(位元組數 / 3)（含補位）。
+foreach ($length in @(32, 16, 48)) {
+    $expectedLength = 4 * [math]::Ceiling($length / 3)
+    $password = New-SecretPassword -Length $length
+    if ($password.Length -ne $expectedLength) {
+        throw "New-SecretPassword -Length $length 長度應為 $expectedLength，實得 $($password.Length)。"
+    }
+    if ($password -notmatch '^[A-Za-z0-9x]+$') {
+        throw "New-SecretPassword -Length $length 出現 A-Za-z0-9x 以外的字元（+ / = 應已換成 x）：$password"
+    }
+}
+if ((New-SecretPassword) -eq (New-SecretPassword)) { throw 'New-SecretPassword 連續兩次結果相同——不是亂數。' }
+
+# New-DataProtectionKey：**不做任何字元替換**，Base64 解碼後必須正好 32 bytes
+# （IdentityDataProtector 要的 AES-256 金鑰長度）。
+$dataProtectionKey = New-DataProtectionKey
+$decodedKey = [Convert]::FromBase64String($dataProtectionKey)
+if ($decodedKey.Length -ne 32) {
+    throw "New-DataProtectionKey Base64 解碼後應為 32 bytes，實得 $($decodedKey.Length)。"
+}
+if ($dataProtectionKey -notmatch '^[A-Za-z0-9+/]+={0,2}$') {
+    throw "New-DataProtectionKey 不該做字元替換，應為標準 Base64：$dataProtectionKey"
+}
+if ((New-DataProtectionKey) -eq (New-DataProtectionKey)) { throw 'New-DataProtectionKey 連續兩次結果相同——不是亂數。' }
+
+Write-Host "PASS lib/Secrets.ps1 亂數產生器（host PowerShell $($PSVersionTable.PSVersion)）：New-SecretPassword 長度／字元集正確、New-DataProtectionKey 解碼 32 bytes，各兩次都不同"
+
 $manifest = & "$PSScriptRoot\service-manifest.ps1"
 if ($manifest.Services.Count -ne 5) { throw 'service manifest 必須正好有五個 service。' }
 if (($manifest.Services.Name | Select-Object -Unique).Count -ne 5) { throw 'service manifest 名稱重複。' }

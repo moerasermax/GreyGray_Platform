@@ -180,13 +180,35 @@ if ($tunnelConfigExists) {
     else {
         <#
             離線驗規則，不連線、不重啟任何通道。
+
             用 Invoke-NativeCommand 而不是 `2>&1`：5.1 在 ErrorActionPreference=Stop 下
             會把 native stderr 升格成終止性錯誤，這一項就會變成整支腳本中斷而不是一行 FAIL。
+
+            ★ `--config` 是 `tunnel` 這一層的 flag，必須放在 `ingress validate` **前面**
+            （USAGE：`cloudflared tunnel [--config FILEPATH] ingress validate`）。放到後面會得到
+            `Incorrect Usage: flag provided but not defined: -config`，而 cloudflared 印完 help
+            **仍然 exit 0**——這一項原本只看 exit code，等於 config.yml 整份壞掉也照樣 PASS
+            （install-tunnel.ps1 踩過同一個坑，BE-43 第三輪在 YC 上抓到）。
+            所以三件事都要判：exit code 非 0／輸出含 Incorrect Usage／輸出沒有獨立一行 OK。
+            這支是驗收腳本，每一項只印一行 PASS/FAIL，所以失敗走 Report $false、不 throw。
         #>
         $ingressResult = Invoke-NativeCommand -FilePath $cloudflared.Source `
-            -ArgumentList @('tunnel', 'ingress', 'validate', '--config', $tunnelConfigPath) -AllowNonZeroExit
-        $ingressValid = $ingressResult.ExitCode -eq 0
-        $ingressDetail = "exit=$($ingressResult.ExitCode); $(($ingressResult.StdOut + ' ' + $ingressResult.StdErr).Trim())"
+            -ArgumentList @('tunnel', '--config', $tunnelConfigPath, 'ingress', 'validate') -AllowNonZeroExit
+        $ingressOutput = (@($ingressResult.StdOut, $ingressResult.StdErr) -join "`n").Trim()
+        $ingressSawOk = @($ingressOutput -split "`r?`n" | Where-Object { $_.Trim() -eq 'OK' }).Count -gt 0
+        if ($ingressResult.ExitCode -ne 0) {
+            $ingressDetail = "驗證失敗：exit=$($ingressResult.ExitCode)；$ingressOutput"
+        }
+        elseif ($ingressOutput -match 'Incorrect Usage') {
+            $ingressDetail = "cloudflared 沒有真的驗證（用法錯誤，但仍以 exit 0 結束）：$ingressOutput"
+        }
+        elseif (-not $ingressSawOk) {
+            $ingressDetail = "cloudflared 沒有真的驗證（exit 0 但輸出裡沒有獨立一行 OK）：$ingressOutput"
+        }
+        else {
+            $ingressValid = $true
+            $ingressDetail = "exit=0；$ingressOutput"
+        }
     }
 }
 Report "$TunnelServiceName ingress validate" $ingressValid $ingressDetail

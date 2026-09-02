@@ -29,12 +29,18 @@ function New-DataProtectionKey {
         + / = 換成 x。換掉之後要嘛直接 FormatException，要嘛（更糟）湊巧仍然解得開，
         但解出來的位元組已經不是原本產生的那組亂數，而且 Host 不會有任何抱怨——
         直到需要 Unprotect 舊資料時才會炸。
+
+        ★ 不要用 [RandomNumberGenerator]::Fill($bytes)：那個靜態方法是
+        .NET Core 3.0／.NET 5+ 才有的，Windows PowerShell 5.1 跑在 .NET Framework 4.x 上，
+        呼叫下去會得到「不包含名為 'Fill' 的方法」。正式機 YC 只有 5.1，deploy.ps1 第一次
+        真跑就是炸在這裡（17 支 migration 之後）。::Create() ＋ .GetBytes() 兩邊都有。
     #>
     [CmdletBinding()]
     param()
 
     $bytes = [byte[]]::new(32)
-    [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
     return [Convert]::ToBase64String($bytes)
 }
 
@@ -48,12 +54,15 @@ function New-SecretPassword {
         Base64 之後把 + / = 換成 x，讓密碼在連線字串、SQL 字面值裡都不需要跳脫。
         這裡取另一個名字，是為了讓「同名不同檔」不會發生——dev 腳本 dot-source
         這個檔之後仍然定義自己的 New-RandomPassword，兩個名字分開才看得出誰是誰。
+
+        ★ 同上：不要用 ::Fill，Windows PowerShell 5.1（.NET Framework 4.x）沒有那個方法。
     #>
     [CmdletBinding()]
     param([ValidateRange(16, 256)][int]$Length = 32)
 
     $bytes = [byte[]]::new($Length)
-    [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
     return ([Convert]::ToBase64String($bytes) -replace '[+/=]', 'x')
 }
 
