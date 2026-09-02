@@ -69,8 +69,15 @@ allow: ops/install-environment.ps1
 allow: ops/environment-self-test.ps1
 allow: ops/self-test.ps1
 allow: ops/lib/Secrets.ps1
+allow: ops/lib/Deployment.ps1
+allow: ops/deploy.ps1
 
 > `docs/14-環境整備runbook.md` 走 docs/ 全域放行。
+> 第五輪（2026-09-03 01:50，第四輪提交 `12da09e` 後 YC 第二次真跑）：migration、13 個 role 密碼、資料保護金鑰、ecpay.json 都過了，
+> 停在 `deploy.ps1` 第 338 行 `Wait-ProcessTokensExit -Tokens $oldTokens`——乾淨機器上沒有舊行程，`$oldTokens` 是空陣列，
+> `ops/lib/Deployment.ps1` 第 128 行 `[Parameter(Mandatory)][object[]]$Tokens` 拒收空集合（`ParameterArgumentValidationErrorEmptyArrayNotAllowed`，5.1 與 7 都會）。
+> 這一輪：修掉它，並把 `deploy.ps1` 第 327 行以後「第一次部署、機器上什麼都沒有」這條路逐段審一遍（空集合進 Mandatory、StrictMode 下對 `$null` 取 `.Count`／屬性、
+> `Select-Object -First 1` 拿到 `$null` 後續使用、`releases\` 不存在……），self-test 補「乾淨機器」案例。`ops/deploy.ps1` 只准為了這條路改，不准動 origin／secrets／NSSM 設定的語意。
 > 第一輪交付後 Leader 補授權（2026-09-03）：`ops/self-test.ps1` 只准把 `install-tunnel.ps1` 加進正式機腳本 BOM 清單（一行）；
 > `ops/environment-self-test.ps1` 第 8-13 行的 AST 改成跟 `self-test.ps1` 一樣以 UTF-8 讀入再 `ParseInput`（BE-42 修掉的同一個 big5 問題漏了這一支）。
 > 第二輪驗收提交 `47ec987` 後 Leader 在 YC 真的跑了（2026-09-03 01:00）：`GreyGray-Tunnel` 起來了、17 支 migration 全過，但抓到兩個缺陷，同一個 session 續做——
