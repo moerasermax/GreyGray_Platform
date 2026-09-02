@@ -67,8 +67,11 @@ allow: ops/install-tunnel.ps1
 allow: ops/verify-environment.ps1
 allow: ops/install-environment.ps1
 allow: ops/environment-self-test.ps1
+allow: ops/self-test.ps1
 
-> `docs/14-環境整備runbook.md` 走 docs/ 全域放行；`ops/self-test.ps1` 的 BOM 清單若要把 `install-tunnel.ps1` 加進正式機腳本清單，停下來回報（不在 allow）。
+> `docs/14-環境整備runbook.md` 走 docs/ 全域放行。
+> 第一輪交付後 Leader 補授權（2026-09-03）：`ops/self-test.ps1` 只准把 `install-tunnel.ps1` 加進正式機腳本 BOM 清單（一行）；
+> `ops/environment-self-test.ps1` 第 8-13 行的 AST 改成跟 `self-test.ps1` 一樣以 UTF-8 讀入再 `ParseInput`（BE-42 修掉的同一個 big5 問題漏了這一支）。
 
 ---
 
