@@ -46,7 +46,8 @@ export interface QuoteCartRequest {
 
 export interface CheckoutRequest {
   readonly deliveryMethod: S['DeliveryMethod'];
-  readonly shippingPolicy: S['ShippingPolicy'];
+  /** ADR-030：只有 `Cart.hasMixedModes` 時必填；單一模式可省略或 `null`，後端依 line 組成推導。 */
+  readonly shippingPolicy?: S['ShippingPolicy'] | null;
   readonly shippingAddressId?: string | null;
   readonly convenienceStoreCode?: string | null;
   readonly buyerNote?: string | null;

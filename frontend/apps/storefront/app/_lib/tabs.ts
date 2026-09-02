@@ -11,6 +11,7 @@
  * 會疊兩條固定列」。那個代價有 `__tests__/bottomActionBarCollision.test.ts` 機械擋著
  * （它去原始碼裡真的找誰用了 `BottomActionBar`），所以選黑名單。
  */
+import { safeNext } from './auth';
 
 /** 分頁列高度。詳見 `TAB_BAR_HEIGHT` 的說明，那不是隨手挑的數字。 */
 export const TAB_BAR_HEIGHT =
@@ -140,13 +141,11 @@ function isUnderPrefix(path: string, prefix: string): boolean {
 }
 
 /**
- * 現在停在哪一個分頁（回傳該分頁的 `href`）；都不是就回 `null`。
+ * 單看一個路徑落在哪一個分頁；都不是就回 `null`。
  *
  * `'/'` 只吃精確比對——它是所有路徑的前綴，拿它做前綴比對會讓每一頁都亮「首頁」。
  */
-export function activeTabHref(pathname: string): string | null {
-  const path = normalizePathname(pathname);
-
+function tabHrefForPath(path: string): string | null {
   const exact = STOREFRONT_TABS.find((tab) => tab.href === path);
   if (exact) return exact.href;
 
@@ -156,4 +155,52 @@ export function activeTabHref(pathname: string): string | null {
     ),
   );
   return byPrefix?.href ?? null;
+}
+
+/** 帶著 `?next=` 的兩頁。登入與註冊是同一條路上的兩塊招牌，規則要一樣。 */
+const AUTH_PATHS: readonly string[] = ['/login', '/register'];
+
+/** 從路徑或查詢字串裡取出 `next`；沒有就回 `null`。 */
+function nextParamOf(pathname: string, search: string | null | undefined): string | null {
+  const query = search ?? pathname.split('#')[0]?.split('?')[1] ?? '';
+  if (query === '') return null;
+  try {
+    return new URLSearchParams(query.startsWith('?') ? query.slice(1) : query).get('next');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 現在停在哪一個分頁（回傳該分頁的 `href`）；都不是就回 `null`。
+ *
+ * ── `?next=` 為什麼要看（FE-25 報告 ⑦）──
+ * `/login`、`/register` 平常算在「我的」底下（未登入的人點「我的」會被丟過來）。
+ * 但**被 401 從結帳頁彈過來**時亮「我的」是不準的：人在買東西的路上，
+ * 登入只是路中間的一道門。這一頁的分頁列該指出他從哪來、等一下要回哪去，
+ * 所以帶了 `next` 時改用 `next` 的目的地去算。
+ *
+ * ── 為什麼一定要過 `safeNext` ──
+ * `next` 來自網址，也就是來自任何一個能發連結給使用者的人（見 `_lib/auth.ts` 的威脅說明）。
+ * 這裡雖然只拿它決定「哪個圖示變色」，不會導向，但仍然一律先收斂：
+ * 白名單失準的後果是「亮我的」，永遠不會是照著攻擊者給的字串行動。
+ *
+ * `next` 不屬於任何分頁（例如 `/payment/result`）時，退回這一頁本來的分頁＝「我的」。
+ *
+ * @param pathname 路徑，可以連著查詢字串（`usePathname()` 沒有查詢字串時用第二個參數補）
+ * @param search   查詢字串（`useSearchParams().toString()` 或 `location.search`），可省略
+ */
+export function activeTabHref(pathname: string, search?: string | null): string | null {
+  const path = normalizePathname(pathname);
+
+  if (AUTH_PATHS.includes(path)) {
+    const next = nextParamOf(pathname, search);
+    if (next !== null) {
+      // `safeNext` 擋掉站外／協定相對／含控制字元的值，回退成 `/me`。
+      const destination = normalizePathname(safeNext(next));
+      return tabHrefForPath(destination) ?? tabHrefForPath(path);
+    }
+  }
+
+  return tabHrefForPath(path);
 }

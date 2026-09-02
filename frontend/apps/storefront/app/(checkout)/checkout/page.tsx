@@ -36,6 +36,12 @@ import { ExplainDisclosure } from '../_components/ExplainDisclosure';
 import { ShippingPolicyPicker } from '../_components/ShippingPolicyPicker';
 import { createIdempotentAction, createPayloadIdempotentAction } from '../_lib/idempotentAction';
 import { evaluateCheckoutReadiness } from '../_lib/cartRules';
+import {
+  clearCheckoutDraft,
+  clearOtherCheckoutDrafts,
+  loadCheckoutDraft,
+  saveCheckoutDraft,
+} from '../_lib/checkoutDraft';
 import { describeError, type ErrorDisplay } from '../_lib/errorDisplay';
 import { DELIVERY_METHOD_LABEL } from '../_lib/labels';
 import { useCart } from '../_lib/useCart';
@@ -84,17 +90,43 @@ function CheckoutPageContent() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<ErrorDisplay | null>(null);
 
-  // 購物車第一次載入時，如果已經有上一次詢價的結果（例如從購物車頁點過來），沿用它。
-  // 只做一次——之後使用者自己選的配送方式不該被 cart 的重新整理蓋掉。
+  /*
+   * 購物車第一次載入時做兩件事，只做一次——之後使用者自己選的配送方式
+   * 不該被 cart 的重新整理蓋掉。
+   *
+   * ① 還原被 401 彈走前填的東西（`_lib/checkoutDraft.ts`）。
+   *    沒有草稿、草稿壞掉、草稿屬於別張車，都會拿到 `null` ＝ 什麼都不做。
+   * ② 沿用上一次詢價的結果（例如從購物車頁點過來）。
+   *
+   * **順序：草稿優先。** 草稿裡的配送方式是使用者最後一次自己選的，
+   * 而 `cart.quote` 只是伺服器記得的上一次詢價；兩者不同時要以使用者為準，
+   * 並且**重新詢價**（運費由 `deliveryMethod` 決定，不能沿用別種方式的金額）。
+   * 重新詢價走的是頁面既有的 `handleSelectDeliveryMethod`，不另外算一份。
+   */
   const quoteInitializedRef = useRef(false);
   useEffect(() => {
-    if (cart && !quoteInitializedRef.current) {
-      quoteInitializedRef.current = true;
-      if (cart.quote) {
-        setDeliveryMethod(cart.quote.deliveryMethod);
-        setQuote(cart.quote);
-      }
+    if (!cart || quoteInitializedRef.current) return;
+    quoteInitializedRef.current = true;
+
+    const draft = loadCheckoutDraft(cart.id);
+    // 換過車之後，上一張車的草稿就沒有意義了，順手掃掉。
+    clearOtherCheckoutDrafts(cart.id);
+
+    if (draft) {
+      setShippingPolicy(draft.shippingPolicy);
+      setShippingAddressId(draft.shippingAddressId);
+      setConvenienceStoreCode(draft.convenienceStoreCode);
+      setBuyerNote(draft.buyerNote);
     }
+
+    const restored = draft?.deliveryMethod ?? null;
+    if (restored && cart.quote?.deliveryMethod !== restored) {
+      void handleSelectDeliveryMethod(restored);
+    } else if (cart.quote) {
+      setDeliveryMethod(cart.quote.deliveryMethod);
+      setQuote(cart.quote);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cart]);
 
   useEffect(() => {
@@ -149,12 +181,15 @@ function CheckoutPageContent() {
     try {
       const input: CheckoutInput = {
         deliveryMethod: deliveryMethod!,
-        shippingPolicy: shippingPolicy!,
+        // ADR-030：單一模式送 `null` 是對的，後端依 line 組成推導；只有混合購物車才必填。
+        shippingPolicy,
         shippingAddressId,
         convenienceStoreCode: convenienceStoreCode || null,
         buyerNote: buyerNote || null,
       };
       const order = await checkoutActionRef.current!.run(input);
+      // 單子已經成立，草稿沒有用了——留著只會在下一張車上冒出來。
+      clearCheckoutDraft(cart.id);
       /*
        * **成功之後不要把 submitting 放掉。**
        * `router.push` 是非同步的，如果在這裡 `finally { setSubmitting(false) }`，
@@ -176,6 +211,18 @@ function CheckoutPageContent() {
        * `submitting` 不放掉——導向是非同步的，放掉會讓人在空隙裡再按一次。
        */
       if (cause instanceof ApiError && cause.isUnauthorized) {
+        /*
+         * **走之前先把已填的東西存起來。** FE-25 給了一條回得來的路，
+         * 但回來看到的是一張空表單：配送方式變回「尚未選擇」，門市代號與留言都沒了。
+         * 只存使用者自己填的五個欄位，鍵含 cart id，`sessionStorage`（分頁關掉就消失）。
+         */
+        saveCheckoutDraft(cart.id, {
+          deliveryMethod,
+          shippingPolicy,
+          shippingAddressId,
+          convenienceStoreCode,
+          buyerNote,
+        });
         router.push(loginHref('/checkout'));
         return;
       }

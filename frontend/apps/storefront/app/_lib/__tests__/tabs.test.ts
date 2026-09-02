@@ -187,3 +187,53 @@ describe('activeTabHref：現在停在哪一個分頁', () => {
     expect(activeTabHref('/campaignsfoo')).toBeNull();
   });
 });
+
+describe('activeTabHref：登入／註冊帶 ?next= 時亮 next 所屬的分頁（FE-25 ⑦）', () => {
+  /*
+   * 為什麼不是一律亮「我的」：被 401 從結帳頁彈到 /login 的人是在**買東西的路上**，
+   * 登入只是路中間的一道門。分頁列亮「我的」會讓他以為自己走進了帳號區。
+   */
+  it.each([
+    ['/login?next=%2Fcheckout', '/cart', '從結帳被彈過來——人在買東西的路上'],
+    ['/login?next=%2Fcampaigns', '/campaigns', '從開團被彈過來'],
+    ['/login?next=%2Fcart', '/cart', '購物車本身'],
+    ['/login?next=%2Forders', '/me', '訂單頁在「我的」底下'],
+    ['/register?next=%2Fcheckout', '/cart', '註冊頁走同一套規則'],
+  ])('%s 亮的是 %s（%s）', (pathname, expected) => {
+    expect(activeTabHref(pathname)).toBe(expected);
+  });
+
+  it('沒帶 next 就維持亮「我的」——點「我的」被丟到登入頁是原本的路', () => {
+    expect(activeTabHref('/login')).toBe('/me');
+    expect(activeTabHref('/register')).toBe('/me');
+    expect(activeTabHref('/login?from=home')).toBe('/me');
+  });
+
+  it.each([
+    ['/login?next=//evil.com', '協定相對網址：safeNext 擋掉'],
+    ['/login?next=https%3A%2F%2Fevil.com', '站外絕對網址'],
+    ['/login?next=%2F%5Cevil.com', '反斜線'],
+    ['/login?next=', '空字串'],
+  ])('%s 亮「我的」（%s）——判斷失準的後果永遠是回到自己家', (pathname) => {
+    expect(activeTabHref(pathname)).toBe('/me');
+  });
+
+  it('next 不屬於任何分頁時退回「我的」，不會變成沒有分頁亮著', () => {
+    expect(activeTabHref('/login?next=%2Fpayment%2Fresult')).toBe('/me');
+  });
+
+  it('查詢字串也可以用第二個參數給——usePathname() 本來就不含它', () => {
+    expect(activeTabHref('/login', 'next=%2Fcheckout')).toBe('/cart');
+    expect(activeTabHref('/login', '?next=%2Fcheckout')).toBe('/cart');
+    expect(activeTabHref('/login', '')).toBe('/me');
+  });
+
+  it('?next= 只在登入／註冊頁有意義——別的頁面帶著它不會改變亮哪一個', () => {
+    expect(activeTabHref('/orders?next=%2Fcheckout')).toBe('/me');
+    expect(activeTabHref('/campaigns?next=%2Fcart')).toBe('/campaigns');
+  });
+
+  it('hash 不會被誤讀成查詢字串的一部分', () => {
+    expect(activeTabHref('/login?next=%2Fcheckout#top')).toBe('/cart');
+  });
+});

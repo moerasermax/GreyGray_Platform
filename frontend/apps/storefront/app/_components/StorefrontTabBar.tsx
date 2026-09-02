@@ -19,6 +19,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { cartTabAccessibleName, formatCartBadge } from '../_lib/cartBadge';
 import {
   STOREFRONT_TABS,
@@ -32,13 +33,33 @@ import { TabBarIcon } from './TabBarIcons';
 
 export function StorefrontTabBar() {
   const pathname = usePathname();
+  /*
+   * ── 查詢字串為什麼不是用 `useSearchParams()` ──
+   * `/login?next=%2Fcheckout` 要亮「購物車」而不是「我的」（FE-25 ⑦），所以這裡需要
+   * 查詢字串——但 `usePathname()` 不含它，而 `useSearchParams()` 會把用它的元件
+   * **推進 CSR bailout**。這支元件掛在**根 layout** 上，等於全站的靜態產生一起陪葬。
+   *
+   * 改成 `authRedirect.ts` 那一招：只在瀏覽器端讀 `window.location.search`。
+   * SSR 與首次渲染看不到查詢字串（`''`），亮的是 `/login` 本來的分頁「我的」，
+   * 掛載後這個 effect 補上真正的查詢字串再算一次，才變成「購物車」。
+   * 那一瞬間的差異是**同一條分頁列上換一個圖示變色**，不是內容有無，
+   * 也不會造成 hydration 不一致（第一次渲染兩邊都是 `''`）。
+   *
+   * 依 `pathname` 重跑：Next.js 的軟導向不會重新掛載這支元件，
+   * 少了這條相依，從 `/login?next=…` 走到別頁時會停在舊的查詢字串上。
+   */
+  const [search, setSearch] = useState('');
+  useEffect(() => {
+    setSearch(typeof window === 'undefined' ? '' : window.location.search);
+  }, [pathname]);
+
   const visible = shouldShowTabBar(pathname);
   // 取數的規則（何時問、拿不到怎麼辦）與頂部列共用同一支 hook，見 `_lib/useCartItemCount.ts`。
   const itemCount = useCartItemCount(visible, pathname);
 
   if (!visible) return null;
 
-  const active = activeTabHref(pathname);
+  const active = activeTabHref(pathname, search);
   const badge = formatCartBadge(itemCount);
 
   return (

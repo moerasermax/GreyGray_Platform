@@ -24,6 +24,7 @@ import { loginHref } from '../../_lib/auth';
 import { usePayloadIdempotency } from '../../_lib/usePayloadIdempotency';
 import { isUnauthorized } from '../_lib/authRedirect';
 import { generalErrorMessage, traceIdOf } from '../_lib/formErrors';
+import { performLogout } from './logout';
 
 type Me = components['schemas']['Me'];
 
@@ -70,22 +71,30 @@ export default function MePage() {
   async function handleLogout() {
     setLoggingOut(true);
     setLogoutError(null);
-    try {
-      const payload = { action: 'logout' };
-      await storefrontApi.logout(browserApi(), {
-        idempotencyKey: logoutIdempotency.current(payload),
-      });
-      logoutIdempotency.complete();
+    /*
+     * 順序（成功 → 徽章歸零 → 導向）與失敗分支都在 `./logout.ts` 裡，
+     * 那支有測試釘住；這裡只負責畫面狀態。
+     */
+    const ok = await performLogout({
+      logout: async () => {
+        const payload = { action: 'logout' };
+        await storefrontApi.logout(browserApi(), {
+          idempotencyKey: logoutIdempotency.current(payload),
+        });
+        logoutIdempotency.complete();
+      },
       /*
        * `replace` 而不是 `push`：登出之後按上一頁不該回到這一頁。
        * 回首頁而不是登入頁——沒登入的人在這個站還是能逛。
        */
-      router.replace('/');
-    } catch {
+      goHome: () => router.replace('/'),
+    });
+
+    if (!ok) {
       /*
        * **失敗就留在原地並說出來。** 不要「反正前端把畫面切成未登入」——
        * session cookie 還在的話那是一句不成立的話，而使用者可能正在
-       * 別人的手機上按這顆按鈕。
+       * 別人的手機上按這顆按鈕。徽章也維持原值（見 `./logout.ts`）。
        */
       setLogoutError(LOGOUT_FAILED_MESSAGE);
       setLoggingOut(false);

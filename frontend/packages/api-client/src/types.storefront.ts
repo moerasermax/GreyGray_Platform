@@ -881,6 +881,7 @@ export interface paths {
          *
          *     混合訂單（同時有現貨與預購 line）必須指定 `shippingPolicy`：
          *     現貨先出會付兩次運費，等回國一起出省一次。**這是客人下單時就要選的，不是出貨時才問。**
+         *     **單一模式的購物車不用選**——後端依 line 組成推導（ADR-030）。
          */
         post: {
             parameters: {
@@ -896,7 +897,12 @@ export interface paths {
                 content: {
                     "application/json": {
                         deliveryMethod: components["schemas"]["DeliveryMethod"];
-                        shippingPolicy: components["schemas"]["ShippingPolicy"];
+                        /**
+                         * @description `Cart.hasMixedModes = true` 時必填（缺了回 `422` `checkout.shipping-policy-required`）；
+                         *     單一模式可省略或 `null`，後端依 line 組成推導：純現貨 → `ShipSeparately`、
+                         *     純預購 → `HoldUntilComplete`。單一模式時客人送的值會被忽略，不會因此報錯。
+                         */
+                        shippingPolicy?: components["schemas"]["ShippingPolicy"] | null;
                         /** @description `deliveryMethod = HomeDelivery` 時必填。 */
                         shippingAddressId?: components["schemas"]["Id"] | null;
                         /** @description `deliveryMethod = ConvenienceStore` 時必填，綠界電子地圖回傳的門市代號。 */
@@ -919,8 +925,9 @@ export interface paths {
                 409: components["responses"]["Conflict"];
                 /**
                  * @description `checkout.cart-empty` · `checkout.address-required` ·
-                 *     `checkout.store-code-required` · `campaign.not-accepting-orders` ·
-                 *     `inventory.insufficient-stock` · `payment.provider-does-not-support-delivery-method`
+                 *     `checkout.store-code-required` · `checkout.shipping-policy-required` ·
+                 *     `campaign.not-accepting-orders` · `inventory.insufficient-stock` ·
+                 *     `payment.provider-does-not-support-delivery-method`
                  */
                 422: {
                     headers: {
