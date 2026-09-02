@@ -340,6 +340,25 @@ Wait-ProcessTokensExit -Tokens $oldTokens -InstallRoot $installFull -TimeoutSeco
 foreach ($definition in $manifest.Services) {
     if ([int]$definition.Port -gt 0) {
         $portDefinition = $definition
+        <#
+            ★ 這裡**不可以**加 .GetNewClosure()。GetNewClosure() 會把 scriptblock 綁到一個
+            新的動態模組，而那個模組的 parent 是 **global** scope，不是建立它的 script scope。
+            deploy.ps1 自己定義的函式（Test-DeploymentTokenOwnership、Invoke-Nssm…）與
+            dot-source 進來的 lib 函式都在 script scope，於是 lib 函式 `& $OwnershipValidator`
+            呼叫下去時會得到 CommandNotFoundException：
+            「無法辨識 'Invoke-Nssm' 詞彙是否為 Cmdlet、函數、指令檔或可執行程式的名稱。」
+
+            ★★ 它只在「deploy.ps1 被**另一支腳本**呼叫」時才炸（正式機就是這樣：
+            C:\Source\yc-deploy.ps1 裡 `& .\ops\deploy.ps1 @common …`）。直接
+            `-File ops\deploy.ps1` 跑的時候，script scope 的 parent 剛好就是 global，
+            動態模組因此「湊巧」看得到——所以開發機怎麼試都試不出來。5.1 與 7 行為一致。
+            （self-test.ps1 有這條的最小重現，兩種呼叫方式都跑。）
+
+            plain scriptblock 綁的是**建立它的 script scope**，看得到 script 函式與 script 變數，
+            兩種呼叫方式都對——第 339 行那個 -OwnershipValidator 從第一天就是這樣寫的。
+            $portDefinition 不需要被「捕捉」：scriptblock 在同一個 iteration 內就被同步呼叫完，
+            執行時沿 scope 鏈讀到的就是這一圈的值。
+        #>
         $portOwnershipValidator = {
             param($token)
             # -Force：同一個行程可能已經被 Get-ManagedApplicationTokens 標過 ServiceName
@@ -347,7 +366,7 @@ foreach ($definition in $manifest.Services) {
             # 會發非終止性錯誤，而這支腳本 $ErrorActionPreference='Stop'，等於整個部署炸掉。
             Add-Member -InputObject $token -NotePropertyName ServiceName -NotePropertyValue $portDefinition.Name -Force
             Test-DeploymentTokenOwnership -Token $token
-        }.GetNewClosure()
+        }
         Assert-PortReleased -Port ([int]$definition.Port) -InstallRoot $installFull `
             -OwnershipValidator $portOwnershipValidator
     }
@@ -385,13 +404,21 @@ try {
                 剛 install 的服務本來就沒有這個值，所以第一次部署這裡什麼都不會做。
             #>
             $serviceNameForGet = $definition.Name
+            <#
+                ★ 同上，**不可以**加 .GetNewClosure()：動態模組的 parent 是 global scope，
+                看不到 script scope 的 Invoke-Nssm——而且只有「被另一支腳本呼叫」時才會炸
+                （見上面 port ownership validator 那一段的完整說明）。
+                YC 第四次真跑炸的就是這一份：
+                「無法辨識 'Invoke-Nssm' 詞彙是否為 Cmdlet、函數、指令檔或可執行程式的名稱。」
+                plain scriptblock 會在 script scope 底下執行，Invoke-Nssm 與 $serviceNameForGet 都看得到。
+            #>
             $getAppParameters = {
                 $getResult = Invoke-Nssm -Arguments @('get', $serviceNameForGet, 'AppParameters') -AllowNonZeroExit
                 if ($getResult.ExitCode -ne 0) {
                     throw "nssm get $serviceNameForGet AppParameters 失敗（exit $($getResult.ExitCode)）：$($getResult.StdErr.Trim())"
                 }
                 return $getResult.StdOut
-            }.GetNewClosure()
+            }
             if (Clear-NssmAppParameters -ServiceName $definition.Name -GetAppParameters $getAppParameters) {
                 Write-Host "✓ $($definition.Name) 的 AppParameters 已清空（走 registry；這一版 nssm 的 reset AppParameters 會 heap corruption）"
             }

@@ -244,6 +244,94 @@ finally {
     }
 }
 
+<#
+    deploy.ps1 裡不准出現 GetNewClosure()。
+
+    GetNewClosure() 把 scriptblock 綁到一個新的**動態模組**，那個模組的 parent 是
+    **global** scope。deploy.ps1 以 script 身分執行時，自己定義的函式（Invoke-Nssm、
+    Test-DeploymentTokenOwnership…）在 **script** scope，不在 global——於是 lib 函式
+    `& $ScriptBlock` 呼叫下去就變成
+    「無法辨識 'Invoke-Nssm' 詞彙是否為 Cmdlet、函數、指令檔或可執行程式的名稱。」
+    5.1 與 7 都一樣。YC 第四次真跑（migration ＋ 機密 ＋ nssm install 全過之後）就是這樣炸的，
+    而且同一個寫法還藏了第二份在 port ownership validator 裡——那份要「port 被自己的舊行程佔著」
+    才會走到，dry-run 與乾淨機器都碰不到。
+
+    ★★ 為什麼開發機試不出來：它只在「deploy.ps1 被**另一支腳本**呼叫」時才炸。
+    正式機是 C:\Source\yc-deploy.ps1 裡 `& .\ops\deploy.ps1 @common …`；
+    直接 `-File ops\deploy.ps1` 跑的時候，script scope 的 parent 剛好就是 global，
+    動態模組因此湊巧看得到函式。下面 ③ 的最小重現**兩種呼叫方式都跑**，
+    因為「只測直接呼叫」正是這個 bug 溜過去的原因。
+
+    這一項是機械把關：AST 掃過去，一個都不准有。③ 再用最小重現證明這條規則本身是真的
+    （不然這就只是一條沒人驗過的禁令）。
+#>
+$deployScriptPath = Join-Path $PSScriptRoot 'deploy.ps1'
+$deployTokens = $null
+$deployErrors = $null
+$deployAst = [System.Management.Automation.Language.Parser]::ParseInput(
+    [System.IO.File]::ReadAllText($deployScriptPath, [System.Text.Encoding]::UTF8),
+    $deployScriptPath, [ref]$deployTokens, [ref]$deployErrors)
+if ($deployErrors.Count -gt 0) { throw "deploy.ps1 解析失敗：$($deployErrors.Message -join ' | ')" }
+$closureCalls = @($deployAst.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and
+    "$($node.Member)" -eq 'GetNewClosure'
+}, $true))
+if ($closureCalls.Count -ne 0) {
+    throw ("ops/deploy.ps1 不准使用 GetNewClosure()（動態模組看不到 script scope 的函式）；出現在第 " +
+        (@($closureCalls | ForEach-Object { $_.Extent.StartLineNumber }) -join '、') + ' 行。')
+}
+
+<#
+    ③ 最小重現。inner.ps1 就是 deploy.ps1 的形狀：自己定義函式（Get-Marker＝script 函式、
+    Invoke-Validator＝lib 函式的角色），把 scriptblock 交給後者 `&` 呼叫；
+    closure 與 plain 兩版只差一個 .GetNewClosure()。
+
+    這裡刻意用兩種呼叫方式：
+      · 巢狀（self-test.ps1 用 `& $inner` 呼叫它，等同 yc-deploy.ps1 → deploy.ps1）→ 應該炸
+      · 直接（同一個 host 起一個新 process `-File inner.ps1`）→ 湊巧會過，
+        這正是「開發機試不出來」的原因，所以也要釘住，免得以後有人拿直接呼叫當作證據。
+    全程用目前這個 host，所以 5.1 與 7 各驗一次。
+#>
+$closureProbeDir = Join-Path ([System.IO.Path]::GetTempPath()) ("greygray-closure-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $closureProbeDir -Force | Out-Null
+try {
+    $innerScript = @'
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+function Invoke-Validator([scriptblock]$V) { return & $V }
+function Get-Marker { return 'script-scope-visible' }
+foreach ($mode in @('closure', 'plain')) {
+    $sb = if ($mode -eq 'closure') { { Get-Marker }.GetNewClosure() } else { { Get-Marker } }
+    try { "$mode=$(Invoke-Validator -V $sb)" }
+    catch { "$mode=THROW:$($_.FullyQualifiedErrorId)" }
+}
+'@
+    $innerPath = Join-Path $closureProbeDir 'inner.ps1'
+    [System.IO.File]::WriteAllText($innerPath, $innerScript, (New-Object System.Text.UTF8Encoding($true)))
+
+    # (a) 巢狀呼叫——self-test.ps1 自己就是「外層腳本」。
+    $nested = @(& $innerPath)
+    if (($nested -join '；') -notlike '*closure=THROW:CommandNotFoundException*') {
+        throw "巢狀呼叫時 GetNewClosure() 版應該找不到 script scope 的函式，實得：$($nested -join '；')"
+    }
+    if (($nested -join '；') -notlike '*plain=script-scope-visible*') {
+        throw "巢狀呼叫時 plain scriptblock 應該看得到 script scope 的函式，實得：$($nested -join '；')"
+    }
+
+    # (b) 直接呼叫——用目前這個 host 另起一個 process。
+    $hostExecutable = (Get-Process -Id $PID).Path
+    $direct = @(& $hostExecutable -NoProfile -File $innerPath)
+    if (($direct -join '；') -notlike '*closure=script-scope-visible*') {
+        throw "直接 -File 呼叫時 GetNewClosure() 版預期會湊巧通過（這正是開發機試不出來的原因），實得：$($direct -join '；')"
+    }
+
+    Write-Host "PASS deploy.ps1 無 GetNewClosure（host PowerShell $($PSVersionTable.PSVersion)）：AST 掃到 0 個；最小重現＝巢狀呼叫 [$($nested -join '；')]、直接 -File [$($direct -join '；')]"
+}
+finally {
+    if (Test-Path -LiteralPath $closureProbeDir) { Remove-Item -LiteralPath $closureProbeDir -Recurse -Force }
+}
+
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("greygray-ops-selftest-" + [guid]::NewGuid().ToString('N'))
 try {
     $artifactRoot = Join-Path $tempRoot 'artifacts'
