@@ -60,14 +60,21 @@ Leader 要明講。
 
 ★★ 最容易做錯的：① 觸發點是**交運**不是簽收；② 一張出貨單可合併多張訂單、一張訂單可拆多張出貨單，冪等要靠 reservation 狀態擋（框架的 processed_message 擋不到）；③ `quantity_available` 是 generated column 不准寫；④ **不新增 migration**（新狀態值不動 schema）；⑤ 不動 `ShipmentDelivered` 那條路（BE-46 剛修好）；⑥ `Reserved` 這一包不做。
 
+**★ 2026-09-03 23:10 Leader 補授權（子代理第一輪的兩個否決都成立，查證過）**：
+① §0.6「不需要 migration」是 Leader 寫錯——`db/migrations/0006_m1a_core.sql:291` 的 `reservation_status_known CHECK (status IN (0, 1))` 與 `reservation_release_consistent` 都擋掉 status=2。**配號 migration `0018`**，allow 加 `db/migrations/`。
+② `SourceRef = "{orderId}:{skuId}"` 會撞 `LedgerPostingService` 的 `(sourceModule, sourceRef)` 去重（`reservation_allocation` 主鍵是 `(reservation_id, lot_id)`，同 SKU 跨兩批號＝兩列、成本不同，第二筆會被靜靜吃掉）→ 改成 **`{orderId}:{skuId}:{lotId}`**。
+兩點都已改進派工書 §0.6／§0.7／必做 A。子代理第一輪已交付必做 B、C、D-1（測試 286 → 302），A 與 D-2 續做。
+
 package: BE-47
 doc: docs/43-後端第三十一波派工書.md
+allow: db/migrations/0018_inventory_reservation_consumed.sql
 allow: src/Modules/Inventory/
 allow: src/Modules/Ledger/
 allow: src/Modules/Ordering/
 allow: tests/
 
 > `docs/` 全域放行。`src/Modules/Fulfillment/`、`src/Hosts/`、`ops/`、契約 YAML 不在 allow——派工書 §2 說明過；真的需要就停下來回報。
+> migration **只准 `0018` 這一支**（allow 直接寫到檔名，別的編號寫不進去）。
 
 ---
 
