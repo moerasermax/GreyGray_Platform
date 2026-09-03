@@ -266,3 +266,185 @@ function Assert-PortReleased {
         throw "port $Port 的舊 listener 未真正釋放。"
     }
 }
+
+function Wait-ManagedServiceStart {
+    <#
+        .SYNOPSIS
+        啟動一個由 NSSM 管理的服務，然後**等 SCM 狀態變成 Running**——不看啟動指令的 exit code。
+
+        .DESCRIPTION
+        ★ 2026-09-03 13:02 正式機第二次重複部署死在這裡：`GreyGray-Web-Storefront`
+        （Next standalone、`node server.js`）起得慢了幾秒，nssm 等不到 Running 就回
+
+            Unexpected status SERVICE_START_PENDING in response to START control.
+
+        並 exit 非 0。deploy.ps1 當時的 `Invoke-Nssm start` 沒帶 -AllowNonZeroExit，
+        於是整支 throw：第五個服務沒 START、真正的綠燈 Assert-NewApplicationProcess 沒跑、
+        watchdog 重新登記也沒跑。而那個服務兩秒後就 `Ready in 1641ms`——**它根本沒壞**。
+        同一支腳本前一次部署一次過，純粹是那次 Node 起得夠快：這是時間相依的 flaky。
+
+        Leader 在 YC（nssm 2.24-101-g897c7ad）補量的行為：
+        `nssm start <已在 Running 的服務>` → 印「已在執行中」、**exit 1**。
+        也就是 START 的 exit code 對「正在起」與「已經在跑」都回非 0，
+        **exit code 根本不能當成功／失敗的訊號**。
+
+        所以這支函式的成功條件**只有一個**：SCM 狀態變成 Running。
+        不看 exit code、不做字串比對（nssm 的訊息會隨語系與版本變）、也不睡固定秒數
+        （等的是狀態，不是時間）。真正的綠燈仍然是後面的 Assert-NewApplicationProcess
+        （port 擁有者必須是本次 release 起的新行程、/health 200）——這裡只要確認「起來了」。
+
+        .PARAMETER StartService
+        真正下啟動指令的 scriptblock，回傳 Invoke-NativeCommand 的結果物件（或 $null）。
+        做成參數是為了讓 self-test 用假的 scriptblock 驗決策邏輯，不必碰真的 nssm 或服務。
+        ★ 呼叫端傳 **plain** scriptblock，不可以 .GetNewClosure()——動態模組的 parent 是
+        global scope，看不到 deploy.ps1 script scope 的 Invoke-Nssm（見 self-test 的 AST 把關）。
+
+        .PARAMETER GetStatus
+        回傳目前 [System.ServiceProcess.ServiceControllerStatus] 的 scriptblock。
+        ★ 呼叫端一定要先 Refresh()：ServiceController.Status 是快取的，不 Refresh 會永遠讀到舊值。
+
+        .OUTPUTS
+        [pscustomobject] ServiceName / Status / StartExitCode / Elapsed。
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$ServiceName,
+        [Parameter(Mandatory)][scriptblock]$StartService,
+        [Parameter(Mandatory)][scriptblock]$GetStatus,
+        [Parameter(Mandatory)][ValidateRange(5, 180)][int]$TimeoutSeconds,
+        [ValidateRange(10, 10000)][int]$PollMilliseconds = 500
+    )
+
+    <#
+        nssm 的輸出在 5.1 下可能夾 UTF-16 的 NUL 位元組（Invoke-NativeCommand 以 UTF-8 解碼），
+        直接塞進錯誤訊息會變成一串 ？與 NUL。只是為了**印得出來**才正規化——
+        這些文字絕對不參與成功判斷。
+    #>
+    function Get-PrintableNativeText([object]$Raw) {
+        if ($null -eq $Raw) { return '' }
+        return ([string]$Raw).Replace([string][char]0, '').Trim()
+    }
+
+    $startResult = & $StartService
+    $startExitCode = $null
+    $startStdOut = ''
+    $startStdErr = ''
+    if ($null -ne $startResult) {
+        # Set-StrictMode -Version Latest 下不可以直接碰不存在的屬性，逐一問過再取。
+        $properties = $startResult.PSObject.Properties
+        if ($null -ne $properties['ExitCode']) { $startExitCode = [int]$startResult.ExitCode }
+        if ($null -ne $properties['StdOut']) { $startStdOut = Get-PrintableNativeText $startResult.StdOut }
+        if ($null -ne $properties['StdErr']) { $startStdErr = Get-PrintableNativeText $startResult.StdErr }
+    }
+
+    <#
+        ★ Windows PowerShell 5.1 預設沒有載入 System.ServiceProcess：直接寫
+        [System.ServiceProcess.ServiceControllerStatus] 會得到「Unable to find type」。
+        deploy.ps1 走到這裡之前一定先跑過 STOP 迴圈的 Get-Service（那會順手載入組件），
+        所以正式機碰不到；但 self-test 用假的 scriptblock 直接叫這支函式就會炸——
+        別把「湊巧先呼叫過 Get-Service」當成前提。PowerShell 7 本來就找得到，先問再載。
+    #>
+    if (-not ('System.ServiceProcess.ServiceControllerStatus' -as [type])) {
+        Add-Type -AssemblyName 'System.ServiceProcess' | Out-Null
+    }
+    $runningStatus = [System.ServiceProcess.ServiceControllerStatus]::Running
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $deadline = [datetime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $status = $null
+    do {
+        $status = & $GetStatus
+        if ($status -eq $runningStatus) {
+            $stopwatch.Stop()
+            if ($null -ne $startExitCode -and $startExitCode -ne 0) {
+                Write-Host ("⚠ $ServiceName 的啟動指令回 exit $startExitCode，但服務已 Running（" +
+                    "$([int]$stopwatch.Elapsed.TotalMilliseconds) ms）——依 SCM 狀態判定成功。nssm 原話：" +
+                    "$startStdOut $startStdErr".Trim())
+            }
+            return [pscustomobject]@{
+                ServiceName = $ServiceName
+                Status = $status
+                StartExitCode = $startExitCode
+                Elapsed = $stopwatch.Elapsed
+            }
+        }
+        Start-Sleep -Milliseconds $PollMilliseconds
+    } while ([datetime]::UtcNow -lt $deadline)
+
+    $stopwatch.Stop()
+    $lastStatus = if ($null -eq $status) { '<未知>' } else { [string]$status }
+    $exitText = if ($null -eq $startExitCode) { '<無>' } else { [string]$startExitCode }
+    throw ("$ServiceName 未在 $TimeoutSeconds 秒內進入 Running；最後狀態 $lastStatus。" +
+        "啟動指令 exit $exitText，輸出：$("$startStdOut $startStdErr".Trim())")
+}
+
+function Suspend-WatchdogTask {
+    <#
+        .SYNOPSIS
+        部署期間停用 GreyGray-Watchdog 排程；回傳「有沒有停用過」（結束時要不要恢復）。
+
+        .DESCRIPTION
+        ★ watchdog.ps1 的邏輯是「任何服務不是 Running 就 Start-Service」，而排程每 5 分鐘跑一次。
+        deploy.ps1 從 STOP 五個服務到 START 之間，中間隔著 NSSM 參數改寫、機密投遞等幾十秒的空窗；
+        watchdog 撞進這個空窗就會拿**還沒改完的參數**（也就是舊 release 的路徑）把服務拉起來，
+        接著要嘛 START 撞「已在執行中」、要嘛 Assert-NewApplicationProcess 抓到舊 release 的 PID
+        而 throw「並非從本次 release 啟動」。2026-09-03 那次 watchdog 是 13:01:30 跑的、
+        STOP 約 13:01:45——差 15 秒沒撞上，純運氣。
+
+        決策邏輯全部吃注入的 scriptblock，是為了讓 self-test 驗得到而**不必呼叫真的
+        *-ScheduledTask**（那需要管理員權限，而且在 pwsh 7 走 Windows PowerShell 相容層很慢）。
+
+        .OUTPUTS
+        [bool] 有沒有真的停用過。$false = 排程本來就不存在（第一次部署），結束時不必恢復。
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$TaskName,
+        [Parameter(Mandatory)][scriptblock]$GetTask,
+        [Parameter(Mandatory)][scriptblock]$StopTask,
+        [Parameter(Mandatory)][scriptblock]$DisableTask
+    )
+
+    $tasks = @(& $GetTask | Where-Object { $null -ne $_ })
+    if ($tasks.Count -eq 0) {
+        Write-Host "· 排程 $TaskName 尚未登記（第一次部署），不必停用。"
+        return $false
+    }
+
+    $state = ''
+    $stateProperty = $tasks[0].PSObject.Properties['State']
+    if ($null -ne $stateProperty) { $state = [string]$stateProperty.Value }
+    if ($state -eq 'Running') {
+        # 正在跑的那一輪 watchdog 已經在動服務了，只 Disable 擋不住它——先 Stop。
+        & $StopTask | Out-Null
+    }
+    & $DisableTask | Out-Null
+    Write-Host "✓ 排程 $TaskName 已停用（部署期間；原狀態 $state），結束時會恢復。"
+    return $true
+}
+
+function Resume-WatchdogTask {
+    <#
+        .SYNOPSIS
+        把 Suspend-WatchdogTask 停用掉的排程恢復。**呼叫端一定要放在 finally**。
+
+        .DESCRIPTION
+        成功的部署最後會用 Register-ScheduledTask -Force 以 <Enabled>true</Enabled> 重登記，
+        所以成功路徑上恢不恢復其實看不出差別；但**失敗路徑只有 finally 會跑**——
+        少了它，一次失敗的部署會讓正式機從此沒有 watchdog，而且不會有任何人說話。
+
+        .OUTPUTS
+        [bool] 有沒有真的恢復過。
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$TaskName,
+        [Parameter(Mandatory)][bool]$Suspended,
+        [Parameter(Mandatory)][scriptblock]$EnableTask
+    )
+
+    # 沒停用過就不要動它：排程本來就不存在時 Enable 會炸，而且那是「本來就沒有」，不是我們弄壞的。
+    if (-not $Suspended) { return $false }
+    & $EnableTask | Out-Null
+    Write-Host "✓ 排程 $TaskName 已恢復啟用。"
+    return $true
+}

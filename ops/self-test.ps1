@@ -331,6 +331,259 @@ foreach ($mode in @('closure', 'plain')) {
 finally {
     if (Test-Path -LiteralPath $closureProbeDir) { Remove-Item -LiteralPath $closureProbeDir -Recurse -Force }
 }
+<#
+    ⑲ Wait-ManagedServiceStart：START 的成功條件只有「SCM 狀態變成 Running」。
+
+    2026-09-03 13:02 正式機第二次重複部署死在這裡：GreyGray-Web-Storefront（Next standalone）
+    起得慢了幾秒，nssm 印「Unexpected status SERVICE_START_PENDING in response to START control.」
+    並 exit 非 0；deploy.ps1 當時那一行沒帶 -AllowNonZeroExit，於是整支 throw——
+    第五個服務沒 START、真正的綠燈 Assert-NewApplicationProcess 沒跑、watchdog 重登記也沒跑。
+    而那個服務兩秒後就「Ready in 1641ms」，根本沒壞。同一支腳本前一次部署一次過，
+    純粹是那次 Node 起得夠快：**時間相依的 flaky，第 N 次真跑才露出來**。
+
+    Leader 在 YC（nssm 2.24-101-g897c7ad）另外量到：nssm start 一個已在 Running 的服務，
+    會印「已在執行中」而且 **exit 1**。也就是 START 的 exit code 對「正在起」與「已經在跑」
+    都回非 0，本來就不是成功／失敗的訊號。
+
+    ① AST 把關：deploy.ps1 裡 Invoke-Nssm -Arguments @('start', …) 一律要帶
+       -AllowNonZeroExit（漏了就會重演 13:02）。
+    ② 行為測試：用假的 scriptblock 走四個案例，不碰真的 nssm、不碰真的服務。
+       -ValidateOnly 在動 NSSM 之前就 return，所以這條路只有真跑才會走到——必須在這裡驗。
+#>
+# 5.1 預設沒載入 System.ServiceProcess（deploy.ps1 是靠 STOP 迴圈的 Get-Service 順手載進來的）。
+if (-not ('System.ServiceProcess.ServiceControllerStatus' -as [type])) {
+    Add-Type -AssemblyName 'System.ServiceProcess' | Out-Null
+}
+$nssmCommandCalls = @($deployAst.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.CommandAst] -and
+    $node.GetCommandName() -eq 'Invoke-Nssm'
+}, $true))
+if ($nssmCommandCalls.Count -eq 0) { throw 'deploy.ps1 找不到任何 Invoke-Nssm 呼叫——這一項等於什麼都沒查。' }
+
+$startCallsWithoutFlag = @()
+$startCallCount = 0
+foreach ($call in $nssmCommandCalls) {
+    $elements = @($call.CommandElements)
+    $argumentsValue = $null
+    $hasAllowNonZeroExit = $false
+    for ($index = 0; $index -lt $elements.Count; $index++) {
+        $element = $elements[$index]
+        if ($element -is [System.Management.Automation.Language.CommandParameterAst]) {
+            $parameterName = $element.ParameterName
+            if ($parameterName -eq 'AllowNonZeroExit') { $hasAllowNonZeroExit = $true }
+            if ($parameterName -eq 'Arguments' -and $index + 1 -lt $elements.Count) {
+                $argumentsValue = $elements[$index + 1]
+            }
+        }
+    }
+    if ($null -eq $argumentsValue) { continue }
+    <#
+        第一個字串常數就是 nssm 的動詞：@('start', $name)／@('set', $name, …)／(@('set', …) + $extra)。
+        動詞若寫成變數（目前一個都沒有）這裡會拿不到而當成「不是 start」放過——所以下面另外
+        斷言真的數到了 start 呼叫，不讓「查了零個對象」看起來像「查過都沒事」。
+    #>
+    $firstConstant = @($argumentsValue.FindAll({
+        param($node) $node -is [System.Management.Automation.Language.StringConstantExpressionAst]
+    }, $true)) | Select-Object -First 1
+    if ($null -eq $firstConstant -or $firstConstant.Value -ne 'start') { continue }
+    $startCallCount++
+    if (-not $hasAllowNonZeroExit) {
+        $startCallsWithoutFlag += "第 $($call.Extent.StartLineNumber) 行"
+    }
+}
+if ($startCallCount -eq 0) {
+    throw "deploy.ps1 找不到任何 Invoke-Nssm -Arguments @('start', …) 呼叫——這一項等於什麼都沒查。"
+}
+if ($startCallsWithoutFlag.Count -gt 0) {
+    throw ('ops/deploy.ps1 的 nssm start 一律要帶 -AllowNonZeroExit（exit code 對「正在起」與' +
+        '「已經在跑」都回非 0，不能當訊號）；漏掉的在 ' + ($startCallsWithoutFlag -join '、') + '。')
+}
+
+<#
+    假的啟動結果：形狀比照 Invoke-NativeCommand 的回傳物件。
+    StdOut 刻意夾 UTF-16 的 NUL（5.1 下 nssm 真的會吐），順便驗它不會炸在訊息組裝上。
+    游標用 hashtable 保存：scriptblock 裡改 hashtable 的成員不牽涉變數 scope，
+    5.1 與 7 行為一致，也不必 GetNewClosure()（那正是第 ⑱ 項禁掉的東西）。
+    ★ hashtable 的鍵不可以叫 Count——那是 Hashtable 自己的屬性，讀到的會是鍵的個數。
+#>
+$nul = [string][char]0
+function New-SelfTestStartResult([int]$ExitCode, [string]$StdOut) {
+    return [pscustomobject]@{
+        FilePath = 'C:\GreyGray\bin\nssm.exe'
+        ExitCode = $ExitCode
+        StdOut = $StdOut
+        StdErr = ''
+    }
+}
+function New-SelfTestStatusProbe($Sequence) {
+    return @{ Index = 0; Sequence = @($Sequence) }
+}
+
+# (a) exit 1 ＋ SERVICE_START_PENDING，狀態 StartPending → StartPending → Running：不 throw。
+$pendingProbe = New-SelfTestStatusProbe @('StartPending', 'StartPending', 'Running')
+$pendingStarts = @{ Calls = 0 }
+$pendingResult = Wait-ManagedServiceStart -ServiceName 'GreyGray-Web-Storefront' `
+    -StartService {
+        $pendingStarts.Calls = $pendingStarts.Calls + 1
+        New-SelfTestStartResult 1 ("Unexpected status SERVICE_START_PENDING in response to START control.$nul")
+    } `
+    -GetStatus {
+        $cursor = [math]::Min($pendingProbe.Index, $pendingProbe.Sequence.Count - 1)
+        $pendingProbe.Index = $pendingProbe.Index + 1
+        return [System.ServiceProcess.ServiceControllerStatus]$pendingProbe.Sequence[$cursor]
+    } `
+    -TimeoutSeconds 5 -PollMilliseconds 50
+if ($pendingStarts.Calls -ne 1) {
+    throw "Wait-ManagedServiceStart 應正好呼叫一次 -StartService，實得 $($pendingStarts.Calls)。"
+}
+if ($pendingResult.Status -ne [System.ServiceProcess.ServiceControllerStatus]::Running) {
+    throw "START_PENDING 之後轉 Running 應回報 Running，實得 $($pendingResult.Status)。"
+}
+if ($pendingResult.StartExitCode -ne 1) { throw 'exit code 應原樣回報（供警告用），但不影響成功判定。' }
+if ($pendingProbe.Index -lt 3) { throw '應該一路輪詢到 Running，不是只問一次。' }
+
+# (b) exit 0 但狀態一直 Stopped → 到期 throw。「exit 0」絕不可以當成綠燈。
+$stoppedMessage = ''
+try {
+    Wait-ManagedServiceStart -ServiceName 'GreyGray-Worker' `
+        -StartService { New-SelfTestStartResult 0 'GreyGray-Worker: START: 成功' } `
+        -GetStatus { return [System.ServiceProcess.ServiceControllerStatus]::Stopped } `
+        -TimeoutSeconds 5 -PollMilliseconds 50 | Out-Null
+}
+catch { $stoppedMessage = $_.Exception.Message }
+if (-not $stoppedMessage) { throw '狀態一直 Stopped 卻因為 exit 0 就放行——這正是要擋的假綠。' }
+if ($stoppedMessage -notmatch 'GreyGray-Worker' -or $stoppedMessage -notmatch 'Stopped') {
+    throw "逾時訊息必須指名服務與最後狀態，實得：$stoppedMessage"
+}
+
+# (c) exit 1 ＋「已在執行中」，狀態就是 Running → 不 throw（YC 量到的第二種非 0）。
+$runningResult = Wait-ManagedServiceStart -ServiceName 'GreyGray-Storefront' `
+    -StartService { New-SelfTestStartResult 1 ($nul + '服務 GreyGray-Storefront 已在執行中。' + $nul) } `
+    -GetStatus { return [System.ServiceProcess.ServiceControllerStatus]::Running } `
+    -TimeoutSeconds 5 -PollMilliseconds 50
+if ($runningResult.Status -ne [System.ServiceProcess.ServiceControllerStatus]::Running) {
+    throw '「已在執行中」＋ Running 應直接算成功。'
+}
+
+# (d) 一路 StartPending 到期 → throw，訊息要看得到 StartPending（不是模糊的「失敗」）。
+$stuckMessage = ''
+try {
+    Wait-ManagedServiceStart -ServiceName 'GreyGray-Web-Admin' `
+        -StartService { New-SelfTestStartResult 1 'Unexpected status SERVICE_START_PENDING' } `
+        -GetStatus { return [System.ServiceProcess.ServiceControllerStatus]::StartPending } `
+        -TimeoutSeconds 5 -PollMilliseconds 50 | Out-Null
+}
+catch { $stuckMessage = $_.Exception.Message }
+if ($stuckMessage -notmatch 'StartPending') {
+    throw "一路 StartPending 到期應 throw 並指出 StartPending，實得：$stuckMessage"
+}
+
+Write-Host ("PASS Wait-ManagedServiceStart（host PowerShell $($PSVersionTable.PSVersion)）：deploy.ps1 " +
+    "$startCallCount 個 nssm start 呼叫全部帶 -AllowNonZeroExit（共掃 $($nssmCommandCalls.Count) 個 Invoke-Nssm）；" +
+    "exit 1 ＋ START_PENDING→Running 通過（輪詢 $($pendingProbe.Index) 次）、exit 1 ＋「已在執行中」通過、" +
+    "exit 0 但一直 Stopped 逾時 throw、一路 StartPending 逾時 throw")
+
+<#
+    ⑳ Suspend-WatchdogTask／Resume-WatchdogTask：部署期間要把 GreyGray-Watchdog 排程停掉。
+
+    watchdog.ps1 是「任何服務不是 Running 就 Start-Service」，排程每 5 分鐘一次；
+    deploy.ps1 從 STOP 到 START 之間有幾十秒的空窗（改 NSSM 參數、投遞機密）。
+    watchdog 撞進去就會拿舊 release 的參數把服務拉起來，接著 START 撞「已在執行中」
+    或 Assert-NewApplicationProcess 抓到舊 PID 而 throw。2026-09-03 那天 watchdog 13:01:30 跑、
+    STOP 約 13:01:45，差 15 秒沒撞上——純運氣，不是設計。
+
+    ★ 這裡只測注入的 scriptblock，**不呼叫任何真的 *-ScheduledTask**：那需要管理員權限，
+    在 pwsh 7 還要走 Windows PowerShell 相容層，而且會真的動到這台機器的排程。
+    最後再用 AST 釘住「Resume 一定在某個 finally 裡」——失敗的部署也要把 watchdog 還回去。
+#>
+$watchdogCalls = New-Object System.Collections.ArrayList
+$watchdogFake = @{ Task = $null }
+$getWatchdogFake = { [void]$watchdogCalls.Add('Get'); return $watchdogFake.Task }
+$stopWatchdogFake = { [void]$watchdogCalls.Add('Stop') }
+$disableWatchdogFake = { [void]$watchdogCalls.Add('Disable') }
+$enableWatchdogFake = { [void]$watchdogCalls.Add('Enable') }
+
+# ① 排程還沒登記（第一次部署）→ 不 Stop、不 Disable、回 $false；Resume 也不可以 Enable。
+$watchdogFake.Task = $null
+$watchdogCalls.Clear()
+$suspendedAbsent = Suspend-WatchdogTask -TaskName 'GreyGray-Watchdog' -GetTask $getWatchdogFake `
+    -StopTask $stopWatchdogFake -DisableTask $disableWatchdogFake
+if ($suspendedAbsent) { throw '排程不存在時不該回報「我停用了」。' }
+Resume-WatchdogTask -TaskName 'GreyGray-Watchdog' -Suspended $suspendedAbsent -EnableTask $enableWatchdogFake | Out-Null
+if (($watchdogCalls -join ',') -ne 'Get') {
+    throw "排程不存在時只該查一次，實得：$($watchdogCalls -join ',')"
+}
+
+# ② State=Ready（沒在跑）→ 只 Disable；Resume 要 Enable。
+$watchdogFake.Task = [pscustomobject]@{ TaskName = 'GreyGray-Watchdog'; State = 'Ready' }
+$watchdogCalls.Clear()
+$suspendedReady = Suspend-WatchdogTask -TaskName 'GreyGray-Watchdog' -GetTask $getWatchdogFake `
+    -StopTask $stopWatchdogFake -DisableTask $disableWatchdogFake
+if (-not $suspendedReady) { throw 'Ready 的排程應該被停用並回報 $true。' }
+Resume-WatchdogTask -TaskName 'GreyGray-Watchdog' -Suspended $suspendedReady -EnableTask $enableWatchdogFake | Out-Null
+if (($watchdogCalls -join ',') -ne 'Get,Disable,Enable') {
+    throw "Ready 的排程應為 Get→Disable→（結束）Enable，實得：$($watchdogCalls -join ',')"
+}
+
+<#
+    ③ State=Running（正在跑那一輪 watchdog）→ 先 Stop 再 Disable，順序要對：
+       只 Disable 擋不住已經在動服務的那一輪。
+#>
+$watchdogFake.Task = [pscustomobject]@{ TaskName = 'GreyGray-Watchdog'; State = 'Running' }
+$watchdogCalls.Clear()
+$suspendedRunning = Suspend-WatchdogTask -TaskName 'GreyGray-Watchdog' -GetTask $getWatchdogFake `
+    -StopTask $stopWatchdogFake -DisableTask $disableWatchdogFake
+if (-not $suspendedRunning) { throw 'Running 的排程應該被停用並回報 $true。' }
+Resume-WatchdogTask -TaskName 'GreyGray-Watchdog' -Suspended $suspendedRunning -EnableTask $enableWatchdogFake | Out-Null
+if (($watchdogCalls -join ',') -ne 'Get,Stop,Disable,Enable') {
+    throw "Running 的排程應為 Get→Stop→Disable→（結束）Enable，實得：$($watchdogCalls -join ',')"
+}
+
+<#
+    ④ AST：deploy.ps1 的 Resume-WatchdogTask 一定要出現在某個 try 的 finally 區塊裡。
+       失敗的部署只有 finally 會跑；少了它，一次失敗就讓正式機從此沒有 watchdog。
+#>
+$resumeCalls = @($deployAst.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.CommandAst] -and
+    $node.GetCommandName() -eq 'Resume-WatchdogTask'
+}, $true))
+if ($resumeCalls.Count -eq 0) { throw 'deploy.ps1 完全沒有呼叫 Resume-WatchdogTask。' }
+$tryStatements = @($deployAst.FindAll({
+    param($node) $node -is [System.Management.Automation.Language.TryStatementAst]
+}, $true))
+if ($tryStatements.Count -eq 0) { throw 'deploy.ps1 找不到任何 try 陳述式——這一項等於什麼都沒查。' }
+$resumeInFinallyLines = @()
+foreach ($tryStatement in $tryStatements) {
+    if ($null -eq $tryStatement.Finally) { continue }
+    foreach ($inner in @($tryStatement.Finally.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.CommandAst] -and
+                $node.GetCommandName() -eq 'Resume-WatchdogTask'
+            }, $true))) {
+        $resumeInFinallyLines += $inner.Extent.StartLineNumber
+    }
+}
+if ($resumeInFinallyLines.Count -eq 0) {
+    throw ('deploy.ps1 的 Resume-WatchdogTask（第 ' +
+        (@($resumeCalls | ForEach-Object { $_.Extent.StartLineNumber }) -join '、') +
+        ' 行）不在任何 finally 區塊內——失敗的部署會讓正式機從此沒有 watchdog。')
+}
+$suspendCalls = @($deployAst.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.CommandAst] -and
+    $node.GetCommandName() -eq 'Suspend-WatchdogTask'
+}, $true))
+if ($suspendCalls.Count -ne 1) {
+    throw "deploy.ps1 應正好呼叫一次 Suspend-WatchdogTask，實得 $($suspendCalls.Count) 次。"
+}
+
+Write-Host ("PASS Suspend/Resume-WatchdogTask（host PowerShell $($PSVersionTable.PSVersion)）：" +
+    "排程不存在→只 Get、回 false、Resume 不 Enable；Ready→Get,Disable,Enable；Running→Get,Stop,Disable,Enable；" +
+    "deploy.ps1 第 $($suspendCalls[0].Extent.StartLineNumber) 行 Suspend、第 $($resumeInFinallyLines -join '、') 行 Resume 在 finally 內" +
+    "（全程未呼叫任何真的 *-ScheduledTask）")
+
 
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("greygray-ops-selftest-" + [guid]::NewGuid().ToString('N'))
 try {

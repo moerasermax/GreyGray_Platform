@@ -324,218 +324,269 @@ function Test-DeploymentTokenOwnership {
     return $false
 }
 
-$oldTokens = @(Get-ManagedApplicationTokens)
-foreach ($definition in $manifest.Services) {
-    $service = Get-Service -Name $definition.Name -ErrorAction SilentlyContinue
-    if ($null -ne $service -and $service.Status -ne [System.ServiceProcess.ServiceControllerStatus]::Stopped) {
-        Invoke-Nssm -Arguments @('stop', $definition.Name) -AllowNonZeroExit | Out-Null
-        $service.Refresh()
-        $service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Stopped, [timespan]::FromSeconds(30))
-    }
-}
+<#
+    ★ 部署期間停用 GreyGray-Watchdog 排程。
 
-# 不能只相信 NSSM/排程狀態：逐一驗證舊 PID 與 port holder 真的消失。
-Wait-ProcessTokensExit -Tokens $oldTokens -InstallRoot $installFull -TimeoutSeconds 30 `
-    -OwnershipValidator { param($token) Test-DeploymentTokenOwnership -Token $token }
-foreach ($definition in $manifest.Services) {
-    if ([int]$definition.Port -gt 0) {
-        $portDefinition = $definition
-        <#
-            ★ 這裡**不可以**加 .GetNewClosure()。GetNewClosure() 會把 scriptblock 綁到一個
-            新的動態模組，而那個模組的 parent 是 **global** scope，不是建立它的 script scope。
-            deploy.ps1 自己定義的函式（Test-DeploymentTokenOwnership、Invoke-Nssm…）與
-            dot-source 進來的 lib 函式都在 script scope，於是 lib 函式 `& $OwnershipValidator`
-            呼叫下去時會得到 CommandNotFoundException：
-            「無法辨識 'Invoke-Nssm' 詞彙是否為 Cmdlet、函數、指令檔或可執行程式的名稱。」
+    watchdog.ps1 的邏輯是「任何服務不是 Running 就 Start-Service」，排程每 5 分鐘跑一次；
+    而下面 STOP → 改 NSSM 參數 → START 之間有幾十秒的空窗。watchdog 撞進去就會拿
+    **還沒改完的參數**（舊 release 路徑）把服務拉起來，接著要嘛 START 撞「已在執行中」、
+    要嘛 Assert-NewApplicationProcess 抓到舊 release 的 PID 而 throw。
+    2026-09-03 那次 watchdog 13:01:30 跑、STOP 約 13:01:45，差 15 秒沒撞上，純運氣。
 
-            ★★ 它只在「deploy.ps1 被**另一支腳本**呼叫」時才炸（正式機就是這樣：
-            C:\Source\yc-deploy.ps1 裡 `& .\ops\deploy.ps1 @common …`）。直接
-            `-File ops\deploy.ps1` 跑的時候，script scope 的 parent 剛好就是 global，
-            動態模組因此「湊巧」看得到——所以開發機怎麼試都試不出來。5.1 與 7 行為一致。
-            （self-test.ps1 有這條的最小重現，兩種呼叫方式都跑。）
+    ★ Resume 一定要在 finally：成功路徑最後的 Register-ScheduledTask -Force 會以
+    <Enabled>true</Enabled> 重登記（所以兩者不衝突），但**失敗路徑只有 finally 會跑**——
+    少了它，一次失敗的部署會讓正式機從此沒有 watchdog，而且沒有任何東西會說話。
 
-            plain scriptblock 綁的是**建立它的 script scope**，看得到 script 函式與 script 變數，
-            兩種呼叫方式都對——第 339 行那個 -OwnershipValidator 從第一天就是這樣寫的。
-            $portDefinition 不需要被「捕捉」：scriptblock 在同一個 iteration 內就被同步呼叫完，
-            執行時沿 scope 鏈讀到的就是這一圈的值。
-        #>
-        $portOwnershipValidator = {
-            param($token)
-            # -Force：同一個行程可能已經被 Get-ManagedApplicationTokens 標過 ServiceName
-            # （重複部署時，舊 PID 同時被行程名稱與 port 兩條路抓到）。Add-Member 遇到同名屬性
-            # 會發非終止性錯誤，而這支腳本 $ErrorActionPreference='Stop'，等於整個部署炸掉。
-            Add-Member -InputObject $token -NotePropertyName ServiceName -NotePropertyValue $portDefinition.Name -Force
-            Test-DeploymentTokenOwnership -Token $token
-        }
-        Assert-PortReleased -Port ([int]$definition.Port) -InstallRoot $installFull `
-            -OwnershipValidator $portOwnershipValidator
-    }
-}
-
-$servicePassword = $ServiceCredential.GetNetworkCredential().Password
+    -ValidateOnly 在第 107-116 行就 return 了，碰不到這裡（dry-run 不准動排程）。
+#>
+$watchdogSuspended = Suspend-WatchdogTask -TaskName $WatchdogTaskName `
+    -GetTask { Get-ScheduledTask -TaskName $WatchdogTaskName -ErrorAction SilentlyContinue } `
+    -StopTask { Stop-ScheduledTask -TaskName $WatchdogTaskName -ErrorAction SilentlyContinue } `
+    -DisableTask { Disable-ScheduledTask -TaskName $WatchdogTaskName -ErrorAction SilentlyContinue }
 try {
+    $oldTokens = @(Get-ManagedApplicationTokens)
     foreach ($definition in $manifest.Services) {
         $service = Get-Service -Name $definition.Name -ErrorAction SilentlyContinue
-        $artifactDirectory = Join-Path $releaseRoot $definition.ArtifactDirectory
-        $entryPoint = Join-Path $artifactDirectory $definition.ArtifactEntryPoint
-        $appDirectory = Join-Path $artifactDirectory $definition.WorkingDirectory
-        $executable = if ($definition.Kind -eq 'NextStandalone') { $resolvedNodePath } else { $entryPoint }
-        $applicationArguments = @()
-        if ($definition.Kind -eq 'NextStandalone') {
-            $applicationArguments = @($entryPoint)
+        if ($null -ne $service -and $service.Status -ne [System.ServiceProcess.ServiceControllerStatus]::Stopped) {
+            Invoke-Nssm -Arguments @('stop', $definition.Name) -AllowNonZeroExit | Out-Null
+            $service.Refresh()
+            $service.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Stopped, [timespan]::FromSeconds(30))
         }
-        else {
-            $applicationArguments = @($definition.Arguments)
-        }
-        if ($null -eq $service) {
-            Invoke-Nssm -Arguments @('install', $definition.Name, $executable) | Out-Null
-        }
-        Invoke-Nssm -Arguments @('set', $definition.Name, 'Application', $executable) | Out-Null
-        Invoke-Nssm -Arguments @('set', $definition.Name, 'AppDirectory', $appDirectory) | Out-Null
-        if ($applicationArguments.Count -gt 0) {
-            Invoke-Nssm -Arguments (@('set', $definition.Name, 'AppParameters') + $applicationArguments) | Out-Null
-        }
-        else {
-            <#
-                三個 Kind='DotNet' 的服務 manifest 是 Arguments = @()，要的是「沒有參數」。
-                ★ 不可以用 `nssm reset <svc> AppParameters`：正式機那一版（2.24-101-g897c7ad）
-                一定 heap corruption（exit -1073740940 / 0xC0000374），而且 `set … ''` 會被當成
-                沒給值而印 usage——見 lib\Deployment.ps1 的 Clear-NssmAppParameters 註解與 YC 實測。
-                剛 install 的服務本來就沒有這個值，所以第一次部署這裡什麼都不會做。
-            #>
-            $serviceNameForGet = $definition.Name
-            <#
-                ★ 同上，**不可以**加 .GetNewClosure()：動態模組的 parent 是 global scope，
-                看不到 script scope 的 Invoke-Nssm——而且只有「被另一支腳本呼叫」時才會炸
-                （見上面 port ownership validator 那一段的完整說明）。
-                YC 第四次真跑炸的就是這一份：
-                「無法辨識 'Invoke-Nssm' 詞彙是否為 Cmdlet、函數、指令檔或可執行程式的名稱。」
-                plain scriptblock 會在 script scope 底下執行，Invoke-Nssm 與 $serviceNameForGet 都看得到。
-            #>
-            $getAppParameters = {
-                $getResult = Invoke-Nssm -Arguments @('get', $serviceNameForGet, 'AppParameters') -AllowNonZeroExit
-                if ($getResult.ExitCode -ne 0) {
-                    throw "nssm get $serviceNameForGet AppParameters 失敗（exit $($getResult.ExitCode)）：$($getResult.StdErr.Trim())"
-                }
-                return $getResult.StdOut
-            }
-            if (Clear-NssmAppParameters -ServiceName $definition.Name -GetAppParameters $getAppParameters) {
-                Write-Host "✓ $($definition.Name) 的 AppParameters 已清空（走 registry；這一版 nssm 的 reset AppParameters 會 heap corruption）"
-            }
-        }
-        Invoke-Nssm -Arguments @('set', $definition.Name, 'Start', 'SERVICE_AUTO_START') | Out-Null
-        Invoke-Nssm -Arguments @('set', $definition.Name, 'AppExit', 'Default', 'Restart') | Out-Null
-        Invoke-Nssm -Arguments @('set', $definition.Name, 'AppRestartDelay', '60000') | Out-Null
-        Invoke-Nssm -Arguments @('set', $definition.Name, 'AppThrottle', '1500') | Out-Null
-        Invoke-Nssm -Arguments @('set', $definition.Name, 'AppStdout', (Join-Path $logsRoot "$($definition.Name).stdout.log")) | Out-Null
-        Invoke-Nssm -Arguments @('set', $definition.Name, 'AppStderr', (Join-Path $logsRoot "$($definition.Name).stderr.log")) | Out-Null
-        Invoke-Nssm -Arguments @('set', $definition.Name, 'AppRotateFiles', '1') | Out-Null
-        Invoke-Nssm -Arguments @('set', $definition.Name, 'AppRotateBytes', '10485760') | Out-Null
-        if ($definition.Kind -eq 'NextStandalone') {
-            $environmentArguments = @('set', $definition.Name, 'AppEnvironmentExtra',
-                'NODE_ENV=production', "PORT=$($definition.Port)", 'HOSTNAME=127.0.0.1')
-        }
-        else {
-            $environmentArguments = @('set', $definition.Name, 'AppEnvironmentExtra', 'DOTNET_ENVIRONMENT=Production')
-            # 三個 Kind='DotNet' 的服務（Storefront／Admin／Worker）全部呼叫
-            # AddIdentityModule 與 AddPaymentModule，也全部要連資料庫，所以整包都要。
-            # NextStandalone 那兩個（上面的分支）不需要，刻意不動。
-            foreach ($secretKey in $secretConnectionStrings.Keys) {
-                $environmentArguments += "$secretKey=$($secretConnectionStrings[$secretKey])"
-            }
-            # 只有前台 BFF 需要這兩個：Storefront:PublicOrigin 組綠界完成頁的
-            # ClientBackURL（#33），Storefront:PublicApiOrigin 組綠界的 ReturnURL（BE-42）。
-            # Admin／Worker 不碰這兩條路，多給只會讓「哪個服務需要什麼」更難看清楚。
-            if ($definition.Name -eq 'GreyGray-Storefront') {
-                $environmentArguments += "Storefront__PublicOrigin=$StorefrontPublicOrigin"
-                $environmentArguments += "Storefront__PublicApiOrigin=$StorefrontPublicApiOrigin"
-            }
-        }
-        if ($definition.Kind -eq 'DotNet' -and [int]$definition.Port -gt 0) {
-            $environmentArguments += 'ASPNETCORE_ENVIRONMENT=Production'
-            # Cloudflare Tunnel 與 health probe 都在本機；不要把 BFF listener 暴露到 LAN。
-            $environmentArguments += "ASPNETCORE_URLS=http://127.0.0.1:$($definition.Port)"
-        }
-        Invoke-Nssm -Arguments $environmentArguments | Out-Null
-        # NSSM API 只能收明文密碼；只存在目前 process 記憶體與短暫子程序命令列，不落部署設定檔。
-        Invoke-Nssm -Arguments @('set', $definition.Name, 'ObjectName', $ServiceCredential.UserName, $servicePassword) | Out-Null
     }
-}
-finally {
-    $servicePassword = $null
-    # 連線字串與金鑰的明文只需要活到 NSSM 設定寫完為止；之後 script 還有
-    # 健康檢查、排程註冊等好幾十行，不要讓它們一路活到最後。
-    $secretConnectionStrings = $null
-    $environmentArguments = $null
-}
 
-$restartBoundaryUtc = [datetime]::UtcNow
-foreach ($definition in $manifest.Services) {
-    Invoke-Nssm -Arguments @('start', $definition.Name) | Out-Null
-}
-
-function Assert-NewApplicationProcess {
-    param($Definition)
-
-    $expectedRoot = Join-Path $releaseRoot $Definition.ArtifactDirectory
-    $expectedEntryPoint = Join-Path $expectedRoot $Definition.ArtifactEntryPoint
-    $deadline = [datetime]::UtcNow.AddSeconds($HealthTimeoutSeconds)
-    do {
-        $candidates = @()
-        if ([int]$Definition.Port -gt 0) {
-            $candidates = @(Get-PortOwnerProcess -Port ([int]$Definition.Port))
-        }
-        else {
-            $candidates = @(Get-Process -Name $Definition.ProcessName -ErrorAction SilentlyContinue)
-        }
-
-        foreach ($process in $candidates) {
-            $token = Get-GreyGrayProcessToken -Process $process
+    # 不能只相信 NSSM/排程狀態：逐一驗證舊 PID 與 port holder 真的消失。
+    Wait-ProcessTokensExit -Tokens $oldTokens -InstallRoot $installFull -TimeoutSeconds 30 `
+        -OwnershipValidator { param($token) Test-DeploymentTokenOwnership -Token $token }
+    foreach ($definition in $manifest.Services) {
+        if ([int]$definition.Port -gt 0) {
+            $portDefinition = $definition
             <#
-                $process.StartTime 對取不到權限的行程會丟 Win32Exception
-                （Get-GreyGrayProcessToken 對同一件事就是包 try/catch 的，這裡本來沒包）。
-                拿不到 StartTime 就無法證明它是本次 release 起的——當成「還不是新行程」
-                跳過、繼續輪詢到逾時，而不是讓整支部署當場炸掉。
-                注意這不會放寬判斷：證明不了就不算數，仍然拿不到綠燈。
+                ★ 這裡**不可以**加 .GetNewClosure()。GetNewClosure() 會把 scriptblock 綁到一個
+                新的動態模組，而那個模組的 parent 是 **global** scope，不是建立它的 script scope。
+                deploy.ps1 自己定義的函式（Test-DeploymentTokenOwnership、Invoke-Nssm…）與
+                dot-source 進來的 lib 函式都在 script scope，於是 lib 函式 `& $OwnershipValidator`
+                呼叫下去時會得到 CommandNotFoundException：
+                「無法辨識 'Invoke-Nssm' 詞彙是否為 Cmdlet、函數、指令檔或可執行程式的名稱。」
+
+                ★★ 它只在「deploy.ps1 被**另一支腳本**呼叫」時才炸（正式機就是這樣：
+                C:\Source\yc-deploy.ps1 裡 `& .\ops\deploy.ps1 @common …`）。直接
+                `-File ops\deploy.ps1` 跑的時候，script scope 的 parent 剛好就是 global，
+                動態模組因此「湊巧」看得到——所以開發機怎麼試都試不出來。5.1 與 7 行為一致。
+                （self-test.ps1 有這條的最小重現，兩種呼叫方式都跑。）
+
+                plain scriptblock 綁的是**建立它的 script scope**，看得到 script 函式與 script 變數，
+                兩種呼叫方式都對——第 339 行那個 -OwnershipValidator 從第一天就是這樣寫的。
+                $portDefinition 不需要被「捕捉」：scriptblock 在同一個 iteration 內就被同步呼叫完，
+                執行時沿 scope 鏈讀到的就是這一圈的值。
             #>
-            $processStartTime = $null
-            try { $processStartTime = $process.StartTime } catch { }
-            if ($null -eq $processStartTime) { continue }
-            if (-not (Test-ProcessStartedAfter -ProcessStartTime $processStartTime -RestartBoundaryUtc $restartBoundaryUtc)) {
-                throw "$($Definition.Name) 由舊 PID $($process.Id) 回應；StartTime 不晚於本次重啟，拒絕假綠。"
+            $portOwnershipValidator = {
+                param($token)
+                # -Force：同一個行程可能已經被 Get-ManagedApplicationTokens 標過 ServiceName
+                # （重複部署時，舊 PID 同時被行程名稱與 port 兩條路抓到）。Add-Member 遇到同名屬性
+                # 會發非終止性錯誤，而這支腳本 $ErrorActionPreference='Stop'，等於整個部署炸掉。
+                Add-Member -InputObject $token -NotePropertyName ServiceName -NotePropertyValue $portDefinition.Name -Force
+                Test-DeploymentTokenOwnership -Token $token
             }
-            if ($Definition.Kind -eq 'NextStandalone') {
-                if (-not (Test-NodeProcessIdentity -Token $token -NodePath $resolvedNodePath `
-                        -EntryPointPath $expectedEntryPoint)) {
-                    throw "$($Definition.Name) PID $($process.Id) 不是可信 node.exe 或沒有執行本次 release 的 server.js：$expectedEntryPoint"
+            Assert-PortReleased -Port ([int]$definition.Port) -InstallRoot $installFull `
+                -OwnershipValidator $portOwnershipValidator
+        }
+    }
+
+    $servicePassword = $ServiceCredential.GetNetworkCredential().Password
+    try {
+        foreach ($definition in $manifest.Services) {
+            $service = Get-Service -Name $definition.Name -ErrorAction SilentlyContinue
+            $artifactDirectory = Join-Path $releaseRoot $definition.ArtifactDirectory
+            $entryPoint = Join-Path $artifactDirectory $definition.ArtifactEntryPoint
+            $appDirectory = Join-Path $artifactDirectory $definition.WorkingDirectory
+            $executable = if ($definition.Kind -eq 'NextStandalone') { $resolvedNodePath } else { $entryPoint }
+            $applicationArguments = @()
+            if ($definition.Kind -eq 'NextStandalone') {
+                $applicationArguments = @($entryPoint)
+            }
+            else {
+                $applicationArguments = @($definition.Arguments)
+            }
+            if ($null -eq $service) {
+                Invoke-Nssm -Arguments @('install', $definition.Name, $executable) | Out-Null
+            }
+            Invoke-Nssm -Arguments @('set', $definition.Name, 'Application', $executable) | Out-Null
+            Invoke-Nssm -Arguments @('set', $definition.Name, 'AppDirectory', $appDirectory) | Out-Null
+            if ($applicationArguments.Count -gt 0) {
+                Invoke-Nssm -Arguments (@('set', $definition.Name, 'AppParameters') + $applicationArguments) | Out-Null
+            }
+            else {
+                <#
+                    三個 Kind='DotNet' 的服務 manifest 是 Arguments = @()，要的是「沒有參數」。
+                    ★ 不可以用 `nssm reset <svc> AppParameters`：正式機那一版（2.24-101-g897c7ad）
+                    一定 heap corruption（exit -1073740940 / 0xC0000374），而且 `set … ''` 會被當成
+                    沒給值而印 usage——見 lib\Deployment.ps1 的 Clear-NssmAppParameters 註解與 YC 實測。
+                    剛 install 的服務本來就沒有這個值，所以第一次部署這裡什麼都不會做。
+                #>
+                $serviceNameForGet = $definition.Name
+                <#
+                    ★ 同上，**不可以**加 .GetNewClosure()：動態模組的 parent 是 global scope，
+                    看不到 script scope 的 Invoke-Nssm——而且只有「被另一支腳本呼叫」時才會炸
+                    （見上面 port ownership validator 那一段的完整說明）。
+                    YC 第四次真跑炸的就是這一份：
+                    「無法辨識 'Invoke-Nssm' 詞彙是否為 Cmdlet、函數、指令檔或可執行程式的名稱。」
+                    plain scriptblock 會在 script scope 底下執行，Invoke-Nssm 與 $serviceNameForGet 都看得到。
+                #>
+                $getAppParameters = {
+                    $getResult = Invoke-Nssm -Arguments @('get', $serviceNameForGet, 'AppParameters') -AllowNonZeroExit
+                    if ($getResult.ExitCode -ne 0) {
+                        throw "nssm get $serviceNameForGet AppParameters 失敗（exit $($getResult.ExitCode)）：$($getResult.StdErr.Trim())"
+                    }
+                    return $getResult.StdOut
+                }
+                if (Clear-NssmAppParameters -ServiceName $definition.Name -GetAppParameters $getAppParameters) {
+                    Write-Host "✓ $($definition.Name) 的 AppParameters 已清空（走 registry；這一版 nssm 的 reset AppParameters 會 heap corruption）"
                 }
             }
-            elseif (-not $token.Path -or -not (Test-PathWithinRoot -Path $token.Path -Root $expectedRoot)) {
-                throw "$($Definition.Name) PID $($process.Id) 並非從本次 release 啟動：$($token.Path)"
+            Invoke-Nssm -Arguments @('set', $definition.Name, 'Start', 'SERVICE_AUTO_START') | Out-Null
+            Invoke-Nssm -Arguments @('set', $definition.Name, 'AppExit', 'Default', 'Restart') | Out-Null
+            Invoke-Nssm -Arguments @('set', $definition.Name, 'AppRestartDelay', '60000') | Out-Null
+            Invoke-Nssm -Arguments @('set', $definition.Name, 'AppThrottle', '1500') | Out-Null
+            Invoke-Nssm -Arguments @('set', $definition.Name, 'AppStdout', (Join-Path $logsRoot "$($definition.Name).stdout.log")) | Out-Null
+            Invoke-Nssm -Arguments @('set', $definition.Name, 'AppStderr', (Join-Path $logsRoot "$($definition.Name).stderr.log")) | Out-Null
+            Invoke-Nssm -Arguments @('set', $definition.Name, 'AppRotateFiles', '1') | Out-Null
+            Invoke-Nssm -Arguments @('set', $definition.Name, 'AppRotateBytes', '10485760') | Out-Null
+            if ($definition.Kind -eq 'NextStandalone') {
+                $environmentArguments = @('set', $definition.Name, 'AppEnvironmentExtra',
+                    'NODE_ENV=production', "PORT=$($definition.Port)", 'HOSTNAME=127.0.0.1')
+            }
+            else {
+                $environmentArguments = @('set', $definition.Name, 'AppEnvironmentExtra', 'DOTNET_ENVIRONMENT=Production')
+                # 三個 Kind='DotNet' 的服務（Storefront／Admin／Worker）全部呼叫
+                # AddIdentityModule 與 AddPaymentModule，也全部要連資料庫，所以整包都要。
+                # NextStandalone 那兩個（上面的分支）不需要，刻意不動。
+                foreach ($secretKey in $secretConnectionStrings.Keys) {
+                    $environmentArguments += "$secretKey=$($secretConnectionStrings[$secretKey])"
+                }
+                # 只有前台 BFF 需要這兩個：Storefront:PublicOrigin 組綠界完成頁的
+                # ClientBackURL（#33），Storefront:PublicApiOrigin 組綠界的 ReturnURL（BE-42）。
+                # Admin／Worker 不碰這兩條路，多給只會讓「哪個服務需要什麼」更難看清楚。
+                if ($definition.Name -eq 'GreyGray-Storefront') {
+                    $environmentArguments += "Storefront__PublicOrigin=$StorefrontPublicOrigin"
+                    $environmentArguments += "Storefront__PublicApiOrigin=$StorefrontPublicApiOrigin"
+                }
+            }
+            if ($definition.Kind -eq 'DotNet' -and [int]$definition.Port -gt 0) {
+                $environmentArguments += 'ASPNETCORE_ENVIRONMENT=Production'
+                # Cloudflare Tunnel 與 health probe 都在本機；不要把 BFF listener 暴露到 LAN。
+                $environmentArguments += "ASPNETCORE_URLS=http://127.0.0.1:$($definition.Port)"
+            }
+            Invoke-Nssm -Arguments $environmentArguments | Out-Null
+            # NSSM API 只能收明文密碼；只存在目前 process 記憶體與短暫子程序命令列，不落部署設定檔。
+            Invoke-Nssm -Arguments @('set', $definition.Name, 'ObjectName', $ServiceCredential.UserName, $servicePassword) | Out-Null
+        }
+    }
+    finally {
+        $servicePassword = $null
+        # 連線字串與金鑰的明文只需要活到 NSSM 設定寫完為止；之後 script 還有
+        # 健康檢查、排程註冊等好幾十行，不要讓它們一路活到最後。
+        $secretConnectionStrings = $null
+        $environmentArguments = $null
+    }
+
+    $restartBoundaryUtc = [datetime]::UtcNow
+    foreach ($definition in $manifest.Services) {
+        <#
+            ★ START 的成功條件只有一個：SCM 狀態變成 Running。**不看 nssm 的 exit code。**
+            2026-09-03 13:02 正式機第二次重複部署就是死在這裡——GreyGray-Web-Storefront
+            起得慢了幾秒，nssm 印「Unexpected status SERVICE_START_PENDING in response to
+            START control.」並 exit 非 0，這一行當時沒帶 -AllowNonZeroExit → 整支 throw，
+            第五個服務沒 START、Assert-NewApplicationProcess 與 watchdog 重登記都沒跑；
+            而那個服務兩秒後就 Ready，根本沒壞。Leader 在 YC 另外量到
+            `nssm start <已在 Running 的服務>` 也是 exit 1——exit code 對「正在起」與
+            「已經在跑」都回非 0，本來就不是成功／失敗的訊號。
+
+            ★ 兩個 scriptblock 都是 **plain** 的，不可以 .GetNewClosure()：動態模組的 parent 是
+            global scope，看不到這支腳本 script scope 的 Invoke-Nssm（見上面 AppParameters
+            那一段的完整說明，以及 self-test 的 AST 把關）。迴圈變數先複製成
+            $serviceNameForStart，照第 405-425 行 $serviceNameForGet 的既有做法。
+        #>
+        $serviceNameForStart = $definition.Name
+        $startManagedService = {
+            return Invoke-Nssm -Arguments @('start', $serviceNameForStart) -AllowNonZeroExit
+        }
+        $getManagedServiceStatus = {
+            $serviceForStatus = Get-Service -Name $serviceNameForStart
+            # ServiceController.Status 是快取的，不 Refresh() 會一直讀到 START 之前的舊值。
+            $serviceForStatus.Refresh()
+            return $serviceForStatus.Status
+        }
+        Wait-ManagedServiceStart -ServiceName $definition.Name -StartService $startManagedService `
+            -GetStatus $getManagedServiceStatus -TimeoutSeconds $HealthTimeoutSeconds | Out-Null
+    }
+
+    function Assert-NewApplicationProcess {
+        param($Definition)
+
+        $expectedRoot = Join-Path $releaseRoot $Definition.ArtifactDirectory
+        $expectedEntryPoint = Join-Path $expectedRoot $Definition.ArtifactEntryPoint
+        $deadline = [datetime]::UtcNow.AddSeconds($HealthTimeoutSeconds)
+        do {
+            $candidates = @()
+            if ([int]$Definition.Port -gt 0) {
+                $candidates = @(Get-PortOwnerProcess -Port ([int]$Definition.Port))
+            }
+            else {
+                $candidates = @(Get-Process -Name $Definition.ProcessName -ErrorAction SilentlyContinue)
             }
 
-            if ([int]$Definition.Port -eq 0) {
-                Write-Host "✓ $($Definition.Name) PID $($process.Id)，StartTime=$($processStartTime.ToString('o'))"
-                return
-            }
+            foreach ($process in $candidates) {
+                $token = Get-GreyGrayProcessToken -Process $process
+                <#
+                    $process.StartTime 對取不到權限的行程會丟 Win32Exception
+                    （Get-GreyGrayProcessToken 對同一件事就是包 try/catch 的，這裡本來沒包）。
+                    拿不到 StartTime 就無法證明它是本次 release 起的——當成「還不是新行程」
+                    跳過、繼續輪詢到逾時，而不是讓整支部署當場炸掉。
+                    注意這不會放寬判斷：證明不了就不算數，仍然拿不到綠燈。
+                #>
+                $processStartTime = $null
+                try { $processStartTime = $process.StartTime } catch { }
+                if ($null -eq $processStartTime) { continue }
+                if (-not (Test-ProcessStartedAfter -ProcessStartTime $processStartTime -RestartBoundaryUtc $restartBoundaryUtc)) {
+                    throw "$($Definition.Name) 由舊 PID $($process.Id) 回應；StartTime 不晚於本次重啟，拒絕假綠。"
+                }
+                if ($Definition.Kind -eq 'NextStandalone') {
+                    if (-not (Test-NodeProcessIdentity -Token $token -NodePath $resolvedNodePath `
+                            -EntryPointPath $expectedEntryPoint)) {
+                        throw "$($Definition.Name) PID $($process.Id) 不是可信 node.exe 或沒有執行本次 release 的 server.js：$expectedEntryPoint"
+                    }
+                }
+                elseif (-not $token.Path -or -not (Test-PathWithinRoot -Path $token.Path -Root $expectedRoot)) {
+                    throw "$($Definition.Name) PID $($process.Id) 並非從本次 release 啟動：$($token.Path)"
+                }
 
-            try {
-                $healthUrl = "http://127.0.0.1:$($Definition.Port)$($Definition.HealthPath)"
-                $response = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 5
-                if ($response.StatusCode -eq 200) {
-                    Write-Host "✓ $($Definition.Name) $healthUrl → 200，PID $($process.Id)，StartTime=$($processStartTime.ToString('o'))"
+                if ([int]$Definition.Port -eq 0) {
+                    Write-Host "✓ $($Definition.Name) PID $($process.Id)，StartTime=$($processStartTime.ToString('o'))"
                     return
                 }
+
+                try {
+                    $healthUrl = "http://127.0.0.1:$($Definition.Port)$($Definition.HealthPath)"
+                    $response = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 5
+                    if ($response.StatusCode -eq 200) {
+                        Write-Host "✓ $($Definition.Name) $healthUrl → 200，PID $($process.Id)，StartTime=$($processStartTime.ToString('o'))"
+                        return
+                    }
+                }
+                catch { }
             }
-            catch { }
-        }
-        Start-Sleep -Milliseconds 500
-    } while ([datetime]::UtcNow -lt $deadline)
+            Start-Sleep -Milliseconds 500
+        } while ([datetime]::UtcNow -lt $deadline)
 
-    throw "$($Definition.Name) 未在 $HealthTimeoutSeconds 秒內由本次 release 接手。"
+        throw "$($Definition.Name) 未在 $HealthTimeoutSeconds 秒內由本次 release 接手。"
+    }
+
+    foreach ($definition in $manifest.Services) { Assert-NewApplicationProcess -Definition $definition }
 }
-
-foreach ($definition in $manifest.Services) { Assert-NewApplicationProcess -Definition $definition }
+finally {
+    Resume-WatchdogTask -TaskName $WatchdogTaskName -Suspended $watchdogSuspended `
+        -EnableTask { Enable-ScheduledTask -TaskName $WatchdogTaskName -ErrorAction SilentlyContinue } | Out-Null
+}
 
 if (-not $WatchdogUserSid) {
     $WatchdogUserSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
