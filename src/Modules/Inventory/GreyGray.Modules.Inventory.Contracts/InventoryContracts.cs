@@ -127,6 +127,32 @@ public interface IStockReservation
         CancellationToken cancellationToken);
 
     Task<Result> ReleaseAsync(ReservationId id, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 交運時出庫：把這筆保留的每一筆 allocation 從批號扣掉
+    /// （<c>quantity_on_hand</c> 與 <c>quantity_reserved</c> 各減同樣的數量），
+    /// 保留本身轉「已出庫」，並逐筆發 <see cref="StockCostAllocated"/> 讓 Ledger 結轉銷貨成本。
+    /// </summary>
+    /// <param name="reservationKey">
+    /// 下單時用的同一把鍵（<c>StockReservationPlan.ForOrder(orderId)</c>）。
+    /// 找不到對應的保留就<b>安靜成功</b>——純預購訂單本來就沒有現貨保留。
+    /// </param>
+    /// <param name="orderRef">
+    /// 這張訂單在分錄上的識別字串，會組成每一筆 <see cref="StockCostAllocated.SourceRef"/>
+    /// （<c>{orderRef}:{skuId}:{lotId}</c>）。<b>批號一定要進去</b>：同一個 SKU 可能跨兩個批號、
+    /// 單位成本不同，而 Ledger 是用 <c>(sourceModule, sourceRef)</c> 去重的，
+    /// 少了批號第二筆會被靜靜吃掉、銷貨成本少認一段。
+    /// </param>
+    /// <remarks>
+    /// 冪等靠保留自己的狀態，不是靠 <c>platform.processed_message</c>：
+    /// 後者的去重範圍是 (event, handler)，擋得住同一個事件重放，
+    /// 擋不住「兩張不同的出貨單都帶到同一個 orderId」。已經出庫的重放安靜跳過、不重發事件；
+    /// 已經釋放的（訂單取消了卻又交運）則<b>失敗並講清楚</b>，不默默吞掉。
+    /// </remarks>
+    Task<Result> ConsumeAsync(
+        string reservationKey,
+        string orderRef,
+        CancellationToken cancellationToken);
 }
 
 // ── 對外事件 ─────────────────────────────────────────────────────────────

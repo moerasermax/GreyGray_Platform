@@ -392,6 +392,97 @@ public sealed class OrderingTests
         fixture.Publisher.Published.ShouldBeEmpty();
     }
 
+    [Fact(DisplayName =
+        "#42：交運把品項推到 Shipped；缺貨品項不動、訂單狀態不動，第二張出貨單重放冪等")]
+    public async Task Shipment_dispatch_moves_lines_to_shipped_without_touching_order_status()
+    {
+        // #42：OrderLineStatus 從下單到訂單完成都停在 Pending——Reserved/Shipped/Completed
+        // 三個值從來沒有被指派過，所以前台品項永遠顯示「處理中」。
+        var fixture = new OrderingFixture(includeSecondLine: true);
+        var created = await fixture.Service.CreateFromCheckoutAsync(
+            fixture.Checkout,
+            TestContext.Current.CancellationToken);
+        await fixture.Service.RecordPaymentCapturedAsync(
+            created.Value.Id,
+            created.Value.GrandTotal,
+            TestContext.Current.CancellationToken);
+        var shippedLineId = created.Value.Lines[0].Id;
+        var unavailableLineId = created.Value.Lines[1].Id;
+        var cancelledLine = await fixture.Service.CancelLineAsync(
+            created.Value.Id,
+            unavailableLineId,
+            "現場缺貨",
+            RefundDestination.OriginalPaymentMethod,
+            TestContext.Current.CancellationToken);
+        cancelledLine.IsSuccess.ShouldBeTrue();
+
+        var before = await fixture.Service.GetAdminAsync(
+            created.Value.Id,
+            TestContext.Current.CancellationToken);
+        var orderStatusBeforeDispatch = before.Value.Status;
+        fixture.UnitOfWork.Reset();
+
+        var dispatched = await fixture.Service.RecordShipmentDispatchedAsync(
+            [created.Value.Id],
+            TestContext.Current.CancellationToken);
+        // 一張訂單可以拆進多張出貨單（N:M），第二張交運時會再帶到同一個 orderId。
+        var secondShipment = await fixture.Service.RecordShipmentDispatchedAsync(
+            [created.Value.Id],
+            TestContext.Current.CancellationToken);
+
+        dispatched.IsSuccess.ShouldBeTrue();
+        secondShipment.IsSuccess.ShouldBeTrue();
+        var after = await fixture.Service.GetAdminAsync(
+            created.Value.Id,
+            TestContext.Current.CancellationToken);
+        after.Value.Lines.Single(line => line.Id == shippedLineId)
+            .Status.ShouldBe(OrderLineStatus.Shipped);
+        after.Value.Lines.Single(line => line.Id == unavailableLineId)
+            .Status.ShouldBe(
+                OrderLineStatus.Unavailable,
+                "缺貨已整條退款的品項不會出貨，交運不能把它一起標成 Shipped。");
+        after.Value.Status.ShouldBe(
+            orderStatusBeforeDispatch,
+            "訂單狀態是 ShipmentDelivered 那條路的事（ADR-025），交運不動它。");
+        fixture.UnitOfWork.Saves.ShouldBe(
+            1,
+            "第二張出貨單沒有任何一條 line 真的改動，不該再 SaveChanges。");
+    }
+
+    [Fact(DisplayName = "#42：訂單鑑賞期屆滿完成時，已出貨的品項跟著轉 Completed")]
+    public async Task Order_completion_completes_shipped_lines()
+    {
+        var fixture = new OrderingFixture();
+        var order = await CreateReadyToShipOrderAsync(fixture);
+
+        await fixture.Service.RecordShipmentDispatchedAsync(
+            [order.Id],
+            TestContext.Current.CancellationToken);
+        var afterDispatch = await fixture.Service.GetAdminAsync(
+            order.Id,
+            TestContext.Current.CancellationToken);
+        afterDispatch.Value.Lines.Single().Status.ShouldBe(
+            OrderLineStatus.Shipped,
+            "預購 line 收貨後是 Purchased，交運要把它推到 Shipped。");
+
+        fixture.FulfillmentQuery.SetShipments(order.Id, ShipmentStatus.Delivered);
+        await fixture.Service.RecordShipmentDeliveredAsync(
+            [order.Id],
+            TestContext.Current.CancellationToken);
+        var timer = fixture.TimerScheduler.Scheduled.ShouldHaveSingleItem();
+
+        fixture.Clock.UtcNow = timer.FireAt;
+        await fixture.Service.ResolveAppraisalTimeoutAsync(
+            order.Id,
+            TestContext.Current.CancellationToken);
+
+        var completed = await fixture.Service.GetAdminAsync(
+            order.Id,
+            TestContext.Current.CancellationToken);
+        completed.Value.Status.ShouldBe(OrderStatus.Completed);
+        completed.Value.Lines.Single().Status.ShouldBe(OrderLineStatus.Completed);
+    }
+
     private static async Task<OrderView> CreateReadyToShipOrderAsync(OrderingFixture fixture)
     {
         var created = await fixture.Service.CreateFromCheckoutAsync(

@@ -95,6 +95,8 @@ internal sealed class OrderingModule : IModuleRegistration
             serviceProvider.GetRequiredService<OrderingApplicationService>());
         services.AddScoped<IOrderingShipmentDelivery>(serviceProvider =>
             serviceProvider.GetRequiredService<OrderingApplicationService>());
+        services.AddScoped<IOrderingShipmentDispatch>(serviceProvider =>
+            serviceProvider.GetRequiredService<OrderingApplicationService>());
         services.AddScoped<IOrderQuery>(serviceProvider =>
             serviceProvider.GetRequiredService<OrderingApplicationService>());
         services.AddScoped<ICampaignOrderQuery, CampaignOrderQueryAdapter>();
@@ -118,6 +120,10 @@ internal sealed class OrderingModule : IModuleRegistration
         services.AddIdempotentIntegrationEventHandler<
             ItemPurchased,
             ItemPurchasedHandler,
+            OrderingDbContext>();
+        services.AddIdempotentIntegrationEventHandler<
+            ShipmentDispatched,
+            ShipmentDispatchedHandler,
             OrderingDbContext>();
         services.AddIdempotentIntegrationEventHandler<
             ShipmentDelivered,

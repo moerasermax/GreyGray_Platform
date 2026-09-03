@@ -16,6 +16,7 @@ internal sealed class StockReservationService(
 {
     private const short ActiveStatus = 0;
     private const short ReleasedStatus = 1;
+    private const short ConsumedStatus = 2;
 
     public async Task<Result<ReservationId>> ReserveAsync(
         string reservationKey,
@@ -200,6 +201,133 @@ internal sealed class StockReservationService(
                     tenantId,
                     new ReservationId(reservation.Value.Id)),
                 cancellationToken);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await CommitIfOwnedAsync(ownedTransaction, cancellationToken);
+            return Result.Success();
+        }
+        catch
+        {
+            await RollbackIfOwnedAsync(ownedTransaction);
+            throw;
+        }
+        finally
+        {
+            if (ownedTransaction is not null)
+            {
+                await ownedTransaction.DisposeAsync();
+            }
+        }
+    }
+
+    public async Task<Result> ConsumeAsync(
+        string reservationKey,
+        string orderRef,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reservationKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(orderRef);
+
+        IDbContextTransaction? ownedTransaction = null;
+        try
+        {
+            ownedTransaction = await BeginIfNeededAsync(cancellationToken);
+            var transaction = CurrentTransaction();
+            var tenantId = correlationContext.TenantId;
+            var reservation = await LockReservationAsync(
+                tenantId,
+                id: null,
+                reservationKey,
+                transaction,
+                cancellationToken);
+
+            // 純預購訂單沒有現貨保留，交運當然找不到——那不是錯誤。
+            if (reservation is null)
+            {
+                await CommitIfOwnedAsync(ownedTransaction, cancellationToken);
+                return Result.Success();
+            }
+
+            // 重放（或第二張出貨單又帶到同一個 orderId）：不能扣第二次，也不要重發事件。
+            if (reservation.Value.Status == ConsumedStatus)
+            {
+                await CommitIfOwnedAsync(ownedTransaction, cancellationToken);
+                return Result.Success();
+            }
+
+            // 訂單已經取消、貨已經還回可賣，卻又收到交運——帳實不符，要講清楚，不能默默吞掉。
+            if (reservation.Value.Status == ReleasedStatus)
+            {
+                await CommitIfOwnedAsync(ownedTransaction, cancellationToken);
+                return Result.Failure(
+                    "inventory.reservation-already-released",
+                    $"庫存保留 {reservationKey} 已經釋放（訂單取消時歸還庫存），不能再出庫。" +
+                    "請先確認這張出貨單為什麼會在訂單取消之後交運。");
+            }
+
+            var allocations = await LockAllocationsForConsumeAsync(
+                tenantId,
+                reservation.Value.Id,
+                transaction,
+                cancellationToken);
+            if (allocations.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    $"reservation {reservation.Value.Id:N} 是保留中狀態卻沒有任何 allocation，拒絕出庫。");
+            }
+
+            foreach (var allocation in allocations)
+            {
+                // 批號沒有成本就結轉不了：M1a 既有的 STOCK 批號沒有 unit_cost（0010 才加的欄位，
+                // 可為 NULL）。這時候照樣扣庫存但不發事件，等於銷貨成本安靜地少一段——
+                // 那正是 #43 這一包在修的病，所以寧可整筆失敗、讓人去把成本補上。
+                if (allocation.UnitCost is null)
+                {
+                    await CommitIfOwnedAsync(ownedTransaction, cancellationToken);
+                    return Result.Failure(
+                        "inventory.lot-unit-cost-missing",
+                        $"批號 {allocation.LotId:D} 沒有登記單位成本，無法結轉銷貨成本，出庫中止。" +
+                        "請先補上這個批號的進貨成本。");
+                }
+
+                var consumed = await ConsumeLotAsync(
+                    tenantId,
+                    allocation,
+                    transaction,
+                    cancellationToken);
+                if (consumed != 1)
+                {
+                    throw new InvalidOperationException(
+                        $"已鎖定 lot {allocation.LotId:N} 但出庫失敗（現有量或保留量不足），交易已中止。");
+                }
+
+                // 三段都用強型別 id 的字串形式，source_ref 的三個欄位格式才一致
+                // （Guid 直接內插是 "D" 帶連字號，LotId/SkuId 是 "N"，混在一起很難讀）。
+                var lotId = new LotId(allocation.LotId);
+                var skuId = new Modules.Catalog.Contracts.SkuId(allocation.SkuId);
+                await eventPublisher.PublishAsync(
+                    new StockCostAllocated(
+                        Guid.CreateVersion7(),
+                        clock.UtcNow,
+                        tenantId,
+                        lotId,
+                        skuId,
+                        allocation.Quantity,
+                        allocation.UnitCost.Value.MultiplyByQuantity(allocation.Quantity),
+                        $"{orderRef}:{skuId}:{lotId}"),
+                    cancellationToken);
+            }
+
+            var markedConsumed = await MarkConsumedAsync(
+                tenantId,
+                reservation.Value.Id,
+                transaction,
+                cancellationToken);
+            if (markedConsumed != 1)
+            {
+                throw new InvalidOperationException(
+                    $"reservation {reservation.Value.Id:N} 已鎖定但狀態更新失敗。");
+            }
+
             await dbContext.SaveChangesAsync(cancellationToken);
             await CommitIfOwnedAsync(ownedTransaction, cancellationToken);
             return Result.Success();
@@ -456,5 +584,104 @@ internal sealed class StockReservationService(
         return await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// 讀出這筆保留的所有 allocation，順便把批號的單位成本一起帶回來，並鎖住那幾列 lot。
+    /// <c>FOR UPDATE OF lot</c> 只鎖批號：reservation 那一列已經在
+    /// <see cref="LockReservationAsync"/> 鎖過了，allocation 不會被別人改。
+    /// </summary>
+    private async Task<IReadOnlyList<ConsumeAllocation>> LockAllocationsForConsumeAsync(
+        TenantId tenantId,
+        Guid reservationId,
+        NpgsqlTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        await using var command = Command("""
+            SELECT allocation.lot_id,
+                   allocation.sku_id,
+                   allocation.quantity,
+                   lot.unit_cost_amount_minor,
+                   lot.unit_cost_currency
+            FROM inventory.reservation_allocation AS allocation
+            JOIN inventory.lot AS lot
+              ON lot.tenant_id = allocation.tenant_id
+             AND lot.id = allocation.lot_id
+             AND lot.sku_id = allocation.sku_id
+            WHERE allocation.tenant_id = @tenant_id
+              AND allocation.reservation_id = @reservation_id
+            ORDER BY allocation.lot_id
+            FOR UPDATE OF lot;
+            """, transaction);
+        command.Parameters.AddWithValue("tenant_id", tenantId.Value);
+        command.Parameters.AddWithValue("reservation_id", reservationId);
+        var allocations = new List<ConsumeAllocation>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var unitCost = reader.IsDBNull(3) || reader.IsDBNull(4)
+                ? (Money?)null
+                : new Money(reader.GetInt64(3), Enum.Parse<Currency>(reader.GetString(4)));
+            allocations.Add(new ConsumeAllocation(
+                reader.GetGuid(0),
+                reader.GetGuid(1),
+                reader.GetInt32(2),
+                unitCost));
+        }
+
+        return allocations;
+    }
+
+    /// <summary>
+    /// 出庫：<c>quantity_on_hand</c> 與 <c>quantity_reserved</c> 各減掉同樣的數量。
+    /// <b>不寫 <c>quantity_available</c></b>——它是 generated column，由資料庫自己算。
+    /// 兩個守衛（現有量、保留量都要夠）比照 <see cref="IncreaseReservedAsync"/> 的形狀，
+    /// 條件不成立就是 0 列受影響，呼叫端據此中止交易。
+    /// </summary>
+    private async Task<int> ConsumeLotAsync(
+        TenantId tenantId,
+        ConsumeAllocation allocation,
+        NpgsqlTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        await using var command = Command("""
+            UPDATE inventory.lot
+            SET quantity_on_hand = quantity_on_hand - @quantity,
+                quantity_reserved = quantity_reserved - @quantity
+            WHERE tenant_id = @tenant_id
+              AND id = @lot_id
+              AND sku_id = @sku_id
+              AND quantity_on_hand >= @quantity
+              AND quantity_reserved >= @quantity;
+            """, transaction);
+        command.Parameters.AddWithValue("quantity", allocation.Quantity);
+        command.Parameters.AddWithValue("tenant_id", tenantId.Value);
+        command.Parameters.AddWithValue("lot_id", allocation.LotId);
+        command.Parameters.AddWithValue("sku_id", allocation.SkuId);
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private async Task<int> MarkConsumedAsync(
+        TenantId tenantId,
+        Guid reservationId,
+        NpgsqlTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        await using var command = Command("""
+            UPDATE inventory.reservation
+            SET status = 2, consumed_at = @consumed_at
+            WHERE tenant_id = @tenant_id AND id = @reservation_id AND status = 0;
+            """, transaction);
+        command.Parameters.AddWithValue("consumed_at", clock.UtcNow);
+        command.Parameters.AddWithValue("tenant_id", tenantId.Value);
+        command.Parameters.AddWithValue("reservation_id", reservationId);
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     private sealed record LotAllocation(Guid LotId, int Quantity);
+
+    /// <summary>出庫要用的一筆 allocation：批號、SKU、數量，加上批號自己的單位成本。</summary>
+    private sealed record ConsumeAllocation(
+        Guid LotId,
+        Guid SkuId,
+        int Quantity,
+        Money? UnitCost);
 }

@@ -20,7 +20,8 @@ internal sealed class OrderingApplicationService(
     Lazy<IFulfillmentQuery?>? fulfillmentQuery = null,
     ISagaTimerScheduler? timerScheduler = null,
     TimeSpan appraisalPeriod = default)
-    : IOrderingApplication, IOrderingGoodsReceipt, IOrderQuery, IOrderingShipmentDelivery
+    : IOrderingApplication, IOrderingGoodsReceipt, IOrderQuery, IOrderingShipmentDelivery,
+        IOrderingShipmentDispatch
 {
     /// <summary>鑑賞期 Saga timer 的 saga type（ADR-025）。</summary>
     internal const string AppraisalSagaType = "ordering.appraisal-period";
@@ -538,6 +539,38 @@ internal sealed class OrderingApplicationService(
             campaignId,
             cancellationToken);
         return found.Select(order => order.ToView()).ToArray();
+    }
+
+    /// <summary>
+    /// Fulfillment 出貨單交運後呼叫（#42）。只推品項狀態，不動訂單狀態，也不必問 Fulfillment
+    /// 「是不是全部出貨單都交運了」——每一張出貨單交運時，它涵蓋的訂單品項就是真的離開倉庫了。
+    /// 冪等靠 <see cref="Order.MarkLinesShipped"/> 自己的狀態篩選：
+    /// 同一張訂單被第二張出貨單帶到時，已經 Shipped／Completed 的品項不會再被改動。
+    /// </summary>
+    public async Task<Result> RecordShipmentDispatchedAsync(
+        IReadOnlyList<OrderId> orderIds,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(orderIds);
+
+        var changed = false;
+        foreach (var orderId in orderIds.Distinct())
+        {
+            var order = await orders.GetAsync(correlationContext.TenantId, orderId, cancellationToken);
+            if (order is null)
+            {
+                continue;
+            }
+
+            changed |= order.MarkLinesShipped();
+        }
+
+        if (changed)
+        {
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        return Result.Success();
     }
 
     /// <summary>

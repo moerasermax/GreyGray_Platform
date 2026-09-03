@@ -104,6 +104,29 @@ internal sealed class ItemPurchasedHandler(IOrderingApplication ordering)
     }
 }
 
+/// <summary>
+/// 交運（#42）。觸發點刻意是<b>交運</b>而不是簽收：貨在交運那一刻離開倉庫，
+/// 品項就該顯示「已出貨」，而不是等物流商回報簽收才動。
+/// 訂單本身的狀態轉移仍然掛在 <see cref="ShipmentDeliveredHandler"/> 上。
+/// </summary>
+internal sealed class ShipmentDispatchedHandler(IOrderingShipmentDispatch ordering)
+    : IIntegrationEventHandler<ShipmentDispatched>
+{
+    public async Task HandleAsync(
+        ShipmentDispatched @event,
+        CancellationToken cancellationToken)
+    {
+        var result = await ordering.RecordShipmentDispatchedAsync(
+            @event.OrderIds,
+            cancellationToken);
+        if (result.IsFailure)
+        {
+            throw new InvalidOperationException(
+                $"ShipmentDispatched 無法更新訂單：{result.Error.Code} {result.Error.Message}");
+        }
+    }
+}
+
 internal sealed class ShipmentDeliveredHandler(IOrderingShipmentDelivery ordering)
     : IIntegrationEventHandler<ShipmentDelivered>
 {

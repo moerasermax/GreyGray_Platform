@@ -282,6 +282,20 @@ public interface IOrderingGoodsReceipt
         CancellationToken cancellationToken);
 }
 
+/// <summary>出貨單交運 command 的最小 input port。</summary>
+public interface IOrderingShipmentDispatch
+{
+    /// <summary>
+    /// Fulfillment 出貨單交運後呼叫，把品項狀態推到 <see cref="OrderLineStatus.Shipped"/>（#42）。
+    /// <paramref name="orderIds"/> 是該出貨單涵蓋的訂單——一張出貨單可以合併多張訂單，
+    /// 一張訂單也可能拆進多張出貨單（N:M），所以這個操作必須冪等。
+    /// <b>訂單本身的狀態不在這裡動</b>：那是簽收（<c>ShipmentDelivered</c>）那條路的事（ADR-025）。
+    /// </summary>
+    Task<Result> RecordShipmentDispatchedAsync(
+        IReadOnlyList<OrderId> orderIds,
+        CancellationToken cancellationToken);
+}
+
 /// <summary>出貨單簽收 command 的最小 input port。</summary>
 public interface IOrderingShipmentDelivery
 {

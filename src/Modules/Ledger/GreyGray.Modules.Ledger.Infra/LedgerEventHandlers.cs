@@ -1,4 +1,5 @@
 using GreyGray.Modules.Campaign.Contracts;
+using GreyGray.Modules.Fulfillment.Contracts;
 using GreyGray.Modules.Inventory.Contracts;
 using GreyGray.Modules.Ledger.Contracts;
 using GreyGray.Modules.Ledger.Core;
@@ -304,6 +305,75 @@ internal sealed class TripCostRecordedLedgerHandler(LedgerPostingService posting
             [
                 new(AccountCodes.TripCost, Direction.Debit, @event.Amount, @event.CampaignId),
                 new(AccountCodes.Cash, Direction.Credit, @event.Amount, @event.CampaignId),
+            ],
+            cancellationToken);
+    }
+}
+
+/// <summary>
+/// 出貨從批號結轉銷貨成本（<c>docs/02-事件與狀態機.md</c> §5 第 ⑦ 階段第一筆）。
+/// DR 銷貨成本 / CR 存貨。
+/// <para>
+/// 事件由 Inventory 在<b>交運</b>時逐筆 allocation 發出，<see cref="StockCostAllocated.SourceRef"/>
+/// 直接沿用作 <c>journal_entry.source_ref</c>——那是看帳的人唯一能追回「這筆成本是哪張訂單、
+/// 哪個 SKU 出的貨」的線索，不要再包一層。
+/// </para>
+/// </summary>
+internal sealed class StockCostAllocatedLedgerHandler(LedgerPostingService posting)
+    : IIntegrationEventHandler<StockCostAllocated>
+{
+    public async Task HandleAsync(StockCostAllocated @event, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(@event);
+
+        await posting.PostAsync(
+            @event.TenantId,
+            @event.OccurredAt,
+            "Inventory",
+            @event.SourceRef,
+            $"出貨結轉銷貨成本，SKU {@event.SkuId} × {@event.Quantity}",
+            [
+                new(AccountCodes.CostOfGoodsSold, Direction.Debit, @event.TotalCost),
+                new(AccountCodes.Inventory, Direction.Credit, @event.TotalCost),
+            ],
+            cancellationToken);
+    }
+}
+
+/// <summary>
+/// 交運支付宅配運費（<c>docs/02-事件與狀態機.md</c> §5 第 ⑦ 階段第二筆）。
+/// DR 運費成本 / CR 現金。
+/// <para>
+/// <see cref="ShipmentDispatched.CarrierCost"/> 是<b>付給物流商的成本</b>，
+/// 不是向客人收的運費（後者在訂單的 <c>ShippingFee</c>，走 <c>OrderCompleted</c> 那條路）。
+/// 兩個是獨立的數字，月結時運費是賺是賠自己會浮出來。
+/// </para>
+/// <para>
+/// <b>成本為零就完全不開分錄</b>：一筆全零的 entry 在帳上沒有任何意義，
+/// 只會讓「這張出貨單有沒有運費成本」變成要點進去看才知道。
+/// </para>
+/// </summary>
+internal sealed class ShipmentDispatchedLedgerHandler(LedgerPostingService posting)
+    : IIntegrationEventHandler<ShipmentDispatched>
+{
+    public async Task HandleAsync(ShipmentDispatched @event, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(@event);
+
+        if (@event.CarrierCost.IsZero)
+        {
+            return;
+        }
+
+        await posting.PostAsync(
+            @event.TenantId,
+            @event.OccurredAt,
+            "Fulfillment",
+            @event.ShipmentId.ToString(),
+            $"出貨單 {@event.ShipmentId} 交運，支付物流商運費（{@event.Method}）",
+            [
+                new(AccountCodes.ShippingCost, Direction.Debit, @event.CarrierCost),
+                new(AccountCodes.Cash, Direction.Credit, @event.CarrierCost),
             ],
             cancellationToken);
     }

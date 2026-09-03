@@ -1,4 +1,5 @@
 using GreyGray.Modules.Catalog.Contracts;
+using GreyGray.Modules.Fulfillment.Contracts;
 using GreyGray.Modules.Inventory.Contracts;
 using GreyGray.Modules.Inventory.Core;
 using GreyGray.Modules.Ordering.Contracts;
@@ -70,6 +71,12 @@ internal sealed class InventoryModule : IModuleRegistration
         services.AddIdempotentIntegrationEventHandler<
             OrderCancelled,
             OrderCancelledInventoryHandler,
+            InventoryDbContext>();
+        // 交運出庫（#43）。之前完全沒有任何 shipment 事件的 handler，所以貨寄出去了、
+        // 帳面上 quantity_on_hand 一件都沒少，reserved 還永遠掛著。
+        services.AddIdempotentIntegrationEventHandler<
+            ShipmentDispatched,
+            ShipmentDispatchedInventoryHandler,
             InventoryDbContext>();
         services.AddScoped<IInventoryLotRepository, InventoryLotRepository>();
         services.AddScoped<IEventPublisher>(serviceProvider =>

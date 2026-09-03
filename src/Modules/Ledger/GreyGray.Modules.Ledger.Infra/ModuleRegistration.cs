@@ -1,4 +1,5 @@
 using GreyGray.Modules.Campaign.Contracts;
+using GreyGray.Modules.Fulfillment.Contracts;
 using GreyGray.Modules.Inventory.Contracts;
 using GreyGray.Modules.Ledger.Contracts;
 using GreyGray.Modules.Ledger.Core;
@@ -96,6 +97,17 @@ internal sealed class LedgerModule : IModuleRegistration
         services.AddIdempotentIntegrationEventHandler<
             LotCreated,
             LotCreatedLedgerHandler,
+            LedgerDbContext>();
+        // docs/02 §5 第 ⑦ 階段的兩筆。型別與文件從第一天就有，但一直沒有人訂閱，
+        // 所以出貨那一段在正式機上一毛都沒落帳（#43）；
+        // LedgerCoverageTests 現在會機械擋住同一種漏接。
+        services.AddIdempotentIntegrationEventHandler<
+            StockCostAllocated,
+            StockCostAllocatedLedgerHandler,
+            LedgerDbContext>();
+        services.AddIdempotentIntegrationEventHandler<
+            ShipmentDispatched,
+            ShipmentDispatchedLedgerHandler,
             LedgerDbContext>();
         return services;
     }

@@ -488,6 +488,35 @@ internal sealed class Order
     }
 
     /// <summary>
+    /// Fulfillment 回報「這張訂單掛的某張出貨單已交運」（#42）。把還在
+    /// <see cref="OrderLineStatus.Pending"/> 或 <see cref="OrderLineStatus.Purchased"/> 的品項
+    /// 轉成 <see cref="OrderLineStatus.Shipped"/>。
+    /// <para>
+    /// <see cref="OrderLineStatus.Unavailable"/>（現場缺貨，已整條退款）與
+    /// <see cref="OrderLineStatus.Cancelled"/> 一律不動——它們不會出貨。
+    /// 已經是 <see cref="OrderLineStatus.Shipped"/>／<see cref="OrderLineStatus.Completed"/> 的也不動：
+    /// 一張訂單可能拆進多張出貨單（N:M），第二張交運時不能把已完成的品項倒退回去。
+    /// </para>
+    /// <para>
+    /// <b>訂單本身的 <see cref="Status"/> 不在這裡動。</b>訂單要等掛著的出貨單<b>全部</b>簽收
+    /// 才轉 <see cref="OrderStatus.Shipped"/>（<see cref="RecordAllShipmentsDelivered"/>，ADR-025）。
+    /// </para>
+    /// </summary>
+    /// <returns>有沒有任何一條 line 真的被改動——呼叫端據此決定要不要 SaveChanges。</returns>
+    public bool MarkLinesShipped()
+    {
+        var changed = false;
+        foreach (var line in _lines.Where(line =>
+            line.Status is OrderLineStatus.Pending or OrderLineStatus.Purchased))
+        {
+            line.MarkShipped();
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    /// <summary>
     /// 鑑賞期 Saga Timer 屆滿時呼叫。訂單若在鑑賞期內被取消，狀態已不是
     /// <see cref="OrderStatus.Shipped"/>，這裡會安靜忽略，不會把它拉回 Completed。
     /// </summary>
@@ -499,6 +528,13 @@ internal sealed class Order
         }
 
         Status = OrderStatus.Completed;
+        // 訂單完成，已出貨的品項跟著完成（#42）。Unavailable／Cancelled 不動：
+        // 它們沒有出貨，把它們一起標成 Completed 會讓前台顯示成「已完成」而不是「缺貨退款」。
+        foreach (var line in _lines.Where(line => line.Status == OrderLineStatus.Shipped))
+        {
+            line.MarkCompleted();
+        }
+
         return AppraisalTimeoutTransition.Completed;
     }
 
@@ -725,6 +761,12 @@ internal sealed class OrderLine
         RefundedCurrency = refundAmount.Currency;
         Quantity -= QuantityShortfall;
     }
+
+    /// <summary>出貨單交運。呼叫端（<see cref="Order.MarkLinesShipped"/>）已經篩過狀態。</summary>
+    public void MarkShipped() => Status = OrderLineStatus.Shipped;
+
+    /// <summary>訂單鑑賞期屆滿完成。呼叫端（<see cref="Order.CompleteAfterAppraisal"/>）已經篩過狀態。</summary>
+    public void MarkCompleted() => Status = OrderLineStatus.Completed;
 
     public void MarkGoodsReceived(DateTimeOffset receivedAt) => GoodsReceivedAt = receivedAt;
 
