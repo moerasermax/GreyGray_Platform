@@ -51,7 +51,14 @@ Leader 要明講。
 
 ---
 
-## 生效中：BE-44　修訂凍結契約——新增 `POST /v1/products/{productId}/skus`（建立 SKU）＋ Admin Host 端點（ADR-032）
+<!--
+★ 2026-09-03 已通過整合驗收並提交（後端 `fb15ad6`），撤包。原文保留供追溯。
+
+一輪交付。契約純新增 27 行、`docs/05` 加一列（M1a）、Host `MapPost` 抽成具名 `CreateSkuAsync`（`AdminSkuRequest` private→internal）、`OpenApiComponents` 加一列、6 條端點測試（201／404／404 格式／422＋冪等鍵 Abandoned／400／同 key 重播只建一個）。
+Leader 重跑：build Debug 0/0、12 專案 **284** 條（278＋6）、`check-openapi` admin **30/30**；活體 Debug Host：201、404、400、422、**ReadOnly 403**（子代理明講沒有路由管線測試基礎、留給活體）、admin／storefront GET 都看得到新 SKU。
+留下：admin 路由管線測試基礎（一次釘住 20 幾條角色守衛）；milestone gate 不驗 response 集合。
+
+## 生效中（已撤包）：BE-44　修訂凍結契約——新增 `POST /v1/products/{productId}/skus`（建立 SKU）＋ Admin Host 端點（ADR-032）
 
 使用者 2026-09-03 08:51 在正式機後台建了商品，卡在「這個商品還沒有 SKU」：契約只有 PATCH 既有 SKU、沒有新增端點，正式機沒有任何合法路徑建出第一個 SKU（開發機那幾個是 Leader 直寫 DB 種的）。
 使用者拍板「不種，等正式做法」→ ADR-032：純新增一條 operation；Catalog 模組的 `CreateSkuAsync` port 早就在（`CatalogContracts.cs` 第 203 行、`CatalogServices.cs` 第 260 行），只缺 HTTP 路由、契約與 `docs/05` 那一列。
@@ -67,6 +74,7 @@ allow: src/Hosts/GreyGray.Api.Admin/OpenApiComponents.cs
 allow: tests/
 
 > `docs/api/openapi.admin.yaml`、`docs/05-API契約.md` 走 docs/ 全域放行。Catalog／Inventory 模組不在 allow——派工書 §0.3 說明過 port 已存在；若真的缺什麼，停下來回報。
+-->
 
 ---
 
@@ -845,6 +853,8 @@ allow: tests/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **BE-44** 修訂凍結契約：新增 `POST /v1/products/{productId}/skus`（建立 SKU，ADR-032）＋ Admin Host 端點 ＋ `docs/05` 加列 ＋ OpenApiComponents ＋ 6 條端點測試（#39：正式機後台建商品後沒有任何合法路徑建出第一個 SKU）　·　2026-09-03 通過　·　`fb15ad6`　·
+  測試 278 → 284；check-openapi admin 29/29 → 30/30；活體 201／404／400／422／ReadOnly 403；見 `.dispatch/reports/BE-44.md`
 - **BE-43** 正式機 GreyGray 自己的 Cloudflare Tunnel 腳本（`install-tunnel.ps1`、verify 多三項、`install-environment.ps1` 不碰共用通道）＋ 正式機第一次部署抓到的四個 dry-run 盲點（ingress validate 假 PASS、`::Fill` 5.1 沒有、Mandatory 拒收空陣列、nssm `reset AppParameters` 崩潰、`GetNewClosure` 看不到 script 函式）　·　2026-09-03 通過　·　`47ec987`→`34a8f20`→`12da09e`→`b56e1dd`→`9caa2b6`→`eab1898`（七輪）　·
   YC 上線：`GreyGray-Tunnel`＋五個服務 Running，外部 `/v1/products` 200、`/v1/me` 401；self-test 從 13 項長到 18 項（乾淨機器、亂數產生器、Clear-NssmAppParameters、無 GetNewClosure），見 `.dispatch/reports/BE-43.md`
 - **BE-42** 串真綠界的前置：`ReturnURL` 可由 `Storefront:PublicApiOrigin` 設定、`deploy.ps1` 投遞公開 origin、`build-frontends.ps1` 建另一棵樹並指定 API base、self-test 改 UTF-8 讀＋BOM 斷言、CI 改 -ValidateOnly　·　2026-09-03 通過　·　`8e6f2c4`　·
