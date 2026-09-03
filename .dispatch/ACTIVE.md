@@ -51,6 +51,23 @@ Leader 要明講。
 
 ---
 
+## 生效中：BE-46　Worker 掛上 Fulfillment 模組（#41：出貨單簽收後訂單永遠停在「準備出貨」）＋ 開機驗 handler 相依 ＋ 架構測試（含負向對照）＋ Ordering 缺模組時講人話
+
+2026-09-03 13:53 使用者在正式站後台把出貨單標記送達，後台資料都對，但 Worker 處理 `fulfillment.ShipmentDelivered.v1` 時炸 `ArgumentNullException (resolvedFulfillmentQuery)` 連續 8 次：`Worker/Program.cs:59-70` 掛了 11 個模組、**沒有 `AddFulfillmentModule`**（第 72 行留著「之後的波次再納入」從沒做），而 Ordering 的 `ShipmentDeliveredHandler` 靠 `Lazy<IFulfillmentQuery?>` 在真的被叫到時才發現沒有。訂單因此停在 ReadyToShip，前台顯示「準備出貨」。
+Leader 13:59:58 先停掉正式機 Worker（與 watchdog）讓訊息停在 attempts=8 不進死信；這一包部署上去就會接著處理。派工書 `docs/42-後端第三十波派工書.md` §0 有完整證據與「不用資料庫就能重現」的方法（空 orderIds）。
+
+★★ 最容易做錯的：① 模組清單抽成 `WorkerModules.AddWorkerModules`，測試呼叫**同一個方法**（不是抄一份清單）；② 開機驗證要點名 `IFulfillmentQuery`（Lazy 相依光解析 handler 抓不到）；③ 負向對照那條要真的 throw；④ 不動 Admin／Storefront 的模組清單、不動 Lazy 做法；⑤ dev Host 不准停，B-4 只起自己的 Worker 行程。
+
+package: BE-46
+doc: docs/42-後端第三十波派工書.md
+allow: src/Hosts/GreyGray.Worker/
+allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Core/OrderingApplicationService.cs
+allow: tests/
+
+> `docs/` 全域放行。`Ordering.Infra`、`Fulfillment`、`Api.Admin`、`Api.Storefront`、`ops/` 不在 allow——派工書 §2 說明過；真的需要就停下來回報。
+
+---
+
 <!--
 ★ 2026-09-03 已通過整合驗收並提交（後端 `485910d`），撤包。原文保留供追溯。
 

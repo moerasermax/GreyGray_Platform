@@ -1,8 +1,9 @@
 # 啟動 prompt
 
-**目前沒有生效中的派工（2026-09-03 下午）。** 第三十三波 BE-45（`485910d`：`deploy.ps1` START 不看 `nssm start` 的 exit code ＋ 部署期間暫停 watchdog ＋ self-test 18 → 20 項）已驗收撤包，**YC 第三次真跑一次過**（release `20260903053352999`）。
-第三十二波 FE-28（`5b01314`，#40）已撤包並部署；那次部署被 START_PENDING 的 exit code 打斷、Leader 手動救回，BE-45 就是修它。第三十一波（BE-44 `fb15ad6`、FE-27 `56a221d`）已撤包並部署；**付款這條路 11:36 第一次在正式機用真的綠界測試站走通**。
-下一波派工前先讀 `ACTIVE.md` 的「已經通過」清單與本檔最後一節「下一波派工前」。
+**生效中的派工（2026-09-03 下午，第三十四波）：後端 BE-46（Worker 掛上 Fulfillment 模組——#41 出貨單簽收後訂單永遠停在「準備出貨」；開機驗 handler 相依；架構測試含負向對照，`docs/42-後端第三十波派工書.md`）。** 前端樹沒有生效中的派工。啟動 prompt 在下面「BE-46 的啟動 prompt」一節。
+第三十三波 BE-45（`485910d`：部署腳本）已撤包、YC 第三次真跑一次過（release `20260903053352999`）。第三十二波 FE-28（`5b01314`，#40）已撤包並部署。第三十一波（BE-44 `fb15ad6`、FE-27 `56a221d`）已撤包並部署；**付款這條路 11:36 第一次在正式機用真的綠界測試站走通**。
+
+★ **BE-46**：`Worker/Program.cs` 缺 `AddFulfillmentModule`（11 個模組、留了一句「之後再納入」），Ordering 的 `ShipmentDeliveredHandler` 對 `IFulfillmentQuery` 是 `Lazy` 相依 → 正式機 outbox `fulfillment.ShipmentDelivered.v1` 連炸 8 次 `ArgumentNullException`。修：模組清單抽成 `WorkerModules.AddWorkerModules`（加 Fulfillment）、Worker 開機驗每個 `IIntegrationEventHandler<T>` 與點名 `IFulfillmentQuery`、架構測試用同一個方法建容器＋空 orderIds 呼叫 `RecordShipmentDeliveredAsync` 重現炸點＋負向對照、Ordering 缺模組時的例外講人話。只動 Worker、Ordering.Core 一個方法、tests。
 
 ★ **BE-45**：`ops/lib/Deployment.ps1` 加 `Wait-ManagedServiceStart`（吃注入的 `-StartService`／`-GetStatus` scriptblock，成功條件只有 `Running`）與 `Suspend-WatchdogTask`／`Resume-WatchdogTask`；`deploy.ps1` START 迴圈改用它、`Invoke-Nssm start` 一律 `-AllowNonZeroExit`、STOP→健康檢查整段 try/finally 恢復 watchdog；self-test 第 19（AST ＋ 四案例）、20 項（假 scriptblock 四案例 ＋ AST 確認在 finally）。只動 `ops/` 三個檔。
 ★ **FE-28**：純函式 `subtotalPreview`（單價 × 數量，只用於顯示，ADR-033 唯一例外）＋ `BottomBarSummary`（「N 件 · 小計」）＋ `UnitPriceBlock`（資訊區單價）＋ `frontend/README.md` 例外註記；不動契約、`packages/*`、購物車／結帳頁。第三十波三段（BE-41、FE-26／BE-42、BE-43 七輪）已全部撤包；**正式機 YC 五個服務已上線（greygray.shop／admin.greygray.shop）**，使用者在後台建商品時撞到「沒有新增 SKU 的端點」，這一波就是補它。
@@ -23,6 +24,54 @@ tunnel `greygray`（`7daa50aa-…`）與兩筆 DNS Leader 已在 YC 上建好；
 ADR-030：規則的主人是後端——契約 `shippingPolicy` 改成「混合才必填」（向下相容），後端混合沒帶回 422、單一模式依 line 組成推導。
 併：壞 body 兩個環境都回 400 problem+json；#36 登出清 `gg_cart`＋「不是你的車」換新車；#38 兩支 dev 啟動腳本改 `Start-Process -Environment`。
 ★ dev Host 現在是 Release 在跑、使用者正在走旅程：子代理一律 `-Configuration Debug`，不准停 dev 行程。
+
+---
+
+## BE-46 的啟動 prompt（生效中）
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
+GreyGray Platform 後端（.NET 10 modular monolith）。這一包只動三處：Worker host 的組合根（src/Hosts/GreyGray.Worker/）、Ordering.Core 一個方法的錯誤訊息、tests/。
+
+GG_PACKAGE=BE-46
+
+開工前務必先讀：
+  CLAUDE.md                        六條鐵則 ＋ 派工規則
+  docs/42-後端第三十波派工書.md      ★ 整份讀完：§0 事實（正式機 outbox 失敗證據、Worker/Program.cs 行號、Ordering 的 Lazy 相依、為什麼測試沒抓到、不用資料庫的重現法）＋ §1 必做 A～E ＋ §2 不要做 ＋ §5 可能寫錯的地方
+  src/Hosts/GreyGray.Worker/Program.cs                         第 59-83 行：模組清單與開機驗證區塊
+  src/Modules/Ordering/GreyGray.Modules.Ordering.Infra/ModuleRegistration.cs   第 76-86 行：Lazy<IFulfillmentQuery?> 的由來（不動）
+  tests/GreyGray.Architecture.Tests/ModuleCompositionRootTests.cs   第 79-90 行：in-memory configuration 的樣板
+  .dispatch/reports/README.md      ★ 自驗報告的格式，缺標頭會被退回
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/BE-46.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 不准把驗證丟背景、不准排程 wakeup。要跑的是：
+     ops\build.ps1 -Configuration Debug（0 警告 0 錯誤）
+     ops\test.ps1 -Configuration Debug（基準 284 ＋ 你新增的，逐專案條數貼進報告）
+     dev 環境真的把 Worker 起一次（必做 B-4；用新 shell、看 log；只起你自己那個行程、用完停掉）
+     bash .dispatch/audit-dispatch.sh
+     輸出貼進報告。
+
+★ 模組清單只有一份：WorkerModules.AddWorkerModules；Program.cs 與架構測試都呼叫它。
+★ 開機驗證要點名 IFulfillmentQuery（Lazy 相依光解析 handler 抓不到）；負向對照那條測試要真的 throw。
+★ 不動 Admin／Storefront 的模組清單、不動 Ordering.Infra 的 Lazy、不動 Fulfillment、不動契約、不動 ops/、不碰正式機。
+★ 一律 -Configuration Debug；dev 的 Host 不准停。
+★ 派工書 §5 列了五個可能寫錯的地方：撞到就停下來寫進報告問，不要自己換做法。
+
+★ 質疑被鼓勵，但不准自己改方向：派工書寫錯了就停下來寫進報告問，
+  不要一邊照做一邊在報告裡抱怨，也不要自己換一個做法。
+
+檔案所有權：見派工書 §3（ACTIVE.md 的 allow 是機械執行的那份）。
+docs/、management/、STATE.md、CLAUDE.md、AGENTS.md 每一包都寫得了。
+
+不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
+git checkout -- .、以及 git commit。
+
+你不可以自己宣告通過。交付完就停。
+```
 
 ---
 
