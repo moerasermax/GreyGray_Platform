@@ -219,6 +219,33 @@ paths:
               schema: { $ref: '#/components/schemas/AdminProduct' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /v1/products/{productId}/skus:
+    parameters:
+      - { name: productId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    post:
+      tags: [catalog]
+      x-required-role: Operator
+      summary: 建立 SKU
+      description: |
+        ADR-032：凍結契約的第一次純新增。商品可先建為空 SKU 集，首個與之後的 SKU 都從這裡建；
+        **`weightGram` 與 `size` 必填**（M1a 起就是，不可捏造預設值）；`listPrice` 現貨才填，預購 SKU 售價在開團定。
+        SKU 的內部 ID 一經產生不可變（通路擴充接縫 #2）。
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdminSkuInput' }
+      responses:
+        '201':
+          description: 已建立
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminSku' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+
   /v1/skus/{skuId}:
     parameters:
       - { name: skuId, in: path, required: true, schema: { $ref: '#/components/schemas/Id' } }

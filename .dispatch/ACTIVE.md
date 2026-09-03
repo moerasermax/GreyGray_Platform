@@ -51,6 +51,28 @@ Leader 要明講。
 
 ---
 
+## 生效中：FE-27　後台商品頁「新增 SKU」（新端點 `POST /v1/products/{productId}/skus`，ADR-032）＋ SKU 列「進貨」與批號列表（`/v1/lots`）
+
+使用者 2026-09-03 08:51 在正式機後台建了商品，SKU 區只有空狀態「契約目前只有 PATCH…沒有新增 SKU 的端點」；而且就算有 SKU，後台也沒有進貨頁（M2 `POST /v1/lots` 只有 API）。
+使用者拍板「不種，等正式做法」→ ADR-032。後端 BE-44 已把新端點做進契約（`docs/api/openapi.admin.yaml` 與 `docs/05` 是 Leader 從後端樹逐位元複製進來的）；這一包補兩個 UI 缺口。
+
+★★ 最容易做錯的：① 不要改 `docs/api/*.yaml`、`docs/05`（稽核第 ⑦ 項會擋）；② 型別一律 `pnpm api:generate` 重生後從 `S['…']` 拿，**不准手寫請求型別**（FE-26 那個手寫複本是追蹤項，不要再加一份）；
+③ `types.storefront.ts` 會被 codegen 一起重寫，預期零 diff；④ 金額輸入 NT$ → `amountMinor` 的轉換照 `SkuEditDrawer` 現貨標價既有的 helper，不另寫；⑤ dev server 由 Leader 管——不停、不起、不跑 `next build`，活體驗收是 Leader 的事。
+
+package: FE-27
+doc: docs/30-前端第十六波派工書.md
+allow: frontend/packages/api-client/src/types.admin.ts
+allow: frontend/packages/api-client/src/types.storefront.ts
+allow: frontend/packages/api-client/src/endpoints/admin.ts
+allow: frontend/packages/api-client/src/endpoints/README.md
+allow: frontend/packages/api-client/src/mock/
+allow: frontend/apps/admin/app/(dash)/catalog/
+
+> `types.storefront.ts` 在 allow 裡只是因為 codegen 會一起重寫它——預期零 diff，有 diff 就停下來回報。
+> `apps/admin/app/(dash)/catalog/` 整個目錄放行：商品頁、`_components/`（`SkuEditDrawer.tsx` 改、`LotDrawer.tsx` 新增）、測試都在裡面；側邊欄不在 allow（這一包不加新頁面，進貨做在商品頁的抽屜裡）。
+
+---
+
 <!--
 ★ 2026-09-03 已通過整合驗收並提交（前端 `7f052c5`），撤包。原文保留供追溯。
 

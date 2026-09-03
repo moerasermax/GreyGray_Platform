@@ -291,6 +291,7 @@ coverage gate 的唯一過濾來源，不再從 description 猜。
 | `POST` | `/v1/products` | Operator | M1a | 建立商品 |
 | `GET` | `/v1/products/{productId}` | ReadOnly | M1a | 商品詳情 |
 | `PATCH` | `/v1/products/{productId}` | Operator | M1a | 修改商品 |
+| `POST` | `/v1/products/{productId}/skus` | Operator | M1a | 建立 SKU |
 | `PATCH` | `/v1/skus/{skuId}` | Operator | M1a | 修改 SKU |
 | `GET` | `/v1/campaigns` | ReadOnly | M1a | 開團列表 |
 | `POST` | `/v1/campaigns` | Operator | M1a | 建立開團（草稿） |
