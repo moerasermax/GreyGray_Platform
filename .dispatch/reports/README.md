@@ -29,9 +29,12 @@
 
 ## 不准把測試丟背景
 
-`ops/test.ps1` 實測淨執行 **584 秒（9.7 分）**，前景跑得完。
-用長 timeout 同步跑，不要 `run_in_background`、不要排程 wakeup——
-headless 子代理的行程一結束就沒了，那個通知不會來，而 exit code 還是 0。
+`ops/test.ps1` 整支跑完超過 **10 分鐘**（12 個專案，2026-09-03 實測約 12 分），而子代理 harness 的單一
+tool call 前景上限是 600 秒——超過會被移到背景，**行程一結束那一輪就整個沒了、通知也不會來、exit code 還是 0**
+（BE-46 第一輪就這樣白跑一次）。所以測試要**分專案、前景、每批一個 tool call**：照 `ops/test.ps1:60` 的做法
+直接跑各專案的測試執行檔（`-c Debug` 的既有建置產物；不准用 `dotnet test`，見 `CLAUDE.md`），
+每批 `Tee-Object` 到 `$env:TEMP\<包名>-tN.log`，最後用 `Select-String 'Total:'` 把 12 行抓出來貼進報告。
+不要 `run_in_background`、不要排程 wakeup。
 
 ## 驗收通過之後
 
