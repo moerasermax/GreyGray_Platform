@@ -5,14 +5,21 @@
  * 契約沒有 `operationId`，函式名是這一包自己取的。方法 ＋ 路徑 → 函式名對照表
  * 見 `frontend/packages/api-client/src/endpoints/README.md`。
  *
- * **只涵蓋 M1a。** M1b／M2／M3 的端點（procurement、fulfillment、lots、
- * trip-costs、reporting、audit）契約已定但實作延後，這一包先不包。
+ * **主要涵蓋 M1a。** M1b／M3 的端點（fulfillment、trip-costs、reporting、audit）
+ * 契約已定但實作延後，這一包先不包。**例外是 M2 的 `/v1/lots`**——後台要有進貨的入口，
+ * 不然 Stock 商品的庫存永遠是 0（ADR-032 那一波補的兩個 UI 缺口之一）。
  */
 
 import type { ApiClient, Page } from '../http';
-import type { components } from '../types.admin';
+import type { components, paths } from '../types.admin';
 
 type S = components['schemas'];
+
+/**
+ * `POST /v1/lots` 的 body 在契約裡是 inline schema，沒有具名 `components.schemas` 可以拿，
+ * 所以從 `paths` 推導。**不要手寫複本**——手寫的複本在契約改動時不會有任何東西說話。
+ */
+export type CreateLotRequest = paths['/v1/lots']['post']['requestBody']['content']['application/json'];
 /** `RequestOptions.query` 要求索引簽章；具名 query 介面沒有，這裡轉一手。 */
 type QueryRecord = Record<string, string | number | boolean | undefined | null>;
 
@@ -42,6 +49,12 @@ export interface AddCampaignOfferRequest {
 
 export interface CancelCampaignRequest {
   readonly reason: string;
+}
+
+export interface ListLotsQuery {
+  readonly skuId?: string;
+  readonly cursor?: string;
+  readonly limit?: number;
 }
 
 export interface ListAdminCampaignsQuery {
@@ -142,6 +155,15 @@ export function updateProduct(
   return client.patch(`/v1/products/${productId}`, { body, ...options });
 }
 
+export function createSku(
+  client: ApiClient,
+  productId: string,
+  body: S['AdminSkuInput'],
+  options: MutationOptions,
+): Promise<S['AdminSku']> {
+  return client.post(`/v1/products/${productId}/skus`, { body, ...options });
+}
+
 export function updateSku(
   client: ApiClient,
   skuId: string,
@@ -149,6 +171,24 @@ export function updateSku(
   options: MutationOptions,
 ): Promise<S['AdminSku']> {
   return client.patch(`/v1/skus/${skuId}`, { body, ...options });
+}
+
+// ── inventory（M2）────────────────────────────────────────────────────────
+
+export function listLots(
+  client: ApiClient,
+  query: ListLotsQuery = {},
+  options: { signal?: AbortSignal } = {},
+): Promise<Page<S['Lot']>> {
+  return client.get('/v1/lots', { query: query as QueryRecord, ...options });
+}
+
+export function createLot(
+  client: ApiClient,
+  body: CreateLotRequest,
+  options: MutationOptions,
+): Promise<S['Lot']> {
+  return client.post('/v1/lots', { body, ...options });
 }
 
 // ── campaign ──────────────────────────────────────────────────────────────

@@ -1,7 +1,10 @@
 /**
  * Admin BFF（:5001）的 MSW handlers。**覆蓋 `docs/05-API契約.md` §8 列出的
- * 全部 M1a 端點**（procurement／fulfillment／inventory／trip-costs 是 M1b／M2，
+ * 全部 M1a 端點**（procurement／fulfillment／trip-costs 是 M1b／M2，
  * 這一波不包，見 `endpoints/admin.ts` 檔頭）。
+ *
+ * M2 的 `/v1/lots` 是例外：後台要有進貨入口（ADR-032），所以 mock 也要有，
+ * 不然「進貨後可用量要變」這件事沒有地方能驗。
  */
 
 import { http, HttpResponse } from 'msw';
@@ -44,6 +47,8 @@ let campaignOffers = new Map<string, S['AdminCampaignOffer'][]>(
   Array.from(adminCampaignOffersByCampaignId.entries()).map(([k, v]) => [k, v.map((o) => ({ ...o }))]),
 );
 let orders: S['AdminOrder'][] = adminOrderFixtures.map((o) => ({ ...o }));
+/** 批號（M2）。fixture 沒有種任何一筆——庫存要靠 `POST /v1/lots` 進貨才會有。 */
+let lots: S['Lot'][] = [];
 
 /** 測試之間重置 mock 的可變狀態。 */
 export function resetAdminMockState(): void {
@@ -52,6 +57,7 @@ export function resetAdminMockState(): void {
   campaigns = adminCampaignFixtures.map((c) => ({ ...c }));
   campaignOffers = new Map(Array.from(adminCampaignOffersByCampaignId.entries()).map(([k, v]) => [k, v.map((o) => ({ ...o }))]));
   orders = adminOrderFixtures.map((o) => ({ ...o }));
+  lots = [];
 }
 
 export const adminHandlers = [
@@ -121,6 +127,32 @@ export const adminHandlers = [
     return HttpResponse.json(updated);
   }),
 
+  http.post(url('/v1/products/:productId/skus'), async ({ request, params }) => {
+    const index = products.findIndex((p) => p.id === params.productId);
+    const current = products[index];
+    if (!current) return jsonProblem(problem(404, 'platform.not-found', '找不到這個商品。'));
+    const body = (await request.json()) as S['AdminSkuInput'];
+    if (!body.name || body.weightGram === undefined || body.weightGram === null || !body.size) {
+      return jsonProblem(
+        problem(422, 'catalog.weight-and-size-required', 'SKU 必須填寫名稱、重量與尺寸', {
+          errors: { weightGram: ['重量為必填。'], size: ['尺寸為必填。'] },
+        }),
+      );
+    }
+    // `available` 由後端算（批號的 quantityAvailable 加總），新 SKU 一定是 0——前端不准自己算。
+    const created: S['AdminSku'] = {
+      id: hexId(`admin-sku:${current.id}:${body.name}:${Date.now()}`),
+      available: 0,
+      variantName: null,
+      unitOfMeasure: null,
+      unitCount: null,
+      listPrice: null,
+      ...body,
+    };
+    products = products.map((p, i) => (i === index ? { ...p, skus: [...p.skus, created] } : p));
+    return HttpResponse.json(created, { status: 201 });
+  }),
+
   http.patch(url('/v1/skus/:skuId'), async ({ request, params }) => {
     const body = (await request.json()) as S['AdminSkuInput'];
     let updatedSku: S['AdminSku'] | null = null;
@@ -134,6 +166,53 @@ export const adminHandlers = [
     }));
     if (!updatedSku) return jsonProblem(problem(404, 'platform.not-found', '找不到這個 SKU。'));
     return HttpResponse.json(updatedSku);
+  }),
+
+  // ── inventory（M2）────────────────────────────────────────────────────
+  http.get(url('/v1/lots'), ({ request }) => {
+    const q = new URL(request.url).searchParams;
+    const skuId = q.get('skuId') ?? undefined;
+    const cursor = q.get('cursor') ?? undefined;
+    const limit = q.get('limit') ? Number(q.get('limit')) : undefined;
+    return HttpResponse.json(paginate(lots.filter((l) => !skuId || l.skuId === skuId), cursor, limit));
+  }),
+
+  http.post(url('/v1/lots'), async ({ request }) => {
+    const body = (await request.json()) as {
+      skuId: string;
+      quantity: number;
+      unitCost: S['Money'];
+      batchCode?: string | null;
+    };
+    const sku = products.flatMap((p) => p.skus).find((s) => s.id === body.skuId);
+    if (!sku) return jsonProblem(problem(422, 'catalog.sku-not-found', '找不到這個 SKU。'));
+    if (!Number.isInteger(body.quantity) || body.quantity < 1) {
+      return jsonProblem(
+        problem(422, 'inventory.quantity-invalid', '進貨數量必須是大於 0 的整數。', {
+          errors: { quantity: ['數量必須 ≥ 1。'] },
+        }),
+      );
+    }
+    const created: S['Lot'] = {
+      id: hexId(`admin-lot:${body.skuId}:${Date.now()}:${lots.length}`),
+      skuId: sku.id,
+      skuName: sku.name,
+      source: 'LocalWholesale',
+      unitCost: body.unitCost,
+      quantityOnHand: body.quantity,
+      quantityReserved: 0,
+      quantityAvailable: body.quantity,
+      batchCode: body.batchCode ?? null,
+      fromCampaignId: null,
+      receivedAt: new Date().toISOString(),
+    };
+    lots = [...lots, created];
+    // 可用量是後端的事實，mock 也照著算，這樣「進貨後可用量要變」才驗得到。
+    products = products.map((p) => ({
+      ...p,
+      skus: p.skus.map((s) => (s.id === sku.id ? { ...s, available: s.available + body.quantity } : s)),
+    }));
+    return HttpResponse.json(created, { status: 201 });
   }),
 
   // ── campaign ──────────────────────────────────────────────────────────
@@ -358,6 +437,13 @@ export const adminErrorScenarios = {
   productValidation: http.post(url('/v1/products'), () =>
     jsonProblem(
       problem(422, 'catalog.weight-and-size-required', '商品必須填寫重量與尺寸', {
+        errors: { weightGram: ['重量為必填。'], size: ['尺寸為必填。'] },
+      }),
+    ),
+  ),
+  skuValidation: http.post(url('/v1/products/:productId/skus'), () =>
+    jsonProblem(
+      problem(422, 'catalog.weight-and-size-required', 'SKU 必須填寫重量與尺寸', {
         errors: { weightGram: ['重量為必填。'], size: ['尺寸為必填。'] },
       }),
     ),

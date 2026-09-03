@@ -52,6 +52,88 @@ describe('admin mock：每個 M1a 端點打一次，回應要通過型別檢查'
     expect(updatedSku.weightGram).toBe(999);
   });
 
+  it('新增 SKU（ADR-032）：建立後 getProduct 就看得到，可用量是 0', async () => {
+    const page = await api.listProducts(client);
+    const product = page.items[0];
+    expect(product).toBeDefined();
+    const before = product!.skus.length;
+
+    const created = await api.createSku(client, product!.id, {
+      name: '新 SKU 測試',
+      variantName: '30 入',
+      weightGram: 250,
+      size: { lengthCm: 10, widthCm: 8, heightCm: 5 },
+      listPrice: { amountMinor: 18000, currency: 'TWD' },
+      isActive: true,
+    }, mutationOptions());
+
+    expect(created.id).toBeTruthy();
+    // 可用量是後端算的（批號加總），新 SKU 一定是 0——前端不准自己算。
+    expect(created.available).toBe(0);
+
+    const detail = await api.getProduct(client, product!.id);
+    expect(detail.skus).toHaveLength(before + 1);
+    expect(detail.skus.some((s) => s.id === created.id && s.name === '新 SKU 測試')).toBe(true);
+  });
+
+  it('新增 SKU：422 帶得回逐欄位的錯誤', async () => {
+    adminServer.use(adminErrorScenarios.skuValidation);
+    const page = await api.listProducts(client);
+    const product = page.items[0];
+
+    const error = await api
+      .createSku(client, product!.id, {
+        name: '缺重量',
+        weightGram: 0,
+        size: { lengthCm: 0, widthCm: 0, heightCm: 0 },
+        isActive: true,
+      }, mutationOptions())
+      .catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).problem.status).toBe(422);
+    expect((error as ApiError).problem.code).toBe('catalog.weight-and-size-required');
+  });
+
+  it('進貨（M2）：createLot 後 listLots 看得到，SKU 可用量跟著加', async () => {
+    const page = await api.listProducts(client);
+    const product = page.items[0];
+    const sku = product!.skus[0];
+    expect(sku).toBeDefined();
+
+    const emptyAtFirst = await api.listLots(client, { skuId: sku!.id });
+    expect(emptyAtFirst.items).toEqual([]);
+
+    const lot = await api.createLot(client, {
+      skuId: sku!.id,
+      quantity: 10,
+      unitCost: { amountMinor: 12000, currency: 'TWD' },
+      batchCode: 'B-2026-09',
+    }, mutationOptions());
+
+    expect(lot.quantityAvailable).toBe(10);
+    expect(lot.batchCode).toBe('B-2026-09');
+
+    const afterLots = await api.listLots(client, { skuId: sku!.id });
+    expect(afterLots.items.map((l) => l.id)).toEqual([lot.id]);
+
+    const detail = await api.getProduct(client, product!.id);
+    expect(detail.skus.find((s) => s.id === sku!.id)?.available).toBe(sku!.available + 10);
+  });
+
+  it('進貨：數量 < 1 是 422，不會產生批號', async () => {
+    const page = await api.listProducts(client);
+    const sku = page.items[0]!.skus[0];
+
+    const error = await api
+      .createLot(client, { skuId: sku!.id, quantity: 0, unitCost: { amountMinor: 100, currency: 'TWD' } }, mutationOptions())
+      .catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).problem.status).toBe(422);
+    expect((await api.listLots(client, { skuId: sku!.id })).items).toEqual([]);
+  });
+
   it('開團：建立 → 加商品 → 發布 → 截團', async () => {
     const campaign = await api.createCampaign(client, {
       title: '測試團',

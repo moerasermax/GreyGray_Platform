@@ -3,8 +3,9 @@
 契約（`docs/api/openapi.*.yaml`）沒有 `operationId`，函式名是這一包自己取的。
 第二波接的時候照這張表找函式，不要用路徑字串猜。
 
-只列 M1a。M1b／M2／M3 的端點契約已定但實作延後，`endpoints/` 目前沒有包（`storefront.ts`
-的 `listOrderShipments` 例外——M1a 期間它恆回空陣列，見檔案內註解）。
+只列 M1a 加上兩個例外。M1b／M3 的端點契約已定但實作延後，`endpoints/` 目前沒有包
+（`storefront.ts` 的 `listOrderShipments` 例外——M1a 期間它恆回空陣列，見檔案內註解；
+`admin.ts` 的 M2 `/v1/lots` 例外——後台要有進貨入口，見 ADR-032）。
 
 ## `endpoints/storefront.ts`
 
@@ -51,7 +52,10 @@
 | POST | `/v1/products` | `createProduct` |
 | GET | `/v1/products/{productId}` | `getProduct` |
 | PATCH | `/v1/products/{productId}` | `updateProduct` |
+| POST | `/v1/products/{productId}/skus` | `createSku`（ADR-032） |
 | PATCH | `/v1/skus/{skuId}` | `updateSku` |
+| GET | `/v1/lots` | `listLots`（M2） |
+| POST | `/v1/lots` | `createLot`（M2） |
 | GET | `/v1/campaigns` | `listCampaigns` |
 | POST | `/v1/campaigns` | `createCampaign` |
 | GET | `/v1/campaigns/{campaignId}` | `getCampaign` |

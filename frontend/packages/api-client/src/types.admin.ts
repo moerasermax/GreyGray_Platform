@@ -382,6 +382,60 @@ export interface paths {
         };
         trace?: never;
     };
+    "/v1/products/{productId}/skus": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: components["schemas"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 建立 SKU
+         * @description ADR-032：凍結契約的第一次純新增。商品可先建為空 SKU 集，首個與之後的 SKU 都從這裡建；
+         *     **`weightGram` 與 `size` 必填**（M1a 起就是，不可捏造預設值）；`listPrice` 現貨才填，預購 SKU 售價在開團定。
+         *     SKU 的內部 ID 一經產生不可變（通路擴充接縫 #2）。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                };
+                path: {
+                    productId: components["schemas"]["Id"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AdminSkuInput"];
+                };
+            };
+            responses: {
+                /** @description 已建立 */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AdminSku"];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                422: components["responses"]["UnprocessableEntity"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/skus/{skuId}": {
         parameters: {
             query?: never;

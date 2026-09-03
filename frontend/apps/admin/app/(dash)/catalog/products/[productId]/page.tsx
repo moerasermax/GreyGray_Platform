@@ -1,32 +1,41 @@
 'use client';
 
-import { ApiError, formatMoney } from '@greygray/api-client';
+import { ApiError } from '@greygray/api-client';
 import { getProduct, listCategories, updateProduct } from '@greygray/api-client/endpoints/admin';
 import type { components } from '@greygray/api-client/admin';
-import { DataTable, ErrorState, MoneyCell, StatusPill, type DataTableColumn } from '@greygray/ui/admin';
+import { ErrorState, useToast } from '@greygray/ui/admin';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { browserApi } from '../../../../_lib/apiClient';
 import { usePayloadIdempotency } from '../../../../_lib/usePayloadIdempotency';
 import { getSession, hasRequiredRole } from '../../../../login/_lib/session';
+import { LotDrawer } from '../../_components/LotDrawer';
 import { ProductForm } from '../../_components/ProductForm';
 import { SkuEditDrawer } from '../../_components/SkuEditDrawer';
-import { fulfillmentModeLabel } from '../../_lib/labels';
+import { SkuSection } from '../../_components/SkuSection';
 
 type S = components['schemas'];
+
+/** SKU 抽屜的兩種狀態：新增（沒有既有 SKU）與編輯（有）。關著的時候是 `null`。 */
+type SkuDrawerState = { readonly sku: S['AdminSku'] | null } | null;
 
 export default function ProductDetailPage() {
   const params = useParams<{ productId: string }>();
   const productId = params.productId;
   const idempotency = usePayloadIdempotency();
+  const toast = useToast();
 
   const [product, setProduct] = useState<S['AdminProduct'] | null>(null);
   const [categories, setCategories] = useState<readonly S['Category'][]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<ApiError | Error | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [editingSku, setEditingSku] = useState<S['AdminSku'] | null>(null);
+  const [skuDrawer, setSkuDrawer] = useState<SkuDrawerState>(null);
+  // 只記 id，不記整個 SKU 物件：進貨成功後商品會重新 GET，抽屜上的「目前可用量」
+  // 要跟著變成新的那一份，記著舊物件的話它會停在進貨前的數字。
+  const [receivingSkuId, setReceivingSkuId] = useState<string | null>(null);
 
+  const receivingSku = product?.skus.find((sku) => sku.id === receivingSkuId) ?? null;
   const canWrite = hasRequiredRole(getSession()?.role ?? 'ReadOnly', 'Operator');
 
   useEffect(() => {
@@ -69,52 +78,9 @@ export default function ProductDetailPage() {
     setReloadKey((current) => current + 1);
   }
 
-  const skuColumns: DataTableColumn<S['AdminSku']>[] = [
-    {
-      key: 'name',
-      header: 'SKU',
-      renderCell: (row) => (
-        <td className="px-3 py-2">
-          <div className="font-medium text-fg">{row.name}</div>
-          {row.variantName ? <div className="text-xs text-fg-muted">{row.variantName}</div> : null}
-        </td>
-      ),
-    },
-    {
-      key: 'weight',
-      header: '重量／尺寸',
-      renderCell: (row) => (
-        <td className="px-3 py-2 text-fg-muted">
-          {row.weightGram} g · {row.size.lengthCm}×{row.size.widthCm}×{row.size.heightCm} cm
-        </td>
-      ),
-    },
-    {
-      key: 'available',
-      header: '可用量',
-      headerAlign: 'right',
-      renderCell: (row) => (
-        <td data-numeric className="gg-numeric px-3 py-2">
-          {row.available}
-        </td>
-      ),
-    },
-    {
-      key: 'listPrice',
-      header: '現貨標價',
-      headerAlign: 'right',
-      renderCell: (row) => <MoneyCell value={row.listPrice ? formatMoney(row.listPrice) : '—'} />,
-    },
-    {
-      key: 'isActive',
-      header: '狀態',
-      renderCell: (row) => (
-        <td className="px-3 py-2">
-          <StatusPill label={row.isActive ? '啟用中' : '已停用'} tone={row.isActive ? 'success' : 'neutral'} />
-        </td>
-      ),
-    },
-  ];
+  function reload() {
+    setReloadKey((current) => current + 1);
+  }
 
   if (error) {
     return (
@@ -123,7 +89,7 @@ export default function ProductDetailPage() {
         traceId={error instanceof ApiError ? error.shortTraceId : null}
         onRetry={() => {
           setError(null);
-          setReloadKey((current) => current + 1);
+          reload();
         }}
       />
     );
@@ -143,26 +109,36 @@ export default function ProductDetailPage() {
         />
       ) : null}
 
-      <div className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-fg-muted">
-          SKU（{fulfillmentModeLabel(product?.mode ?? 'Stock')}）
-        </h2>
-        <DataTable
-          columns={skuColumns}
-          rows={product?.skus ?? []}
-          getRowKey={(row) => row.id}
-          loading={loading}
-          {...(canWrite ? { onRowClick: (row: S['AdminSku']) => setEditingSku(row) } : {})}
-          emptyTitle="這個商品還沒有 SKU"
-          emptyDescription="契約目前只有 PATCH /v1/skus/{skuId}（修改既有 SKU），沒有新增 SKU 的端點——這筆已經記進交付回報的契約問題，SKU 要等後端補上端點才能建立。"
-        />
-      </div>
+      <SkuSection
+        mode={product?.mode ?? 'Stock'}
+        skus={product?.skus ?? []}
+        loading={loading}
+        canWrite={canWrite}
+        onAdd={() => setSkuDrawer({ sku: null })}
+        onEdit={(sku) => setSkuDrawer({ sku })}
+        onReceive={(sku) => setReceivingSkuId(sku.id)}
+      />
 
       <SkuEditDrawer
-        open={editingSku !== null}
-        sku={editingSku}
-        onClose={() => setEditingSku(null)}
-        onSaved={() => setReloadKey((current) => current + 1)}
+        open={skuDrawer !== null}
+        sku={skuDrawer?.sku ?? null}
+        productId={productId}
+        fulfillmentMode={product?.mode ?? 'Stock'}
+        onClose={() => setSkuDrawer(null)}
+        onSaved={() => {
+          toast.show('success', skuDrawer?.sku ? 'SKU 已更新。' : 'SKU 已建立。');
+          reload();
+        }}
+      />
+
+      <LotDrawer
+        open={receivingSkuId !== null}
+        sku={receivingSku}
+        onClose={() => setReceivingSkuId(null)}
+        onReceived={() => {
+          toast.show('success', '已進貨，可用量已更新。');
+          reload();
+        }}
       />
     </div>
   );
