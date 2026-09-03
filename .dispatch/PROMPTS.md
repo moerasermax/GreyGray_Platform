@@ -1,7 +1,8 @@
 # 啟動 prompt
 
-**生效中的派工（2026-09-03 下午，第三十三波）：後端 BE-45（`deploy.ps1` START 不看 `nssm start` 的 exit code ＋ 部署期間暫停 watchdog ＋ self-test 18 → 20 項，`docs/41-後端第二十九波派工書.md`）。** 前端樹沒有生效中的派工。
-第三十二波 FE-28（`5b01314`，#40）已撤包並部署到 YC（release `20260903050131293`）；那次部署就是被 START_PENDING 的 exit code 打斷、Leader 手動救回的。第三十一波（BE-44 `fb15ad6`、FE-27 `56a221d`）已撤包並部署；**付款這條路 11:36 第一次在正式機用真的綠界測試站走通**。啟動 prompt 在下面「BE-45 的啟動 prompt」一節。
+**目前沒有生效中的派工（2026-09-03 下午）。** 第三十三波 BE-45（`485910d`：`deploy.ps1` START 不看 `nssm start` 的 exit code ＋ 部署期間暫停 watchdog ＋ self-test 18 → 20 項）已驗收撤包，**YC 第三次真跑一次過**（release `20260903053352999`）。
+第三十二波 FE-28（`5b01314`，#40）已撤包並部署；那次部署被 START_PENDING 的 exit code 打斷、Leader 手動救回，BE-45 就是修它。第三十一波（BE-44 `fb15ad6`、FE-27 `56a221d`）已撤包並部署；**付款這條路 11:36 第一次在正式機用真的綠界測試站走通**。
+下一波派工前先讀 `ACTIVE.md` 的「已經通過」清單與本檔最後一節「下一波派工前」。
 
 ★ **BE-45**：`ops/lib/Deployment.ps1` 加 `Wait-ManagedServiceStart`（吃注入的 `-StartService`／`-GetStatus` scriptblock，成功條件只有 `Running`）與 `Suspend-WatchdogTask`／`Resume-WatchdogTask`；`deploy.ps1` START 迴圈改用它、`Invoke-Nssm start` 一律 `-AllowNonZeroExit`、STOP→健康檢查整段 try/finally 恢復 watchdog；self-test 第 19（AST ＋ 四案例）、20 項（假 scriptblock 四案例 ＋ AST 確認在 finally）。只動 `ops/` 三個檔。
 ★ **FE-28**：純函式 `subtotalPreview`（單價 × 數量，只用於顯示，ADR-033 唯一例外）＋ `BottomBarSummary`（「N 件 · 小計」）＋ `UnitPriceBlock`（資訊區單價）＋ `frontend/README.md` 例外註記；不動契約、`packages/*`、購物車／結帳頁。第三十波三段（BE-41、FE-26／BE-42、BE-43 七輪）已全部撤包；**正式機 YC 五個服務已上線（greygray.shop／admin.greygray.shop）**，使用者在後台建商品時撞到「沒有新增 SKU 的端點」，這一波就是補它。
@@ -25,7 +26,7 @@ ADR-030：規則的主人是後端——契約 `shippingPolicy` 改成「混合�
 
 ---
 
-## BE-45 的啟動 prompt（生效中）
+## BE-45 的啟動 prompt（已撤包，保留供參考）
 
 ```
 專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
