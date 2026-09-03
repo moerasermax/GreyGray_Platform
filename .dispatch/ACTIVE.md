@@ -51,6 +51,24 @@ Leader 要明講。
 
 ---
 
+## 生效中：BE-45　`deploy.ps1` START 不看 `nssm start` 的 exit code（改看 SCM 狀態、綠燈交給 `Assert-NewApplicationProcess`）＋ 部署期間暫停 `GreyGray-Watchdog` ＋ self-test 18 → 20 項
+
+2026-09-03 13:02 正式機第二次重複部署：`GreyGray-Web-Storefront`（Next standalone）起得慢了幾秒，NSSM 回 `Unexpected status SERVICE_START_PENDING in response to START control.` 並 exit 非 0，`deploy.ps1:474` 的 `Invoke-Nssm start` 沒帶 `-AllowNonZeroExit` → 整支 throw，第五個服務沒起、健康檢查與 watchdog 重登記都沒跑（Leader 手動救回）。服務兩秒後就 Ready——是 flaky，不是壞。
+同時查出 `deploy.ps1` 從沒在部署期間停用 watchdog（每 5 分鐘 `Start-Service` 任何不是 Running 的服務），STOP→START 的空窗撞到就會把舊 release 拉起來。今天差 15 秒。
+派工書 `docs/41-後端第二十九波派工書.md` §0 把兩件事的證據與 YC 量到的 nssm 行為都列了；§1 A（等待函式進 lib、注入 scriptblock）、B（Suspend／Resume 放 try/finally）、C（self-test 兩項：AST 釘 `-AllowNonZeroExit` ＋ 假 scriptblock 走案例）。
+
+★★ 最容易做錯的：① 成功條件只有 `Running`，不准用字串比對或固定 sleep；② `Resume-WatchdogTask` 一定在 `finally`；③ 不准 `GetNewClosure()`、不准 .NET Core 專屬 API（YC 是 5.1）；④ self-test 不准呼叫真的 `*-ScheduledTask`；⑤ 不對 YC 做任何事，Leader 自己上去真跑。
+
+package: BE-45
+doc: docs/41-後端第二十九波派工書.md
+allow: ops/deploy.ps1
+allow: ops/lib/Deployment.ps1
+allow: ops/self-test.ps1
+
+> `docs/` 全域放行。`ops/watchdog.ps1`、`ops/service-manifest.ps1`、`ops/lib/Process.ps1` 不在 allow——派工書 §2 說明過；真的需要就停下來回報。
+
+---
+
 <!--
 ★ 2026-09-03 已通過整合驗收並提交（後端 `fb15ad6`），撤包。原文保留供追溯。
 
