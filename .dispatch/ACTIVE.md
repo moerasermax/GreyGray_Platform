@@ -51,7 +51,14 @@ Leader 要明講。
 
 ---
 
-## 生效中：FE-28　商品詳情頁價格顯示（#40）——底部列「N 件 · 小計」（ADR-033 唯一前端乘法例外）＋ 商品資訊區「單價」
+<!--
+★ 2026-09-03 已通過整合驗收並提交（前端 `5b01314`），撤包。原文保留供追溯。
+
+兩輪。`subtotalPreview` 純函式（三個守衛，含乘積非安全整數 throw；全 repo 唯一呼叫端 `BottomBarSummary`）、`BottomBarSummary`（「N 件 · 單價」／「小計 NT$X」）、`UnitPriceBlock`（面板頂端單價；沒價格顯示 `noPriceMessage`）、
+`AddToCartPanel` 只傳 state、`frontend/README.md` 第 2 條例外註記。第二輪：沒定價的說明只在資訊區說一次（預購「售價在開團時決定，開團後才能加入購物車。」／現貨「尚未定價」），`disabledReason` 在 `!hasPrice` 回 null。
+測試 436 → **461**（storefront 333）、typecheck 全綠、Leader 重跑相符；audit 通過。畫面在正式站部署後驗。
+
+## 生效中（已撤包）：FE-28　商品詳情頁價格顯示（#40）——底部列「N 件 · 小計」（ADR-033 唯一前端乘法例外）＋ 商品資訊區「單價」
 
 使用者 2026-09-03 11:34 在正式站付款走通後截圖回報：底部列只有單價、選 5 件看不到總額；資訊區沒有單價。使用者拍板「前端乘，當小計預覽」→ ADR-033（唯一例外，只用於顯示、購物車以後端為準）。
 
@@ -65,6 +72,7 @@ allow: frontend/apps/storefront/app/(shop)/products/[productId]/
 allow: frontend/README.md
 
 > `docs/` 全域放行；`page.tsx` 在 allow 的目錄裡但派工書 §2 說 SSR 內容不動——只准動 `_components/` 與 `__tests__/`，`page.tsx` 有 diff 就停下來回報。
+-->
 
 ---
 
@@ -526,6 +534,8 @@ allow: frontend/apps/storefront/app/(checkout)/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **FE-28** 商品詳情頁價格顯示（#40）：底部列「N 件 · 小計」（`subtotalPreview`，ADR-033 唯一前端乘法例外）＋ 資訊區「單價」；沒定價的說明只說一次　·　2026-09-03 通過　·　`5b01314`　·
+  測試 436 → 461；兩輪；使用者在正式站付款走通後截圖回報的，見 `.dispatch/reports/FE-28.md`
 - **FE-27** 後台商品頁「新增 SKU」（`POST /v1/products/{productId}/skus`，ADR-032）＋ SKU 列「進貨」抽屜與批號列表（`/v1/lots`）；api-client `createSku`／`listLots`／`createLot` 全從契約重生　·　2026-09-03 通過　·　`56a221d`　·
   測試 410 → 436、typecheck 全綠；#39（正式機後台建商品後沒有任何合法路徑建出第一個 SKU）前端側；畫面驗收在正式站做，見 `.dispatch/reports/FE-27.md`
 - **FE-26** 跟上 ADR-030 契約（重生型別、拿掉 `shippingPolicy!`）＋ 登出徽章歸零（#36 前端側）＋ `/login?next=` 亮對分頁（FE-25 ⑦）＋ 結帳頁登入回跳保留已填內容　·　2026-09-03 通過　·　`7f052c5`　·
