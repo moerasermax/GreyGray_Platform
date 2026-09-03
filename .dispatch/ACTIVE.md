@@ -51,7 +51,20 @@ Leader 要明講。
 
 ---
 
-## 生效中：BE-47　把「出貨」這個階段接起來——交運時扣庫存並結轉銷貨成本 ＋ 運費成本入帳 ＋ 品項狀態轉 `Shipped`／`Completed`（#43、#42）＋ 分錄覆蓋的機械把關
+<!--
+★ 2026-09-04 已通過整合驗收並提交（後端 `ac63775`），撤包。原文保留供追溯。
+
+兩輪。migration `0018`（保留單第三個狀態「已出庫」＋ `consumed_at`，刻意不挪用 `released_at`）；Inventory `ConsumeAsync` ＋ `FulfillmentEventHandlers` 訂閱 `ShipmentDispatched`
+（逐筆 allocation 帶雙守衛 UPDATE、不寫 generated column、冪等靠 reservation 狀態而不是 `processed_message`、批號缺成本時 fail-closed）；
+Ledger 兩個 handler（DR 5100／CR 1300、DR 5200／CR 1100，運費為零不開分錄）；Ordering `MarkLinesShipped()` ＋ `CompleteAfterAppraisal` 轉 `Completed`；
+`LedgerCoverageTests` 機械點名分錄表九列都有人發、有人收（含負向對照，證明「有人接」與「Ledger 接了」不是同一件事）。測試 286 → **308**。
+★ 子代理第一輪停下來提兩個否決，**Leader 查證後兩個都成立**（第五次否決、第五次都對），補授權 `767dbd5`：
+① §0.6「不需要 migration」是 Leader 寫錯——`0006_m1a_core.sql:291` 的 CHECK 擋掉 status=2；
+② `SourceRef` 少了 `lotId` 會撞 `LedgerPostingService` 的 `(sourceModule, sourceRef)` 去重，同 SKU 跨兩批號的第二筆被靜靜吃掉、銷貨成本少認一段。
+Leader 驗：build Release 0/0、12 專案 **308** 全過、audit 通過、`git diff` 只動 allow 內路徑（Fulfillment 模組與 csproj 零改動）。
+接受子代理一個自主判斷：批號沒有單位成本時整筆失敗（`inventory.lot-unit-cost-missing`），不照扣也不發零成本事件。
+
+## 生效中（已撤包）：BE-47　把「出貨」這個階段接起來——交運時扣庫存並結轉銷貨成本 ＋ 運費成本入帳 ＋ 品項狀態轉 `Shipped`／`Completed`（#43、#42）＋ 分錄覆蓋的機械把關
 
 2026-09-03 15:35 使用者問「要不要再測一次完整流程」，Leader 先查正式機帳務，查出 **#43：出貨那一段完全沒落帳也沒出庫**。帳上只有兩筆進貨＋一筆收款；`inventory.lot` 還是 on_hand 60／reserved 5（貨已寄出）。
 對照 `docs/02-事件與狀態機.md` 第 165-175 行分錄表第 ⑦ 階段該有兩筆：出貨從批號結轉（`StockCostAllocated`，DR 5100／CR 1300）、支付宅配運費（`ShipmentDispatched`，DR 5200／CR 1100）。
@@ -75,6 +88,7 @@ allow: tests/
 
 > `docs/` 全域放行。`src/Modules/Fulfillment/`、`src/Hosts/`、`ops/`、契約 YAML 不在 allow——派工書 §2 說明過；真的需要就停下來回報。
 > migration **只准 `0018` 這一支**（allow 直接寫到檔名，別的編號寫不進去）。
+-->
 
 ---
 
@@ -931,6 +945,8 @@ allow: tests/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **BE-47** 把「出貨」這個階段接起來（#43、#42）：交運時扣庫存並結轉銷貨成本（`StockCostAllocated`）、運費成本入帳、訂單品項轉 `Shipped`／`Completed`；migration `0018` 給保留單第三個狀態「已出庫」；`LedgerCoverageTests` 釘住「分錄表每個階段都要有人發、有人收」　·　2026-09-04 通過　·　`ac63775`　·
+  測試 286 → 308；兩輪（子代理兩個否決都成立，補授權 `767dbd5`）；是使用者問「要不要再測一次完整流程」時 Leader 去查帳才查出來的；見 `.dispatch/reports/BE-47.md`
 - **BE-46** Worker 掛上 Fulfillment 模組（#41：出貨單簽收後訂單永遠停在「準備出貨」）＋ 開機驗每個事件 handler 相依並點名 `IFulfillmentQuery` ＋ `WorkerCompositionTests`（同一個 `AddWorkerModules`、空 orderIds 重現炸點、負向對照）＋ Ordering 缺模組時例外講人話　·　2026-09-03 通過　·　`1d58dfa`　·
   測試 284 → 286；兩輪（E2E Worker 替身補齊設定）；第四次部署後訂單 ReadyToShip → Shipped；見 `.dispatch/reports/BE-46.md`
 - **BE-45** `deploy.ps1` START 只看 SCM 狀態（`nssm start` 的 exit code 對「正在起」與「已在跑」都回非 0）＋ 部署期間暫停 `GreyGray-Watchdog`（Resume 在 finally）＋ self-test 18 → 20 項；`Wait-ManagedServiceStart`／`Suspend-WatchdogTask`／`Resume-WatchdogTask` 進 lib（注入 scriptblock）　·　2026-09-03 通過　·　`485910d`　·

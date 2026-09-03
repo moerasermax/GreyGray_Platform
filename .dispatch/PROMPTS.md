@@ -1,6 +1,7 @@
 # 啟動 prompt
 
-**生效中的派工（2026-09-03 傍晚，第三十五波）：後端 BE-47（把「出貨」這個階段接起來——交運時扣庫存並結轉銷貨成本、運費成本入帳、品項狀態轉 `Shipped`／`Completed`，#43／#42，`docs/43-後端第三十一波派工書.md`）。** 前端樹沒有生效中的派工。啟動 prompt 在下面「BE-47 的啟動 prompt」一節。
+**目前沒有生效中的派工（2026-09-04 凌晨）。** 第三十五波 BE-47（`ac63775`：把「出貨」這個階段接起來——交運時扣庫存並結轉銷貨成本、運費成本入帳、品項狀態轉 `Shipped`／`Completed`，#43／#42）已驗收撤包，測試 286 → 308，正式版重建、第五次部署中。
+下一波派工前先讀 `ACTIVE.md` 的「已經通過」清單與本檔最後一節「下一波派工前」。
 
 ★ **BE-47**：使用者問「要不要再測一次完整流程」，Leader 先查正式機帳務 → **#43：出貨完全沒落帳也沒出庫**（`docs/02` 分錄表第 ⑦ 階段兩筆都沒人發沒人收；`inventory.lot` 還記著 60 件在倉庫、5 件永遠保留中）。修：Inventory 加「出庫」操作並訂閱 `ShipmentDispatched`（扣 on_hand＋reserved、reservation 轉已出庫、每筆 allocation 發 `StockCostAllocated`）；Ledger 補兩個 handler（DR 5100／CR 1300、DR 5200／CR 1100）；Ordering 品項轉 `Shipped`／`Completed`（#42）；加「分錄表每個階段都要有人發、有人收」的架構測試。
 
@@ -31,7 +32,7 @@ ADR-030：規則的主人是後端——契約 `shippingPolicy` 改成「混合�
 
 ---
 
-## BE-47 的啟動 prompt（生效中）
+## BE-47 的啟動 prompt（已撤包，保留供參考；第二輪是 Leader 用同一個 session 補的裁決，見 `.dispatch/reports/BE-47.md`）
 
 ```
 專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
