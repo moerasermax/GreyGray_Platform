@@ -1,7 +1,7 @@
 # 啟動 prompt
 
-**生效中的派工（2026-09-03 下午，第三十四波）：後端 BE-46（Worker 掛上 Fulfillment 模組——#41 出貨單簽收後訂單永遠停在「準備出貨」；開機驗 handler 相依；架構測試含負向對照，`docs/42-後端第三十波派工書.md`）。** 前端樹沒有生效中的派工。啟動 prompt 在下面「BE-46 的啟動 prompt」一節。
-第三十三波 BE-45（`485910d`：部署腳本）已撤包、YC 第三次真跑一次過（release `20260903053352999`）。第三十二波 FE-28（`5b01314`，#40）已撤包並部署。第三十一波（BE-44 `fb15ad6`、FE-27 `56a221d`）已撤包並部署；**付款這條路 11:36 第一次在正式機用真的綠界測試站走通**。
+**目前沒有生效中的派工（2026-09-03 傍晚）。** 第三十四波 BE-46（`1d58dfa`：Worker 掛上 Fulfillment 模組——#41 出貨單簽收後訂單永遠停在「準備出貨」；開機驗 handler 相依；架構測試含負向對照）已驗收撤包，第四次部署 release `20260903071555793` 後那則 `ShipmentDelivered` 事件處理完、訂單 ReadyToShip → Shipped。
+第三十三波 BE-45（`485910d`：部署腳本）已撤包、YC 第三次真跑一次過。第三十二波 FE-28（`5b01314`，#40）已撤包並部署。第三十一波（BE-44 `fb15ad6`、FE-27 `56a221d`）已撤包並部署；**付款這條路 11:36 第一次在正式機用真的綠界測試站走通**。
 
 ★ **BE-46**：`Worker/Program.cs` 缺 `AddFulfillmentModule`（11 個模組、留了一句「之後再納入」），Ordering 的 `ShipmentDeliveredHandler` 對 `IFulfillmentQuery` 是 `Lazy` 相依 → 正式機 outbox `fulfillment.ShipmentDelivered.v1` 連炸 8 次 `ArgumentNullException`。修：模組清單抽成 `WorkerModules.AddWorkerModules`（加 Fulfillment）、Worker 開機驗每個 `IIntegrationEventHandler<T>` 與點名 `IFulfillmentQuery`、架構測試用同一個方法建容器＋空 orderIds 呼叫 `RecordShipmentDeliveredAsync` 重現炸點＋負向對照、Ordering 缺模組時的例外講人話。只動 Worker、Ordering.Core 一個方法、tests。
 
@@ -27,7 +27,7 @@ ADR-030：規則的主人是後端——契約 `shippingPolicy` 改成「混合�
 
 ---
 
-## BE-46 的啟動 prompt（生效中）
+## BE-46 的啟動 prompt（已撤包，保留供參考；第二輪是 Leader 用同一個 session 補的裁決，見 `.dispatch/reports/BE-46.md`）
 
 ```
 專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
