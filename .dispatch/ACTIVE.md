@@ -51,6 +51,23 @@ Leader 要明講。
 
 ---
 
+## 生效中：FE-29　讓「這張訂單掛了幾張出貨單、還差幾張沒簽收」看得見（#45）
+
+2026-09-04 00:51 使用者回報「宅配到府那邊也不會更新，交運還是已送達都不會」。Leader 查證：**不是配送方式的問題**。訂單 `GG2609036EC92E5` 底下有三張出貨單（一張建了沒交運、一張已送達、一張只交運），而 ADR-025 的規則是掛在同一張訂單上的出貨單**全部簽收**才轉「已出貨」——所以訂單留在「待出貨」是正確的，只是畫面完全沒講。
+三張是怎麼長出來的：`CreateShipmentDialog.tsx:51` 用 `listOrders(..., limit: 50)` 列訂單、**沒有任何狀態過濾**，已出完貨甚至已取消的訂單照樣可以再勾，也沒顯示「這張已經有幾張出貨單」。訂單頁（`orders/[orderId]/page.tsx`）則完全沒有出貨單的資訊。
+派工書 `docs/32-前端第十八波派工書.md`。**契約一個字都不用改**：`GET /v1/orders` 已支援 `status`，`AdminShipment` 有 `orderIds` 可在前端過濾（同一支 `shipments/[shipmentId]/page.tsx` 第 46-49、70-73 行就是這個模式）。
+
+★★ 最容易做錯的：① 已經有出貨單的訂單**仍然可以勾**（拆單合法），只要標示，不要直接拿掉；② 「還差幾張」的數字要算出來、不要寫死；③ 標籤與 tone 用 `shipments/_lib/labels.ts` 現成的，不要重寫一份；④ 新區塊讀取失敗不能把整頁變錯誤頁；⑤ 沒有 jsdom，判斷抽純函式測、文案用 `renderToStaticMarkup`。
+
+package: FE-29
+doc: docs/32-前端第十八波派工書.md
+allow: frontend/apps/admin/app/(dash)/orders/
+allow: frontend/apps/admin/app/(dash)/shipments/
+
+> `docs/` 全域放行。`packages/*`、`apps/storefront`、契約 YAML 不在 allow——派工書 §2 說明過；真的需要就停下來回報。測試放在上面兩個目錄底下的 `_lib/`／`__tests__/`。
+
+---
+
 <!--
 ★ 2026-09-03 已通過整合驗收並提交（前端 `5b01314`），撤包。原文保留供追溯。
 
