@@ -24,6 +24,7 @@ internal sealed class M1aOpenApiComponents : IOpenApiDocumentTransformer
         (HttpMethod.Patch, "/v1/categories/{categoryId}"),
         (HttpMethod.Post, "/v1/products"),
         (HttpMethod.Patch, "/v1/products/{productId}"),
+        (HttpMethod.Post, "/v1/products/{productId}/skus"),
         (HttpMethod.Patch, "/v1/skus/{skuId}"),
         (HttpMethod.Post, "/v1/campaigns"),
         (HttpMethod.Patch, "/v1/campaigns/{campaignId}"),

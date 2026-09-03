@@ -495,6 +495,24 @@ internal static class M1aEndpoints
                 cancellationToken);
         }).AddEndpointFilter(new StaffRoleFilter(StaffRole.Operator));
 
+        api.MapPost("/products/{productId}/skus", async (
+            string productId,
+            AdminSkuRequest input,
+            HttpContext context,
+            ICatalogAdministration catalog,
+            IInventoryQuery inventory,
+            IIdempotencyStore idempotency,
+            CancellationToken cancellationToken) =>
+            await CreateSkuAsync(
+                productId,
+                input,
+                context,
+                catalog,
+                inventory,
+                idempotency,
+                cancellationToken))
+            .AddEndpointFilter(new StaffRoleFilter(StaffRole.Operator));
+
         api.MapPatch("/skus/{skuId}", async (
             string skuId,
             AdminSkuRequest input,
@@ -535,6 +553,63 @@ internal static class M1aEndpoints
                 StatusCodes.Status200OK,
                 cancellationToken);
         }).AddEndpointFilter(new StaffRoleFilter(StaffRole.Operator));
+    }
+
+    /// <summary>
+    /// <c>POST /v1/products/{productId}/skus</c>（Admin，ADR-032）的處理邏輯。
+    /// 形狀比照 <c>PATCH /v1/skus/{skuId}</c>，只是改呼叫
+    /// <see cref="ICatalogAdministration.CreateSkuAsync"/> 並回 <c>201</c>。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 比照 <see cref="CancelOrderLineAsync"/> 抽成具名方法（純搬移），
+    /// 好讓測試直接呼叫；inline lambda 在 repo 目前的測試基礎下碰不到。
+    /// </para>
+    /// <para>
+    /// 新 SKU 一定沒有批號，<see cref="IInventoryQuery.GetAvailabilityAsync"/> 對
+    /// 查不到 lot 的 SKU 回的是 <c>0</c> 而不是失敗（它把要查的 id 逐一補齊），
+    /// 所以這裡不需要、也不准把失敗吞成 0。
+    /// </para>
+    /// </remarks>
+    internal static async Task<IResult> CreateSkuAsync(
+        string productId,
+        AdminSkuRequest input,
+        HttpContext context,
+        ICatalogAdministration catalog,
+        IInventoryQuery inventory,
+        IIdempotencyStore idempotency,
+        CancellationToken cancellationToken)
+    {
+        if (!TryId(productId, out var parsed))
+        {
+            return BffHttp.Problem(new Error("catalog.product-not-found", "找不到商品。"));
+        }
+
+        return await BffHttp.ExecuteIdempotentAsync(
+            context,
+            idempotency,
+            Scope(context, $"products:{productId}:skus:create"),
+            input,
+            async token =>
+            {
+                var created = await catalog.CreateSkuAsync(
+                    new ProductId(parsed),
+                    input.ToContract(),
+                    token);
+                if (created.IsFailure)
+                {
+                    return Result<AdminSkuResponse>.Failure(created.Error);
+                }
+
+                var availability = await inventory.GetAvailabilityAsync([created.Value.Id], token);
+                return availability.IsSuccess
+                    ? Result<AdminSkuResponse>.Success(ToAdminSku(
+                        created.Value,
+                        availability.Value.Single().Available))
+                    : Result<AdminSkuResponse>.Failure(availability.Error);
+            },
+            StatusCodes.Status201Created,
+            cancellationToken);
     }
 
     private static void MapCampaign(RouteGroupBuilder api)
@@ -1126,7 +1201,7 @@ internal static class M1aEndpoints
             IsActive ?? true);
     }
 
-    private sealed record AdminSkuRequest(
+    internal sealed record AdminSkuRequest(
         string Name,
         string? VariantName,
         int WeightGram,
