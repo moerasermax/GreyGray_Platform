@@ -690,3 +690,19 @@ ADR-019 與 `CLAUDE.md` 都寫著「租約到期前要處理、**先把到期日
 
 **附帶**：契約 `servers` 裡的 `api.greygray.tw`／`admin.greygray.tw` 是舊寫法，隨部署文件一起改成上面兩個主機名稱。
 通道用哪一種（另起本機管理的 tunnel，或在現有 token 式通道的儀表板加規則）不影響這個 ADR，兩者都做得到同一張路由表。
+
+## ADR-032　修訂凍結契約：新增 `POST /v1/products/{productId}/skus`（建立 SKU）；後台補「新增 SKU」與「批號進貨」
+**狀態**：已採納（2026-09-03，使用者在正式機後台建商品後卡在「這個商品還沒有 SKU」，拍板「不種，等正式做法」）
+
+**問題**：凍結的 admin 契約只有 `PATCH /v1/skus/{skuId}`（修改既有 SKU），`AdminProductInput` 不含 SKU；M1a 時的決定是「Host 不可自行新增未凍結的路由」，Catalog 模組只在 input port 提供 `CreateSkuAsync`（見知識庫「M1a Catalog frozen API 缺少 SKU 建立入口」）。
+結果：**正式機沒有任何合法路徑建出第一個 SKU**——沒有 SKU 就沒有價格、庫存、加入購物車。開發機那五個商品的 SKU 是 Leader 直接寫資料庫種的，正式機不能這樣做。
+同型的洞還有一個：M2 的 `POST /v1/lots`（批發進貨）早就在契約裡，但後台沒有任何進貨頁，庫存同樣進不來。
+
+**決定**：正式修訂凍結契約，**純新增**一條 operation：
+- `POST /v1/products/{productId}/skus`：tag `catalog`、`x-required-role: Operator`、`Idempotency-Key`、request `AdminSkuInput`、`201 AdminSku`、`403`／`404`（商品不存在）／`422`；里程碑 M1a（`docs/05` 表跟著加列，`check-openapi` 的里程碑清單跟著更新）。
+- 既有 operation 與 schema **零改動**；`AdminProductInput` 維持不含 SKU（商品仍可先建為空 SKU 集）。
+- 後台：商品頁 SKU 區加「新增 SKU」（重用既有的 SKU 編輯抽屜）；SKU 列加「進貨」（`POST /v1/lots`）與批號列表（`GET /v1/lots?skuId=`）。
+
+**否決**：直寫資料庫種 SKU（使用者否決；正式機不留這種路）；把 SKU 陣列塞進 `AdminProductInput`（動到既有 schema 與「修改商品」的語意）；捏造預設重量／尺寸（沿用 M1a 的紀律）。
+
+**附帶**：這是第一次修訂凍結契約的 operation 集合。規則寫死：**只准純新增**、`docs/api` 與 `docs/05` 同一個 commit、`ops/check-openapi.ps1` 在同一包內轉綠、前端下一包 `pnpm api:generate` 重生型別（不准手寫請求型別）。
