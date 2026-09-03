@@ -51,6 +51,23 @@ Leader 要明講。
 
 ---
 
+## 生效中：FE-28　商品詳情頁價格顯示（#40）——底部列「N 件 · 小計」（ADR-033 唯一前端乘法例外）＋ 商品資訊區「單價」
+
+使用者 2026-09-03 11:34 在正式站付款走通後截圖回報：底部列只有單價、選 5 件看不到總額；資訊區沒有單價。使用者拍板「前端乘，當小計預覽」→ ADR-033（唯一例外，只用於顯示、購物車以後端為準）。
+
+★★ 最容易做錯的：① 小計只准商品頁用，購物車／結帳／訂單頁的金額仍全部來自後端；② 純函式 `subtotalPreview` 一處，非法數量／金額 throw 不湊 0；③ 不動 `packages/ui`、`packages/api-client`、契約；④ 沒有 jsdom——「5 件 → NT$300」靠純函式＋純呈現元件測；⑤ dev server 由 Leader 管，不停、不起、不跑 `next build`。
+
+package: FE-28
+doc: docs/31-前端第十七波派工書.md
+allow: frontend/apps/storefront/app/_lib/subtotalPreview.ts
+allow: frontend/apps/storefront/app/_lib/__tests__/subtotalPreview.test.ts
+allow: frontend/apps/storefront/app/(shop)/products/[productId]/
+allow: frontend/README.md
+
+> `docs/` 全域放行；`page.tsx` 在 allow 的目錄裡但派工書 §2 說 SSR 內容不動——只准動 `_components/` 與 `__tests__/`，`page.tsx` 有 diff 就停下來回報。
+
+---
+
 <!--
 ★ 2026-09-03 已通過整合驗收並提交（前端 `56a221d`），撤包。原文保留供追溯。
 

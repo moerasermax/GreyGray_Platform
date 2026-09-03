@@ -1,7 +1,9 @@
 # 啟動 prompt
 
-**目前沒有生效中的派工（2026-09-03 中午）。** 第三十一波——後端 BE-44（新增 `POST /v1/products/{productId}/skus`，ADR-032，`fb15ad6`）與前端 FE-27（後台「新增 SKU」表單＋SKU 列「進貨」抽屜與批號列表，`56a221d`）——都已驗收撤包，兩棵樹都乾淨；正式版 artifact 建置中，部署後使用者在正式站建 SKU、進貨、走到綠界。
-下一波派工前先讀 `ACTIVE.md` 的「已經通過」清單與本檔最後一節「下一波派工前」。第三十波三段（BE-41、FE-26／BE-42、BE-43 七輪）已全部撤包；**正式機 YC 五個服務已上線（greygray.shop／admin.greygray.shop）**，使用者在後台建商品時撞到「沒有新增 SKU 的端點」，這一波就是補它。
+**生效中的派工（2026-09-03 中午，第三十二波）：前端 FE-28（商品詳情頁價格顯示 #40：底部列「N 件 · 小計」＋資訊區「單價」，ADR-033，`docs/31-前端第十七波派工書.md`）。** 後端樹沒有生效中的派工。
+第三十一波（BE-44 `fb15ad6`、FE-27 `56a221d`）已撤包並部署；**付款這條路 11:36 第一次在正式機用真的綠界測試站走通**（使用者自己走的，`payment` 已收款、分錄 3 筆）。啟動 prompt 在下面「FE-28 的啟動 prompt」一節。
+
+★ **FE-28**：純函式 `subtotalPreview`（單價 × 數量，只用於顯示，ADR-033 唯一例外）＋ `BottomBarSummary`（「N 件 · 小計」）＋ `UnitPriceBlock`（資訊區單價）＋ `frontend/README.md` 例外註記；不動契約、`packages/*`、購物車／結帳頁。第三十波三段（BE-41、FE-26／BE-42、BE-43 七輪）已全部撤包；**正式機 YC 五個服務已上線（greygray.shop／admin.greygray.shop）**，使用者在後台建商品時撞到「沒有新增 SKU 的端點」，這一波就是補它。
 
 ★ **BE-44**：契約純新增一條 operation（Operator、Idempotency-Key、body `AdminSkuInput`、201 `AdminSku`、403／404／422，M1a）＋ `docs/05` 表加列 ＋ Admin Host `MapPost("/products/{productId}/skus")`（形狀照 PATCH `/skus/{skuId}`）＋ `OpenApiComponents` 清單 ＋ HTTP 層測試 ＋ `check-openapi` admin 30/30。
 Catalog 模組的 `CreateSkuAsync` 早就在，不動模組。
@@ -19,6 +21,47 @@ tunnel `greygray`（`7daa50aa-…`）與兩筆 DNS Leader 已在 YC 上建好；
 ADR-030：規則的主人是後端——契約 `shippingPolicy` 改成「混合才必填」（向下相容），後端混合沒帶回 422、單一模式依 line 組成推導。
 併：壞 body 兩個環境都回 400 problem+json；#36 登出清 `gg_cart`＋「不是你的車」換新車；#38 兩支 dev 啟動腳本改 `Start-Process -Environment`。
 ★ dev Host 現在是 Release 在跑、使用者正在走旅程：子代理一律 `-Configuration Debug`，不准停 dev 行程。
+
+---
+
+## FE-28 的啟動 prompt（生效中）
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe
+GreyGray Platform 前端（Next.js 15 App Router、pnpm workspace：apps/storefront、apps/admin、packages/api-client、packages/ui）。這一包只動前台 apps/storefront 的商品詳情頁。
+
+GG_PACKAGE=FE-28
+
+開工前務必先讀：
+  CLAUDE.md                        前端四條 ＋ 派工規則
+  docs/31-前端第十七波派工書.md      ★ 整份讀完：§0 事實（AddToCartPanel／page.tsx 行號、PriceDisplay、規則原文、測試基礎）＋ §1 必做 A～E ＋ §2 不要做 ＋ §6 可能寫錯的地方
+  docs/00-decisions.md             ADR-033（前端「不做金額運算」的唯一例外：商品頁小計預覽）
+  .dispatch/reports/README.md      ★ 自驗報告的格式，缺標頭會被退回
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/FE-28.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 不准把驗證丟背景、不准排程 wakeup。要跑的是：pnpm --recursive typecheck、pnpm --recursive test（基準 436 ＋ 你新增的，逐專案條數貼進報告）。build 由 Leader 停 dev server 後跑，你不跑。
+
+★ 小計只准商品頁用（subtotalPreview 全 repo 一個呼叫端）；購物車／結帳／訂單頁的金額仍全部來自後端，一個字不動。
+★ 不動契約、packages/ui、packages/api-client、admin app；page.tsx 的 SSR 內容不動（單價放 AddToCartPanel 頂端）。
+★ 沒有 jsdom：「5 件 → NT$300」靠純函式 ＋ 純呈現元件（BottomBarSummary／UnitPriceBlock）用 renderToStaticMarkup 測。
+★ dev server 由 Leader 管：不停、不起、不跑 next build。
+★ 派工書 §6 列了三個可能寫錯的地方：撞到就停下來寫進報告問，不要自己換做法。
+
+★ 質疑被鼓勵，但不准自己改方向：派工書寫錯了就停下來寫進報告問，
+  不要一邊照做一邊在報告裡抱怨，也不要自己換一個做法。
+
+檔案所有權：見派工書 §3（ACTIVE.md 的 allow 是機械執行的那份）。
+docs/、management/、STATE.md、CLAUDE.md、AGENTS.md 每一包都寫得了。
+
+不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
+git checkout -- .、以及 git commit。
+
+你不可以自己宣告通過。交付完就停。
+```
 
 ---
 
