@@ -51,6 +51,26 @@ Leader 要明講。
 
 ---
 
+## 生效中：BE-47　把「出貨」這個階段接起來——交運時扣庫存並結轉銷貨成本 ＋ 運費成本入帳 ＋ 品項狀態轉 `Shipped`／`Completed`（#43、#42）＋ 分錄覆蓋的機械把關
+
+2026-09-03 15:35 使用者問「要不要再測一次完整流程」，Leader 先查正式機帳務，查出 **#43：出貨那一段完全沒落帳也沒出庫**。帳上只有兩筆進貨＋一筆收款；`inventory.lot` 還是 on_hand 60／reserved 5（貨已寄出）。
+對照 `docs/02-事件與狀態機.md` 第 165-175 行分錄表第 ⑦ 階段該有兩筆：出貨從批號結轉（`StockCostAllocated`，DR 5100／CR 1300）、支付宅配運費（`ShipmentDispatched`，DR 5200／CR 1100）。
+`StockCostAllocated` 契約型別定義了、`EventTypeRegistry` 登記了、`docs/02` 第 24 行寫明 M1b 由 Ledger 消費——**沒有任何地方發它、也沒有 handler 收它**；`ShipmentDispatched` 有發但 Ledger 沒 handler；Inventory 沒有任何 shipment 事件的 handler，`IStockReservation` 也根本沒有「出庫」這個操作。順帶 **#42**：`OrderLineStatus` 只被指派過 Pending／Purchased／Unavailable／Cancelled，`Shipped`／`Completed` 從來沒有。
+派工書 `docs/43-後端第三十一波派工書.md` §0 把正式機數字、行號、現成可用的東西（`AccountCodes` 四個科目、`StockReservationPlan.ForOrder`、釋放路徑的 SQL 形狀）全列了。
+
+★★ 最容易做錯的：① 觸發點是**交運**不是簽收；② 一張出貨單可合併多張訂單、一張訂單可拆多張出貨單，冪等要靠 reservation 狀態擋（框架的 processed_message 擋不到）；③ `quantity_available` 是 generated column 不准寫；④ **不新增 migration**（新狀態值不動 schema）；⑤ 不動 `ShipmentDelivered` 那條路（BE-46 剛修好）；⑥ `Reserved` 這一包不做。
+
+package: BE-47
+doc: docs/43-後端第三十一波派工書.md
+allow: src/Modules/Inventory/
+allow: src/Modules/Ledger/
+allow: src/Modules/Ordering/
+allow: tests/
+
+> `docs/` 全域放行。`src/Modules/Fulfillment/`、`src/Hosts/`、`ops/`、契約 YAML 不在 allow——派工書 §2 說明過；真的需要就停下來回報。
+
+---
+
 <!--
 ★ 2026-09-03 已通過整合驗收並提交（後端 `1d58dfa`），撤包。原文保留供追溯。
 

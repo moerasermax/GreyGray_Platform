@@ -1,6 +1,10 @@
 # 啟動 prompt
 
-**目前沒有生效中的派工（2026-09-03 傍晚）。** 第三十四波 BE-46（`1d58dfa`：Worker 掛上 Fulfillment 模組——#41 出貨單簽收後訂單永遠停在「準備出貨」；開機驗 handler 相依；架構測試含負向對照）已驗收撤包，第四次部署 release `20260903071555793` 後那則 `ShipmentDelivered` 事件處理完、訂單 ReadyToShip → Shipped。
+**生效中的派工（2026-09-03 傍晚，第三十五波）：後端 BE-47（把「出貨」這個階段接起來——交運時扣庫存並結轉銷貨成本、運費成本入帳、品項狀態轉 `Shipped`／`Completed`，#43／#42，`docs/43-後端第三十一波派工書.md`）。** 前端樹沒有生效中的派工。啟動 prompt 在下面「BE-47 的啟動 prompt」一節。
+
+★ **BE-47**：使用者問「要不要再測一次完整流程」，Leader 先查正式機帳務 → **#43：出貨完全沒落帳也沒出庫**（`docs/02` 分錄表第 ⑦ 階段兩筆都沒人發沒人收；`inventory.lot` 還記著 60 件在倉庫、5 件永遠保留中）。修：Inventory 加「出庫」操作並訂閱 `ShipmentDispatched`（扣 on_hand＋reserved、reservation 轉已出庫、每筆 allocation 發 `StockCostAllocated`）；Ledger 補兩個 handler（DR 5100／CR 1300、DR 5200／CR 1100）；Ordering 品項轉 `Shipped`／`Completed`（#42）；加「分錄表每個階段都要有人發、有人收」的架構測試。
+
+第三十四波 BE-46（`1d58dfa`：Worker 掛上 Fulfillment 模組——#41）已驗收撤包，第四次部署 release `20260903071555793` 後那則 `ShipmentDelivered` 事件處理完、訂單 ReadyToShip → Shipped。
 第三十三波 BE-45（`485910d`：部署腳本）已撤包、YC 第三次真跑一次過。第三十二波 FE-28（`5b01314`，#40）已撤包並部署。第三十一波（BE-44 `fb15ad6`、FE-27 `56a221d`）已撤包並部署；**付款這條路 11:36 第一次在正式機用真的綠界測試站走通**。
 
 ★ **BE-46**：`Worker/Program.cs` 缺 `AddFulfillmentModule`（11 個模組、留了一句「之後再納入」），Ordering 的 `ShipmentDeliveredHandler` 對 `IFulfillmentQuery` 是 `Lazy` 相依 → 正式機 outbox `fulfillment.ShipmentDelivered.v1` 連炸 8 次 `ArgumentNullException`。修：模組清單抽成 `WorkerModules.AddWorkerModules`（加 Fulfillment）、Worker 開機驗每個 `IIntegrationEventHandler<T>` 與點名 `IFulfillmentQuery`、架構測試用同一個方法建容器＋空 orderIds 呼叫 `RecordShipmentDeliveredAsync` 重現炸點＋負向對照、Ordering 缺模組時的例外講人話。只動 Worker、Ordering.Core 一個方法、tests。
@@ -24,6 +28,54 @@ tunnel `greygray`（`7daa50aa-…`）與兩筆 DNS Leader 已在 YC 上建好；
 ADR-030：規則的主人是後端——契約 `shippingPolicy` 改成「混合才必填」（向下相容），後端混合沒帶回 422、單一模式依 line 組成推導。
 併：壞 body 兩個環境都回 400 problem+json；#36 登出清 `gg_cart`＋「不是你的車」換新車；#38 兩支 dev 啟動腳本改 `Start-Process -Environment`。
 ★ dev Host 現在是 Release 在跑、使用者正在走旅程：子代理一律 `-Configuration Debug`，不准停 dev 行程。
+
+---
+
+## BE-47 的啟動 prompt（生效中）
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
+GreyGray Platform 後端（.NET 10 modular monolith）。這一包動三個模組：Inventory、Ledger、Ordering，加 tests。
+
+GG_PACKAGE=BE-47
+
+開工前務必先讀：
+  CLAUDE.md                         六條鐵則 ＋ 派工規則
+  docs/43-後端第三十一波派工書.md     ★ 整份讀完：§0 事實（正式機帳務與庫存的實際數字、所有行號、現成可用的東西）＋ §1 必做 A～E ＋ §2 不要做 ＋ §5 可能寫錯的地方
+  docs/02-事件與狀態機.md            第 161-186 行：M1 分錄對照表，這一包補的是第 ⑦ 階段兩筆
+  src/Modules/Inventory/GreyGray.Modules.Inventory.Infra/StockReservationService.cs   第 18、163-200、428-435 行：釋放的完整形狀，出庫照它寫
+  src/Modules/Ledger/GreyGray.Modules.Ledger.Infra/LedgerEventHandlers.cs             第 13-59 行：LedgerPostingService 的用法樣板
+  tests/GreyGray.Architecture.Tests/WorkerCompositionTests.cs                          BuildConfiguration() 的 in-memory 設定樣板
+  .dispatch/reports/README.md       ★ 自驗報告格式，以及「測試要分專案前景跑」
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/BE-47.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 不准把驗證丟背景、不准排程 wakeup。要跑的是：
+     ops\build.ps1 -Configuration Debug（0 警告 0 錯誤）
+     測試分專案前景跑（整支 ops\test.ps1 會超過 600 秒被移到背景然後整輪消失），基準 286 ＋ 你新增的，逐專案條數貼進報告
+     bash .dispatch/audit-dispatch.sh
+     輸出貼進報告。
+
+★ 觸發點是「交運」（ShipmentDispatched）不是「簽收」；不要動 ShipmentDelivered 那條路（BE-46 剛修好）。
+★ 一張出貨單可合併多張訂單、一張訂單可拆多張出貨單：冪等要靠 reservation 狀態自己擋，框架的 processed_message 擋不到。
+★ 不新增 migration；quantity_available 是 generated column 不准寫；金額一律 Money。
+★ 不碰正式機、不動 Fulfillment 模組、不動契約 YAML、不動前端與 ops/、不起停任何 Host。
+★ 派工書 §5 列了六個可能寫錯的地方：撞到就停下來寫進報告問，不要自己換做法。
+
+★ 質疑被鼓勵，但不准自己改方向：派工書寫錯了就停下來寫進報告問，
+  不要一邊照做一邊在報告裡抱怨，也不要自己換一個做法。
+
+檔案所有權：見派工書 §3（ACTIVE.md 的 allow 是機械執行的那份）。
+docs/、management/、STATE.md、CLAUDE.md、AGENTS.md 每一包都寫得了。
+
+不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
+git checkout -- .、以及 git commit。
+
+你不可以自己宣告通過。交付完就停。
+```
 
 ---
 
