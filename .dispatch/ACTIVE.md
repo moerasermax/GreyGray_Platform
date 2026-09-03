@@ -51,7 +51,14 @@ Leader 要明講。
 
 ---
 
-## 生效中：BE-45　`deploy.ps1` START 不看 `nssm start` 的 exit code（改看 SCM 狀態、綠燈交給 `Assert-NewApplicationProcess`）＋ 部署期間暫停 `GreyGray-Watchdog` ＋ self-test 18 → 20 項
+<!--
+★ 2026-09-03 已通過整合驗收並提交（後端 `485910d`），撤包。原文保留供追溯。
+
+一輪交付。`Wait-ManagedServiceStart`／`Suspend-WatchdogTask`／`Resume-WatchdogTask` 進 `ops/lib/Deployment.ps1`（注入 scriptblock）；`deploy.ps1` START 迴圈改看 SCM 狀態、STOP→健康檢查整段 try/finally 恢復 watchdog；self-test 18 → 20（19 PASS ＋ 總結行）。
+子代理四件裁決全接受：docs 沒有「18 項」可改、計數歧義寫明、5.1 先 `Add-Type System.ServiceProcess`、finally 不吞例外。
+Leader 重跑：self-test 5.1／7 各 20/20、`git diff -w` 只動三檔、audit 通過；**YC 第三次真跑一次過**（release `20260903053352999`：watchdog Ready→停用→五個 STOP→五個 START→五個 ✓→恢復→「✓ 部署完成」；外部探測全綠）。
+
+## 生效中（已撤包）：BE-45　`deploy.ps1` START 不看 `nssm start` 的 exit code（改看 SCM 狀態、綠燈交給 `Assert-NewApplicationProcess`）＋ 部署期間暫停 `GreyGray-Watchdog` ＋ self-test 18 → 20 項
 
 2026-09-03 13:02 正式機第二次重複部署：`GreyGray-Web-Storefront`（Next standalone）起得慢了幾秒，NSSM 回 `Unexpected status SERVICE_START_PENDING in response to START control.` 並 exit 非 0，`deploy.ps1:474` 的 `Invoke-Nssm start` 沒帶 `-AllowNonZeroExit` → 整支 throw，第五個服務沒起、健康檢查與 watchdog 重登記都沒跑（Leader 手動救回）。服務兩秒後就 Ready——是 flaky，不是壞。
 同時查出 `deploy.ps1` 從沒在部署期間停用 watchdog（每 5 分鐘 `Start-Service` 任何不是 Running 的服務），STOP→START 的空窗撞到就會把舊 release 拉起來。今天差 15 秒。
@@ -66,6 +73,7 @@ allow: ops/lib/Deployment.ps1
 allow: ops/self-test.ps1
 
 > `docs/` 全域放行。`ops/watchdog.ps1`、`ops/service-manifest.ps1`、`ops/lib/Process.ps1` 不在 allow——派工書 §2 說明過；真的需要就停下來回報。
+-->
 
 ---
 
@@ -871,6 +879,8 @@ allow: tests/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **BE-45** `deploy.ps1` START 只看 SCM 狀態（`nssm start` 的 exit code 對「正在起」與「已在跑」都回非 0）＋ 部署期間暫停 `GreyGray-Watchdog`（Resume 在 finally）＋ self-test 18 → 20 項；`Wait-ManagedServiceStart`／`Suspend-WatchdogTask`／`Resume-WatchdogTask` 進 lib（注入 scriptblock）　·　2026-09-03 通過　·　`485910d`　·
+  第六個 dry-run 碰不到的坑（13:02 第二次重複部署被 SERVICE_START_PENDING 打斷）；YC 第三次真跑一次過（release `20260903053352999`）；見 `.dispatch/reports/BE-45.md`
 - **BE-44** 修訂凍結契約：新增 `POST /v1/products/{productId}/skus`（建立 SKU，ADR-032）＋ Admin Host 端點 ＋ `docs/05` 加列 ＋ OpenApiComponents ＋ 6 條端點測試（#39：正式機後台建商品後沒有任何合法路徑建出第一個 SKU）　·　2026-09-03 通過　·　`fb15ad6`　·
   測試 278 → 284；check-openapi admin 29/29 → 30/30；活體 201／404／400／422／ReadOnly 403；見 `.dispatch/reports/BE-44.md`
 - **BE-43** 正式機 GreyGray 自己的 Cloudflare Tunnel 腳本（`install-tunnel.ps1`、verify 多三項、`install-environment.ps1` 不碰共用通道）＋ 正式機第一次部署抓到的四個 dry-run 盲點（ingress validate 假 PASS、`::Fill` 5.1 沒有、Mandatory 拒收空陣列、nssm `reset AppParameters` 崩潰、`GetNewClosure` 看不到 script 函式）　·　2026-09-03 通過　·　`47ec987`→`34a8f20`→`12da09e`→`b56e1dd`→`9caa2b6`→`eab1898`（七輪）　·
