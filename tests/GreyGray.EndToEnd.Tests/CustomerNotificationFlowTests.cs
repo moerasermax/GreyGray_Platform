@@ -18,6 +18,20 @@ public sealed class CustomerNotificationFlowTests : IAsyncLifetime
     private const string ParentSpanId = "00f067aa0ba902b7";
     private const string RolePassword = "greygray-e2e-only";
 
+    /// <summary>
+    /// Worker 需要的 13 個 module schema。BE-46 起 Worker 開機就會解析**每一個**登記的
+    /// 整合事件 handler（Worker/Program.cs 的驗證區塊），所以這個替身也得跟正式機一樣
+    /// 拿到全部連線字串——只給 platform／notify 的話，Ordering 的 OrderPlacedHandler
+    /// 會因為缺 GreyGray_inventory 而讓 Worker 拒絕啟動。
+    /// <b>要跟 tests/GreyGray.Architecture.Tests 的 WorkerCompositionTests.ModuleSchemas
+    /// 以及 ops/start-dev-hosts.ps1、ops/deploy.ps1 的那份清單一致。</b>
+    /// </summary>
+    private static readonly string[] WorkerModuleSchemas =
+    [
+        "iam", "catalog", "campaign", "pricing", "inventory", "checkout", "ordering",
+        "procurement", "fulfillment", "payment", "ledger", "notify", "platform",
+    ];
+
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17-alpine")
         .Build();
 
@@ -219,16 +233,29 @@ public sealed class CustomerNotificationFlowTests : IAsyncLifetime
             cancellationToken);
     }
 
-    private HostProcess StartWorker(string repoRoot) =>
-        StartHost(
-            repoRoot,
-            "GreyGray.Worker",
-            new Dictionary<string, string>
-            {
-                ["DOTNET_ENVIRONMENT"] = "Development",
-                ["ConnectionStrings__GreyGray_platform"] = ConnectionStringFor("greygray_platform"),
-                ["ConnectionStrings__GreyGray_notify"] = ConnectionStringFor("greygray_notify"),
-            });
+    private HostProcess StartWorker(string repoRoot)
+    {
+        // 這個替身要長得跟正式機的 Worker 一樣（ops/deploy.ps1 注入 13 個 schema 的連線字串
+        // ＋ secrets\ecpay.json 的三個綠界鍵），否則 BE-46 的開機驗證會正確地拒絕啟動。
+        var environment = new Dictionary<string, string>
+        {
+            ["DOTNET_ENVIRONMENT"] = "Development",
+
+            // 綠界那三個鍵是 Payment 的 handler 解析 IEcpayGateway 時要的（解析期才讀，
+            // 見 Payment.Infra/ModuleRegistration.cs）。值是綠界公開的測試商店，
+            // 端點沿用預設的 payment-stage.ecpay.com.tw——這條 E2E 不會真的打出去。
+            ["Payment__ECPay__MerchantId"] = "2000132",
+            ["Payment__ECPay__HashKey"] = "5294y06JbISpM5x9",
+            ["Payment__ECPay__HashIV"] = "v77hoKGq4kWxNNIS",
+        };
+        foreach (var schema in WorkerModuleSchemas)
+        {
+            environment[$"ConnectionStrings__GreyGray_{schema}"] =
+                ConnectionStringFor($"greygray_{schema}");
+        }
+
+        return StartHost(repoRoot, "GreyGray.Worker", environment);
+    }
 
     private async Task ApplyMigrationsAsync(string repoRoot, CancellationToken cancellationToken)
     {
@@ -256,12 +283,18 @@ public sealed class CustomerNotificationFlowTests : IAsyncLifetime
         return ExecuteAdminSqlAsync(sql, cancellationToken);
     }
 
+    /// <summary>
+    /// 13 個 login role 都給同一組測試密碼。角色是 0001_schemas_and_roles.sql 建的，
+    /// 清單共用 <see cref="WorkerModuleSchemas" />——Worker 現在拿到全部連線字串，
+    /// 那些字串就該是真的能登入的，而不是只夠讓 DbContext 建構起來。
+    /// </summary>
     private Task ConfigureRolePasswordsAsync(CancellationToken cancellationToken) =>
-        ExecuteAdminSqlAsync($"""
-            ALTER ROLE greygray_iam PASSWORD '{RolePassword}';
-            ALTER ROLE greygray_notify PASSWORD '{RolePassword}';
-            ALTER ROLE greygray_platform PASSWORD '{RolePassword}';
-            """, cancellationToken);
+        ExecuteAdminSqlAsync(
+            string.Join(
+                Environment.NewLine,
+                WorkerModuleSchemas.Select(schema =>
+                    $"ALTER ROLE greygray_{schema} PASSWORD '{RolePassword}';")),
+            cancellationToken);
 
     private string ConnectionStringFor(string role)
     {

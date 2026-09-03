@@ -555,7 +555,16 @@ internal sealed class OrderingApplicationService(
         // 延遲解析（ADR-025 循環相依修法，docs/24 §0）：只有走到這裡才真的觸發
         // IFulfillmentQuery 的 GetService，不會在 OrderingApplicationService 建構時就解析。
         var resolvedFulfillmentQuery = fulfillmentQuery.Value;
-        ArgumentNullException.ThrowIfNull(resolvedFulfillmentQuery);
+        if (resolvedFulfillmentQuery is null)
+        {
+            // 缺的是「模組沒掛」，不是「參數傳了 null」——訊息要讓看 log 的人直接知道
+            // 要去改哪個 Host 的組合根（#41：Worker 從來沒掛 Fulfillment，
+            // 出貨單簽收事件因此連續重試失敗，訂單永遠停在「準備出貨」）。
+            throw new InvalidOperationException(
+                "這個 Host 登記了 ShipmentDeliveredHandler，卻沒有掛 Fulfillment 模組"
+                + "（IFulfillmentQuery 解析不到）；Worker 的模組清單在 "
+                + "GreyGray.Worker/WorkerModules.cs 的 AddWorkerModules。");
+        }
 
         var scheduled = false;
         foreach (var orderId in orderIds.Distinct())

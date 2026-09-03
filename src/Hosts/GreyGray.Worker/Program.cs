@@ -1,16 +1,7 @@
 using GreyGray.Worker;
-using GreyGray.Modules.Campaign.Infra;
-using GreyGray.Modules.Catalog.Infra;
-using GreyGray.Modules.Checkout.Infra;
-using GreyGray.Modules.Identity.Infra;
-using GreyGray.Modules.Inventory.Infra;
-using GreyGray.Modules.Ledger.Infra;
-using GreyGray.Modules.Notification.Infra;
-using GreyGray.Modules.Ordering.Infra;
-using GreyGray.Modules.Payment.Infra;
-using GreyGray.Modules.Pricing.Infra;
-using GreyGray.Modules.Procurement.Infra;
+using GreyGray.Modules.Fulfillment.Contracts;
 using GreyGray.Platform;
+using GreyGray.Platform.Abstractions.Messaging;
 using GreyGray.Platform.Messaging;
 using GreyGray.Platform.Observability;
 using GreyGray.Platform.Outbox;
@@ -56,21 +47,22 @@ builder.Services.AddScoped<SagaTimerDispatcher>();
 builder.Services.AddHostedService<OutboxDispatchWorker>();
 builder.Services.AddHostedService<SagaTimerDispatchWorker>();
 
-builder.Services
-    .AddIdentityModule(builder.Configuration)
-    .AddCatalogModule(builder.Configuration)
-    .AddCampaignModule(builder.Configuration)
-    .AddPricingModule(builder.Configuration)
-    .AddInventoryModule(builder.Configuration)
-    .AddCheckoutModule(builder.Configuration)
-    .AddOrderingModule(builder.Configuration)
-    .AddProcurementModule(builder.Configuration)
-    .AddPaymentModule(builder.Configuration)
-    .AddLedgerModule(builder.Configuration)
-    .AddNotificationModule(builder.Configuration);
+// 模組清單只有一份，在 WorkerModules.AddWorkerModules；
+// 架構測試 WorkerCompositionTests 呼叫的是同一個方法，所以它驗到的組合
+// 就是這個行程真的跑的組合（#41 的成因正是清單只寫在這裡、沒有人測）。
+builder.Services.AddWorkerModules(builder.Configuration);
 
-// Fulfillment 等後續 M1b 模組會在各自波次納入。
 // TODO(M3-6)：Cloudflare Queues consumer —— 拉取 webhook 緩衝層的訊息。
+
+// 開機驗證用：這個行程登記了哪些整合事件 handler。
+// 一定要在 Build() 之前收集——builder.Services 建完就不該再碰；
+// 真正的解析在下面的 validation scope 裡做（handler 全是 scoped）。
+var integrationEventHandlerTypes = builder.Services
+    .Select(descriptor => descriptor.ServiceType)
+    .Where(static type => type.IsConstructedGenericType
+        && type.GetGenericTypeDefinition() == typeof(IIntegrationEventHandler<>))
+    .Distinct()
+    .ToArray();
 
 var host = builder.Build();
 
@@ -80,6 +72,50 @@ await using (var validationScope = host.Services.CreateAsyncScope())
 {
     _ = validationScope.ServiceProvider.GetRequiredService<IOutboxDispatcher>();
     _ = validationScope.ServiceProvider.GetRequiredService<SagaTimerDispatcher>();
+
+    // 「查了零個對象」跟「查過都沒事」不能長得一樣：Worker 一定有登記 handler，
+    // 收到空清單代表這段驗證失去意義（例如上面的篩選條件被改壞）。
+    if (integrationEventHandlerTypes.Length == 0)
+    {
+        throw new InvalidOperationException(
+            "開機驗證沒有找到任何 IIntegrationEventHandler<T> 登記——" +
+            "Worker 是唯一派送 Outbox 的行程，這不可能是對的。");
+    }
+
+    // #41：每一個登記的事件 handler 都要在開機時就解得出相依。
+    // 沒有這一段的話，缺模組只會在 outbox 真的派送到那則事件時才炸，
+    // 而那時只看得到重試失敗的 log，訂單則永遠停在原狀態。
+    //
+    // ★ 這一圈也涵蓋 Payment 的 handler，而它們解析時會走到 IEcpayGateway／EcpaySettings
+    //   （Payment.Infra/ModuleRegistration.cs 的 ReadEcpaySettings）：
+    //   **Worker 跟 Storefront 一樣，沒有 Payment:ECPay:* 就不開機**，這是刻意的 fail-fast
+    //   ——退款跑在 Worker（Payment.Infra/OrderingEventHandlers），設定缺了早晚要炸，
+    //   炸在開機比炸在退款當下好。dev 起 Worker 要帶
+    //   ops\start-dev-hosts.ps1 -UseEcpaySimulator，正式機則靠 secrets\ecpay.json
+    //   （ops/deploy.ps1 會注入那三個鍵）。
+    foreach (var handlerType in integrationEventHandlerTypes)
+    {
+        try
+        {
+            var handlers = validationScope.ServiceProvider.GetServices(handlerType);
+            if (!handlers.Any())
+            {
+                throw new InvalidOperationException("解析結果是空的。");
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            throw new InvalidOperationException(
+                $"事件 handler {handlerType} 的相依在開機時解不出來；" +
+                "Worker 拒絕啟動，以免事件派送時才失敗。", ex);
+        }
+    }
+
+    // 點名驗 Fulfillment：Ordering 的 ShipmentDeliveredHandler 對 IFulfillmentQuery 是
+    // Lazy 相依（Ordering.Infra/ModuleRegistration.cs 的工廠委派），所以上面那圈
+    // 「解析 handler」在缺 Fulfillment 模組時仍然全數成功——#41 就是這樣漏掉的。
+    // 光解析 handler 抓不到，只能點名。
+    _ = validationScope.ServiceProvider.GetRequiredService<IFulfillmentQuery>();
 }
 
 await host.RunAsync();
