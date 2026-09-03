@@ -35,6 +35,7 @@ pnpm api:generate        # 從 OpenAPI 重新產型別
    四個人各自挑一個粉紅色，出來就是四個產品。
 2. **不做金額運算。** 只呼叫 `formatMoney()`。加總、分攤、含運總額由後端回傳。
    前端算了，帳就有兩個來源，而其中一個永遠沒有測試。
+   唯一例外：商品頁小計預覽（`subtotalPreview`，ADR-033）——只用於顯示，購物車以後端為準。
 3. **不猜業務規則。** 「這個團還能不能下單」讀 `isAcceptingOrders`，
    不要自己拿 `closesAt` 跟現在時間比——客戶端時鐘不可信，截團是後端的 Saga Timer 說了算。
 4. **不直接 `fetch`。** 一律走 `@greygray/api-client`——

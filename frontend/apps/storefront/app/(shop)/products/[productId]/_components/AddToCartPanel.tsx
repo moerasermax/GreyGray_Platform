@@ -1,13 +1,15 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { BottomActionBar, Button, FavoriteHeart, PriceDisplay, QuantityStepper, Toast } from '@greygray/ui';
+import { BottomActionBar, Button, FavoriteHeart, QuantityStepper, Toast } from '@greygray/ui';
 import { addCartLine } from '@greygray/api-client/endpoints/storefront';
 import { formatMoney, ApiError } from '@greygray/api-client';
 import type { components } from '@greygray/api-client/storefront';
 import { browserApi } from '../../../../_lib/apiClient';
 import { usePayloadIdempotency } from '../../../../_lib/usePayloadIdempotency';
 import { publishCart } from '../../../../_lib/cartCountStore';
+import { BottomBarSummary } from './BottomBarSummary';
+import { UnitPriceBlock } from './UnitPriceBlock';
 
 type S = components['schemas'];
 
@@ -52,8 +54,14 @@ export function AddToCartPanel({ product }: AddToCartPanelProps) {
   const isSoldOut = !isPreorder && selectedSku.available <= 0;
   const disabled = !hasPrice || (isPreorder ? !isAcceptingOrders : isSoldOut);
 
+  // 沒有價格時說明只出現在上方的 `UnitPriceBlock`（按鈕照樣 disabled）——
+  // 兩處各說一次，畫面上就會冒出兩種說法，預購尤其明顯。
+  const noPriceMessage = isPreorder
+    ? '售價在開團時決定，開團後才能加入購物車。'
+    : '這個規格尚未定價，請稍後再試。';
+
   const disabledReason = !hasPrice
-    ? '這個規格尚未定價，請稍後再試。'
+    ? null
     : isPreorder && !isAcceptingOrders
       ? '這個團已經截止收單，無法加入購物車。'
       : isSoldOut
@@ -91,6 +99,14 @@ export function AddToCartPanel({ product }: AddToCartPanelProps) {
 
   return (
     <div className="flex flex-col gap-[var(--gg-space-4)]">
+      {/* 單價放這裡而不是 page.tsx 的 SSR header：那一層不知道使用者選了哪個規格。 */}
+      <UnitPriceBlock
+        price={price}
+        unitPriceLabel={unitPriceLabel}
+        variantLabel={hasVariants ? (selectedSku.variantName ?? selectedSku.name) : null}
+        noPriceMessage={noPriceMessage}
+      />
+
       {hasVariants && (
         <div className="flex flex-col gap-[var(--gg-space-2)]">
           <span className="text-[length:var(--gg-text-sm)] font-bold text-fg">選擇規格</span>
@@ -134,12 +150,7 @@ export function AddToCartPanel({ product }: AddToCartPanelProps) {
 
       <BottomActionBar>
         <div className="flex flex-1 items-center justify-between gap-[var(--gg-space-3)]">
-          <div className="flex flex-col">
-            {price && <PriceDisplay amount={price} size="lg" />}
-            {unitPriceLabel && (
-              <span className="text-[length:var(--gg-text-xs)] text-fg-muted">{unitPriceLabel}</span>
-            )}
-          </div>
+          <BottomBarSummary quantity={quantity} price={price} unitPriceLabel={unitPriceLabel} />
           <Button onClick={handleAdd} disabled={disabled} loading={state === 'loading'}>
             加入購物車
           </Button>
