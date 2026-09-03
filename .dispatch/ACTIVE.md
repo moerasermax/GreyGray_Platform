@@ -51,7 +51,15 @@ Leader 要明講。
 
 ---
 
-## 生效中：FE-27　後台商品頁「新增 SKU」（新端點 `POST /v1/products/{productId}/skus`，ADR-032）＋ SKU 列「進貨」與批號列表（`/v1/lots`）
+<!--
+★ 2026-09-03 已通過整合驗收並提交（前端 `56a221d`），撤包。原文保留供追溯。
+
+一輪交付。api-client：重生型別（`types.admin.ts` ＋54、`types.storefront.ts` 零 diff）、`createSku`／`listLots`／`createLot`（lot body 從 `paths['/v1/lots']['post']` 推導，沒有手寫）、mock 三條＋4 smoke；
+商品頁：SKU 區抽成 `SkuSection`（「新增 SKU」只在 canWrite；列上「編輯」／「進貨」）、`SkuEditDrawer` 新增／編輯共用（`isActive` 預設 true、Stock 或既有標價才顯示標價欄）、`LotDrawer` 新檔（批號列表＋進貨表單）、`skuForm.ts`／`lotForm.ts` 純轉換（沒有 jsdom 才拆得出真測試）。
+測試 410 → **436**（api-client 35、admin 93、storefront 308）、typecheck 全綠、Leader 重跑相符；audit 十一項通過。子代理擔心的 `POST /v1/lots` 後端早在 BE-38 就有。
+Leader 接受四個自主判斷（多開純函式檔、預購 SKU 沒填過標價就隱藏欄位、進貨鈕不限 Stock、批號列表不分頁）；追蹤：契約 `isActive` 沒列 required 但生成器產成必填、`/v1/lots` 契約只宣告 201、前後台各一份 fieldErrors helper。畫面驗收在正式站做（build.ps1 -Publish 的 admin build 就是這一包的 build 驗收）。
+
+## 生效中（已撤包）：FE-27　後台商品頁「新增 SKU」（新端點 `POST /v1/products/{productId}/skus`，ADR-032）＋ SKU 列「進貨」與批號列表（`/v1/lots`）
 
 使用者 2026-09-03 08:51 在正式機後台建了商品，SKU 區只有空狀態「契約目前只有 PATCH…沒有新增 SKU 的端點」；而且就算有 SKU，後台也沒有進貨頁（M2 `POST /v1/lots` 只有 API）。
 使用者拍板「不種，等正式做法」→ ADR-032。後端 BE-44 已把新端點做進契約（`docs/api/openapi.admin.yaml` 與 `docs/05` 是 Leader 從後端樹逐位元複製進來的）；這一包補兩個 UI 缺口。
@@ -70,6 +78,7 @@ allow: frontend/apps/admin/app/(dash)/catalog/
 
 > `types.storefront.ts` 在 allow 裡只是因為 codegen 會一起重寫它——預期零 diff，有 diff 就停下來回報。
 > `apps/admin/app/(dash)/catalog/` 整個目錄放行：商品頁、`_components/`（`SkuEditDrawer.tsx` 改、`LotDrawer.tsx` 新增）、測試都在裡面；側邊欄不在 allow（這一包不加新頁面，進貨做在商品頁的抽屜裡）。
+-->
 
 ---
 
@@ -500,6 +509,8 @@ allow: frontend/apps/storefront/app/(checkout)/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **FE-27** 後台商品頁「新增 SKU」（`POST /v1/products/{productId}/skus`，ADR-032）＋ SKU 列「進貨」抽屜與批號列表（`/v1/lots`）；api-client `createSku`／`listLots`／`createLot` 全從契約重生　·　2026-09-03 通過　·　`56a221d`　·
+  測試 410 → 436、typecheck 全綠；#39（正式機後台建商品後沒有任何合法路徑建出第一個 SKU）前端側；畫面驗收在正式站做，見 `.dispatch/reports/FE-27.md`
 - **FE-26** 跟上 ADR-030 契約（重生型別、拿掉 `shippingPolicy!`）＋ 登出徽章歸零（#36 前端側）＋ `/login?next=` 亮對分頁（FE-25 ⑦）＋ 結帳頁登入回跳保留已填內容　·　2026-09-03 通過　·　`7f052c5`　·
   測試 376 → 410；Leader 真瀏覽器：純預購匿名送出 → 登入頁（不再 500）、分頁列亮購物車、回到結帳欄位與運費都還原，見 `.dispatch/reports/FE-26.md`
 - **FE-25** 「我的」總覽頁（`/me`，含登出）＋「我的」改指 `/me` ＋ `?next=` 回跳 ＋ 付款結果頁有限次重查　·　2026-09-02 通過　·　`668e0b7`　·
