@@ -51,6 +51,26 @@ Leader 要明講。
 
 ---
 
+## 生效中：BE-48　結帳成功後讓購物車退休（#44）＋ 取消已出貨的訂單不再讓事件卡住重試（#46）
+
+2026-09-04 00:34-00:51 使用者在正式站走新單後回報兩個症狀，Leader 查 log 與資料庫查出三件事，這一包修其中兩件（第三件 #45 是前端，同時派 FE-29）。
+**#44**：Storefront log 有**連續 15 次 `POST /v1/cart/checkout` → 422**（`checkout.cart-already-completed`），使用者是重新 `POST /v1/cart/lines` 才脫困。根因：`M1aEndpoints.cs` 全站只有 `AddCartLineAsync`（第 985-996 行，#36 的修法）會換車；`GetCartAsync`（第 1059 行）只處理 `cart-not-found`，`CompleteCheckoutAsync`（第 585-637 行）成功後完全不換。所以下單成功後 `gg_cart` 一直指著已結案的車。
+**#46**（BE-47 帶進來的回歸）：`ordering.OrderCancelled.v1` 在正式機卡住重試，錯誤「reservation … 的 allocation 與 lot 保留量不一致，拒絕部分釋放」。BE-47 之後保留單在交運轉「已出庫」並扣掉 `quantity_reserved`，`OrderCancelledInventoryHandler` 仍無條件釋放。守衛是對的，`StockReservationService.cs:163` 已有「已釋放就安靜成功」的先例，少的是「已出庫」那一支。
+派工書 `docs/44-後端第三十二波派工書.md` §0 有正式機 log 的實際次數與所有行號。
+
+★★ 最容易做錯的：① 換 cookie 要放在**真的成功之後**，注意 `ExecuteIdempotentAsync` 的兩階段與重放；② 撞到「已結案」時換車但**不要**拿新車重試 checkout（新車是空的）；③ `CartView` 加欄位用 `init` 屬性不要動建構式，而且**服務端要真的填值**（只加屬性不填就是 #43 那種形狀）；④ 不動釋放路徑的一致性守衛——是它把缺口叫出來的；⑤ 不動契約 YAML、不新增 migration。
+
+package: BE-48
+doc: docs/44-後端第三十二波派工書.md
+allow: src/Hosts/GreyGray.Api.Storefront/
+allow: src/Modules/Checkout/
+allow: src/Modules/Inventory/
+allow: tests/
+
+> `docs/` 全域放行。`src/Modules/Fulfillment/`、`src/Modules/Ordering/`、`src/Hosts/GreyGray.Worker/`、`ops/`、契約 YAML 不在 allow——派工書 §2 說明過；真的需要就停下來回報。
+
+---
+
 <!--
 ★ 2026-09-04 已通過整合驗收並提交（後端 `ac63775`），撤包。原文保留供追溯。
 

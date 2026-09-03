@@ -1,7 +1,11 @@
 # 啟動 prompt
 
-**目前沒有生效中的派工（2026-09-04 凌晨）。** 第三十五波 BE-47（`ac63775`：把「出貨」這個階段接起來——交運時扣庫存並結轉銷貨成本、運費成本入帳、品項狀態轉 `Shipped`／`Completed`，#43／#42）已驗收撤包，測試 286 → 308，正式版重建、第五次部署中。
-下一波派工前先讀 `ACTIVE.md` 的「已經通過」清單與本檔最後一節「下一波派工前」。
+**生效中的派工（2026-09-04 凌晨，第三十六波，兩棵樹各一包，可平行）：後端 BE-48（`docs/44`：#44 結帳成功後讓購物車退休、#46 取消已出貨訂單不再讓事件卡住）＋ 前端 FE-29（`docs/32`：#45 讓「這張訂單掛了幾張出貨單、還差幾張沒簽收」看得見）。** 啟動 prompt 在下面兩節。
+
+★ **BE-48**：正式機 log 有連續 15 次 `POST /v1/cart/checkout` → 422「購物車已完成結帳」——下單成功後 `gg_cart` 還指著已結案的車，全站只有「加入商品」那條路會換車。修：結帳成功就換新車、撞到已結案時換車並給自救指引、`GET /v1/cart` 拿到已結案的車也換（`CartView` 加 init 屬性且服務端要真的填值）。另修 BE-47 的回歸：取消已出貨的訂單時 `ReleaseByKeyAsync` 要對「已出庫」安靜跳過（那是退貨流程的事）。
+★ **FE-29**：使用者說的「宅配到府不更新」不是配送方式的問題——那張訂單有三張出貨單、規則是全部簽收才轉已出貨，畫面卻沒講。修：訂單頁加出貨單區塊並說明還差幾張；建立出貨單時過濾掉已出貨／已完成／已取消，已有出貨單的標示但仍可勾。契約零改動。
+
+第三十五波 BE-47（`ac63775`：出貨階段接起來，#43／#42）已驗收撤包，測試 286 → 308，第五次部署 release `20260903161959109` 含 migration `0018`；使用者走的兩張新單已驗證成立。
 
 ★ **BE-47**：使用者問「要不要再測一次完整流程」，Leader 先查正式機帳務 → **#43：出貨完全沒落帳也沒出庫**（`docs/02` 分錄表第 ⑦ 階段兩筆都沒人發沒人收；`inventory.lot` 還記著 60 件在倉庫、5 件永遠保留中）。修：Inventory 加「出庫」操作並訂閱 `ShipmentDispatched`（扣 on_hand＋reserved、reservation 轉已出庫、每筆 allocation 發 `StockCostAllocated`）；Ledger 補兩個 handler（DR 5100／CR 1300、DR 5200／CR 1100）；Ordering 品項轉 `Shipped`／`Completed`（#42）；加「分錄表每個階段都要有人發、有人收」的架構測試。
 
@@ -29,6 +33,97 @@ tunnel `greygray`（`7daa50aa-…`）與兩筆 DNS Leader 已在 YC 上建好；
 ADR-030：規則的主人是後端——契約 `shippingPolicy` 改成「混合才必填」（向下相容），後端混合沒帶回 422、單一模式依 line 組成推導。
 併：壞 body 兩個環境都回 400 problem+json；#36 登出清 `gg_cart`＋「不是你的車」換新車；#38 兩支 dev 啟動腳本改 `Start-Process -Environment`。
 ★ dev Host 現在是 Release 在跑、使用者正在走旅程：子代理一律 `-Configuration Debug`，不准停 dev 行程。
+
+---
+
+## BE-48 的啟動 prompt（生效中）
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
+GreyGray Platform 後端（.NET 10 modular monolith）。這一包動 Storefront Host、Checkout 模組、Inventory 模組、tests。
+
+GG_PACKAGE=BE-48
+
+開工前務必先讀：
+  CLAUDE.md                         六條鐵則 ＋ 派工規則
+  docs/44-後端第三十二波派工書.md     ★ 整份讀完：§0 事實（正式機 log 連續 15 次 422 的實際紀錄、所有行號、CartView 沒有已結案欄位、#46 的回歸成因）＋ §1 必做 A～F ＋ §2 不要做 ＋ §5 可能寫錯的地方
+  src/Hosts/GreyGray.Api.Storefront/M1aEndpoints.cs   第 585-637（結帳）、985-996（加入商品換車，#36 的先例）、1049-1067（看購物車）、1073-1080（清 cookie）
+  src/Modules/Inventory/GreyGray.Modules.Inventory.Infra/StockReservationService.cs   第 163 行：「已釋放就安靜成功」的先例，「已出庫」照這個形狀補
+  .dispatch/reports/README.md       ★ 自驗報告格式，以及「測試要分專案前景跑」
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/BE-48.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 不准把驗證丟背景、不准排程 wakeup。要跑的是：
+     ops\build.ps1 -Configuration Debug（0 警告 0 錯誤；Leader 已把 dev Host 停掉，不會有檔案鎖）
+     測試分專案前景跑，基準 308 ＋ 你新增的，逐專案條數貼進報告
+     ops\check-openapi.ps1 -Configuration Debug（必做 C 動模組契約但不該動 HTTP 契約，要維持綠燈）
+     bash .dispatch/audit-dispatch.sh
+     輸出貼進報告。
+
+★ 換 cookie 放在真的成功之後；注意 ExecuteIdempotentAsync 的兩階段與重放（派工書 §5 第一條）。
+★ 撞到「已結案」時換車但不要拿新車重試 checkout——新車是空的。
+★ CartView 加欄位用 init 屬性、不動建構式，而且服務端要真的填值；只加屬性不填就是 #43 那種「型別有了沒人填」的形狀。
+★ 不動釋放路徑的一致性守衛（是它把 #46 叫出來的）、不動契約 YAML、不新增 migration、不起停任何 Host、不碰正式機。
+★ 派工書 §5 列了五個可能寫錯的地方：撞到就停下來寫進報告問，不要自己換做法。
+
+★ 質疑被鼓勵，但不准自己改方向：派工書寫錯了就停下來寫進報告問，
+  不要一邊照做一邊在報告裡抱怨，也不要自己換一個做法。
+
+檔案所有權：見派工書 §3（ACTIVE.md 的 allow 是機械執行的那份）。
+docs/、management/、STATE.md、CLAUDE.md、AGENTS.md 每一包都寫得了。
+
+不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
+git checkout -- .、以及 git commit。
+
+你不可以自己宣告通過。交付完就停。
+```
+
+---
+
+## FE-29 的啟動 prompt（生效中，在前端樹）
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe
+GreyGray Platform 前端（Next.js 15 App Router、pnpm workspace）。這一包只動 apps/admin 的訂單頁與出貨頁。
+
+GG_PACKAGE=FE-29
+
+開工前務必先讀：
+  CLAUDE.md                         前端四條 ＋ 派工規則
+  docs/32-前端第十八波派工書.md      ★ 整份讀完：§0 事實（那張訂單的三張出貨單、CreateShipmentDialog 沒有狀態過濾、訂單頁沒有出貨單資訊、為什麼不用改契約）＋ §1 必做 A～D ＋ §2 不要做 ＋ §5 可能寫錯的地方
+  frontend/apps/admin/app/(dash)/shipments/[shipmentId]/page.tsx   第 46-49、70-73 行：listShipments/listOrders 抓一頁再在前端過濾的既有模式
+  frontend/apps/admin/app/(dash)/shipments/_lib/labels.ts          出貨單狀態的標籤與 tone，直接共用不要重寫
+  .dispatch/reports/README.md       ★ 自驗報告的格式
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/FE-29.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 不准把驗證丟背景、不准排程 wakeup。要跑的是：
+     pnpm --recursive typecheck、pnpm --recursive test（基準 461 ＋ 你新增的，逐專案條數貼進報告）。
+     build 由 Leader 跑，你不跑；不要起或停任何 dev server。
+
+★ 已經有出貨單的訂單仍然可以勾（拆單合法），只要標示；不要直接拿掉。
+★ 「還差幾張沒簽收」要從資料算出來，不要寫死；沒有出貨單時也要有話講，不要空白。
+★ 不動契約、packages/*、apps/storefront，也不要求後端加 orderId 篩選（§0.4 說明過為什麼前端過濾就夠）。
+★ 沒有 jsdom：判斷抽純函式測，文案用 renderToStaticMarkup（照 FE-28 的做法）。
+★ 派工書 §5 列了五個可能寫錯的地方：撞到就停下來寫進報告問，不要自己換做法。
+
+★ 質疑被鼓勵，但不准自己改方向：派工書寫錯了就停下來寫進報告問，
+  不要一邊照做一邊在報告裡抱怨，也不要自己換一個做法。
+
+檔案所有權：見派工書 §3（ACTIVE.md 的 allow 是機械執行的那份）。
+docs/、management/、STATE.md、CLAUDE.md、AGENTS.md 每一包都寫得了。
+
+不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
+git checkout -- .、以及 git commit。
+
+你不可以自己宣告通過。交付完就停。
+```
 
 ---
 
