@@ -51,6 +51,25 @@ Leader 要明講。
 
 ---
 
+## 生效中：BE-44　修訂凍結契約——新增 `POST /v1/products/{productId}/skus`（建立 SKU）＋ Admin Host 端點（ADR-032）
+
+使用者 2026-09-03 08:51 在正式機後台建了商品，卡在「這個商品還沒有 SKU」：契約只有 PATCH 既有 SKU、沒有新增端點，正式機沒有任何合法路徑建出第一個 SKU（開發機那幾個是 Leader 直寫 DB 種的）。
+使用者拍板「不種，等正式做法」→ ADR-032：純新增一條 operation；Catalog 模組的 `CreateSkuAsync` port 早就在（`CatalogContracts.cs` 第 203 行、`CatalogServices.cs` 第 260 行），只缺 HTTP 路由、契約與 `docs/05` 那一列。
+前端 FE-27（新增 SKU 表單＋批號進貨頁，`GreyGray_Platform-fe/docs/30`）等這一包撤包、Leader 把契約檔複製到前端樹之後才派。
+
+★★ 最容易做錯的：① 契約只准純新增，`AdminSkuInput`／`AdminSku`／`AdminProductInput` 不動；② `docs/05` 表要加一列標 M1a，否則 `check-openapi` 里程碑模式會紅；
+③ `OpenApiComponents.cs` 的 `IdempotentEndpoints` 要加新路徑，否則 live OpenAPI 少宣告 header；④ 404／422 照既有 `BffHttp.StatusFor`，不改 `BffHttp`；⑤ 一律 `-Configuration Debug`，dev Host 沒在跑、不要自己起。
+
+package: BE-44
+doc: docs/40-後端第二十八波派工書.md
+allow: src/Hosts/GreyGray.Api.Admin/M1aEndpoints.cs
+allow: src/Hosts/GreyGray.Api.Admin/OpenApiComponents.cs
+allow: tests/
+
+> `docs/api/openapi.admin.yaml`、`docs/05-API契約.md` 走 docs/ 全域放行。Catalog／Inventory 模組不在 allow——派工書 §0.3 說明過 port 已存在；若真的缺什麼，停下來回報。
+
+---
+
 <!--
 ★ 2026-09-03 已通過整合驗收並提交（後端 `47ec987` → `34a8f20` → `12da09e` → `b56e1dd` → `9caa2b6` → `eab1898`；閘門補授權 `5e229e7`／`f102dfc`），撤包。原文保留供追溯。
 
