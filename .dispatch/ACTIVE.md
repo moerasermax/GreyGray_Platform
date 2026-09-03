@@ -51,7 +51,14 @@ Leader 要明講。
 
 ---
 
-## 生效中：BE-46　Worker 掛上 Fulfillment 模組（#41：出貨單簽收後訂單永遠停在「準備出貨」）＋ 開機驗 handler 相依 ＋ 架構測試（含負向對照）＋ Ordering 缺模組時講人話
+<!--
+★ 2026-09-03 已通過整合驗收並提交（後端 `1d58dfa`），撤包。原文保留供追溯。
+
+兩輪。`WorkerModules.AddWorkerModules`（唯一清單，＋Fulfillment）、Program.cs 開機驗每個 `IIntegrationEventHandler<T>` ＋ 點名 `IFulfillmentQuery`（刻意接受「沒有 Payment:ECPay:* 就不開機」）、`WorkerCompositionTests`（正向三斷言＋負向對照）、Ordering 缺模組時例外講人話；
+第二輪：E2E 的 Worker 替身補齊 13 個 schema 連線字串＋綠界三鍵（第一輪被新驗證正確擋下）。測試 284 → **286**（Architecture 14 → 16），Leader Release 全套重跑全過。
+第四次部署 release `20260903071555793`：Worker 一起來就把停在 attempts=8 的 `ShipmentDelivered` 處理掉（15:16:29），訂單 ReadyToShip → **Shipped**、鑑賞期 saga timer 2026-09-10 排上。
+
+## 生效中（已撤包）：BE-46　Worker 掛上 Fulfillment 模組（#41：出貨單簽收後訂單永遠停在「準備出貨」）＋ 開機驗 handler 相依 ＋ 架構測試（含負向對照）＋ Ordering 缺模組時講人話
 
 2026-09-03 13:53 使用者在正式站後台把出貨單標記送達，後台資料都對，但 Worker 處理 `fulfillment.ShipmentDelivered.v1` 時炸 `ArgumentNullException (resolvedFulfillmentQuery)` 連續 8 次：`Worker/Program.cs:59-70` 掛了 11 個模組、**沒有 `AddFulfillmentModule`**（第 72 行留著「之後的波次再納入」從沒做），而 Ordering 的 `ShipmentDeliveredHandler` 靠 `Lazy<IFulfillmentQuery?>` 在真的被叫到時才發現沒有。訂單因此停在 ReadyToShip，前台顯示「準備出貨」。
 Leader 13:59:58 先停掉正式機 Worker（與 watchdog）讓訊息停在 attempts=8 不進死信；這一包部署上去就會接著處理。派工書 `docs/42-後端第三十波派工書.md` §0 有完整證據與「不用資料庫就能重現」的方法（空 orderIds）。
@@ -65,6 +72,7 @@ allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Core/OrderingApplicationSe
 allow: tests/
 
 > `docs/` 全域放行。`Ordering.Infra`、`Fulfillment`、`Api.Admin`、`Api.Storefront`、`ops/` 不在 allow——派工書 §2 說明過；真的需要就停下來回報。
+-->
 
 ---
 
@@ -896,6 +904,8 @@ allow: tests/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **BE-46** Worker 掛上 Fulfillment 模組（#41：出貨單簽收後訂單永遠停在「準備出貨」）＋ 開機驗每個事件 handler 相依並點名 `IFulfillmentQuery` ＋ `WorkerCompositionTests`（同一個 `AddWorkerModules`、空 orderIds 重現炸點、負向對照）＋ Ordering 缺模組時例外講人話　·　2026-09-03 通過　·　`1d58dfa`　·
+  測試 284 → 286；兩輪（E2E Worker 替身補齊設定）；第四次部署後訂單 ReadyToShip → Shipped；見 `.dispatch/reports/BE-46.md`
 - **BE-45** `deploy.ps1` START 只看 SCM 狀態（`nssm start` 的 exit code 對「正在起」與「已在跑」都回非 0）＋ 部署期間暫停 `GreyGray-Watchdog`（Resume 在 finally）＋ self-test 18 → 20 項；`Wait-ManagedServiceStart`／`Suspend-WatchdogTask`／`Resume-WatchdogTask` 進 lib（注入 scriptblock）　·　2026-09-03 通過　·　`485910d`　·
   第六個 dry-run 碰不到的坑（13:02 第二次重複部署被 SERVICE_START_PENDING 打斷）；YC 第三次真跑一次過（release `20260903053352999`）；見 `.dispatch/reports/BE-45.md`
 - **BE-44** 修訂凍結契約：新增 `POST /v1/products/{productId}/skus`（建立 SKU，ADR-032）＋ Admin Host 端點 ＋ `docs/05` 加列 ＋ OpenApiComponents ＋ 6 條端點測試（#39：正式機後台建商品後沒有任何合法路徑建出第一個 SKU）　·　2026-09-03 通過　·　`fb15ad6`　·
