@@ -1,7 +1,7 @@
 # 啟動 prompt
 
-**生效中的派工（2026-09-03 上午，第三十一波）：後端 BE-44（修訂凍結契約，新增 `POST /v1/products/{productId}/skus`，ADR-032）。** 前端樹沒有生效中的派工——FE-27（新增 SKU 表單＋批號進貨頁，`docs/30-前端第十六波派工書.md`）等 BE-44 撤包、契約檔複製過去之後才派。
-啟動 prompt 在下面「BE-44 的啟動 prompt」一節。第三十波三段（BE-41、FE-26／BE-42、BE-43 七輪）已全部撤包；**正式機 YC 五個服務已上線（greygray.shop／admin.greygray.shop）**，使用者在後台建商品時撞到「沒有新增 SKU 的端點」，這一波就是補它。
+**生效中的派工（2026-09-03 上午，第三十一波）：後端 BE-44（修訂凍結契約，新增 `POST /v1/products/{productId}/skus`，ADR-032）∥ 前端 FE-27（後台「新增 SKU」表單＋SKU 列「進貨」抽屜與批號列表，`docs/30-前端第十六波派工書.md`）。**
+BE-44 已交付、Leader 驗收中；契約檔（`docs/api/openapi.admin.yaml`、`docs/05`）已逐位元複製到前端樹，FE-27 據此重生型別。啟動 prompt 在下面「BE-44 的啟動 prompt」與「FE-27 的啟動 prompt」兩節。第三十波三段（BE-41、FE-26／BE-42、BE-43 七輪）已全部撤包；**正式機 YC 五個服務已上線（greygray.shop／admin.greygray.shop）**，使用者在後台建商品時撞到「沒有新增 SKU 的端點」，這一波就是補它。
 
 ★ **BE-44**：契約純新增一條 operation（Operator、Idempotency-Key、body `AdminSkuInput`、201 `AdminSku`、403／404／422，M1a）＋ `docs/05` 表加列 ＋ Admin Host `MapPost("/products/{productId}/skus")`（形狀照 PATCH `/skus/{skuId}`）＋ `OpenApiComponents` 清單 ＋ HTTP 層測試 ＋ `check-openapi` admin 30/30。
 Catalog 模組的 `CreateSkuAsync` 早就在，不動模組。
@@ -19,6 +19,49 @@ tunnel `greygray`（`7daa50aa-…`）與兩筆 DNS Leader 已在 YC 上建好；
 ADR-030：規則的主人是後端——契約 `shippingPolicy` 改成「混合才必填」（向下相容），後端混合沒帶回 422、單一模式依 line 組成推導。
 併：壞 body 兩個環境都回 400 problem+json；#36 登出清 `gg_cart`＋「不是你的車」換新車；#38 兩支 dev 啟動腳本改 `Start-Process -Environment`。
 ★ dev Host 現在是 Release 在跑、使用者正在走旅程：子代理一律 `-Configuration Debug`，不准停 dev 行程。
+
+---
+
+## FE-27 的啟動 prompt（生效中）
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe
+GreyGray Platform 前端（Next.js 15 App Router、pnpm workspace：apps/storefront、apps/admin、packages/api-client、packages/ui）。這一包只動後台 app 與 api-client。
+
+GG_PACKAGE=FE-27
+
+開工前務必先讀：
+  CLAUDE.md                        前端四條 ＋ 派工規則
+  docs/30-前端第十六波派工書.md      ★ 整份讀完：§0 事實（商品頁、SkuEditDrawer、api-client 現況、契約新舊端點）＋ §1 必做 A～D ＋ §2 不要做 ＋ §6 可能寫錯的地方
+  docs/00-decisions.md             ADR-032（修訂凍結契約：純新增 POST /v1/products/{productId}/skus；後台補新增 SKU 與批號進貨）
+  docs/api/openapi.admin.yaml      ★ Leader 從後端樹複製來的，不要動；/v1/products/{productId}/skus（新）與 /v1/lots（M2 既有）
+  .dispatch/reports/README.md      ★ 自驗報告的格式，缺標頭會被退回
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/FE-27.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 不准把驗證丟背景、不准排程 wakeup。要跑的是：pnpm api:generate（貼 diff --stat：types.admin.ts 有、types.storefront.ts 零 diff）、
+     pnpm --recursive typecheck、pnpm --recursive test（基準 410 ＋ 你新增的，逐專案條數貼進報告）。build 由 Leader 停 dev server 後跑，你不跑。
+
+★ 型別一律從重生的 types.admin.ts 拿（S['AdminSkuInput']、S['AdminSku']、S['Lot']、paths['/v1/lots']['post'] 推導 body）；不准手寫請求型別。
+★ 不改 docs/api/*.yaml、docs/05；不動 storefront app；不加側邊欄新頁面（進貨做在商品頁 SKU 列的抽屜）；不在前端算庫存或金額。
+★ NT$ → amountMinor 的轉換照 SkuEditDrawer 現貨標價既有的 helper；冪等鍵照既有 createProduct／updateSku 呼叫端的 MutationOptions 做法。
+★ dev server 由 Leader 管：不停、不起、不跑 next build；需要活體才能驗的事寫進報告交給 Leader。
+★ 派工書 §6 列了三個可能寫錯的地方：撞到就停下來寫進報告問，不要自己換做法。
+
+★ 質疑被鼓勵，但不准自己改方向：派工書寫錯了就停下來寫進報告問，
+  不要一邊照做一邊在報告裡抱怨，也不要自己換一個做法。
+
+檔案所有權：見派工書 §3（ACTIVE.md 的 allow 是機械執行的那份）。
+docs/、management/、STATE.md、CLAUDE.md、AGENTS.md 每一包都寫得了。
+
+不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
+git checkout -- .、以及 git commit。
+
+你不可以自己宣告通過。交付完就停。
+```
 
 ---
 
