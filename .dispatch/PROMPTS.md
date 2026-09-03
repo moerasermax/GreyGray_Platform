@@ -1,7 +1,7 @@
 # 啟動 prompt
 
-**生效中的派工（2026-09-03 上午，第三十一波）：前端 FE-27（後台「新增 SKU」表單＋SKU 列「進貨」抽屜與批號列表，`docs/30-前端第十六波派工書.md`）。** 後端 BE-44（新增 `POST /v1/products/{productId}/skus`，ADR-032）已驗收撤包（`fb15ad6`）；後端樹沒有生效中的派工。
-契約檔（`docs/api/openapi.admin.yaml`、`docs/05`）已逐位元複製到前端樹，FE-27 據此重生型別。啟動 prompt 在下面「FE-27 的啟動 prompt」一節。第三十波三段（BE-41、FE-26／BE-42、BE-43 七輪）已全部撤包；**正式機 YC 五個服務已上線（greygray.shop／admin.greygray.shop）**，使用者在後台建商品時撞到「沒有新增 SKU 的端點」，這一波就是補它。
+**目前沒有生效中的派工（2026-09-03 中午）。** 第三十一波——後端 BE-44（新增 `POST /v1/products/{productId}/skus`，ADR-032，`fb15ad6`）與前端 FE-27（後台「新增 SKU」表單＋SKU 列「進貨」抽屜與批號列表，`56a221d`）——都已驗收撤包，兩棵樹都乾淨；正式版 artifact 建置中，部署後使用者在正式站建 SKU、進貨、走到綠界。
+下一波派工前先讀 `ACTIVE.md` 的「已經通過」清單與本檔最後一節「下一波派工前」。第三十波三段（BE-41、FE-26／BE-42、BE-43 七輪）已全部撤包；**正式機 YC 五個服務已上線（greygray.shop／admin.greygray.shop）**，使用者在後台建商品時撞到「沒有新增 SKU 的端點」，這一波就是補它。
 
 ★ **BE-44**：契約純新增一條 operation（Operator、Idempotency-Key、body `AdminSkuInput`、201 `AdminSku`、403／404／422，M1a）＋ `docs/05` 表加列 ＋ Admin Host `MapPost("/products/{productId}/skus")`（形狀照 PATCH `/skus/{skuId}`）＋ `OpenApiComponents` 清單 ＋ HTTP 層測試 ＋ `check-openapi` admin 30/30。
 Catalog 模組的 `CreateSkuAsync` 早就在，不動模組。
@@ -22,7 +22,7 @@ ADR-030：規則的主人是後端——契約 `shippingPolicy` 改成「混合�
 
 ---
 
-## FE-27 的啟動 prompt（生效中）
+## FE-27 的啟動 prompt（已撤包，保留供參考）
 
 ```
 專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe
