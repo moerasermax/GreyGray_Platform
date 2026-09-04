@@ -51,7 +51,15 @@ Leader 要明講。
 
 ---
 
-## 生效中：BE-48　結帳成功後讓購物車退休（#44）＋ 取消已出貨的訂單不再讓事件卡住重試（#46）
+<!--
+★ 2026-09-04 已通過整合驗收並提交（後端 `89bb5c5`），撤包。原文保留供追溯。
+
+一輪。`CompleteCheckoutAsync` 成功（201）後在**方法回傳前**換新 `gg_cart`（放回傳前而不是 `work` 裡：兩階段多載重放時根本不會進 `work`，`BffHttp.cs:249-256`）；撞到 `cart-already-completed` 時換車＋訊息改成講得出下一步的話（錯誤碼不動、不拿新車重試）；`CartView.IsCompleted`（init 屬性，既有建構點零改動）＋唯一組裝點填值，`GetCartAsync` 拿到已結案的車就換車回空車；`StockReservationService` 釋放路徑加「已出庫就安靜成功＋log」一支（一致性守衛沒動）。測試 308 → **315**。
+接受子代理一個自主判斷：`AddInventoryModule` 冪等補 `AddLogging()`（而不是改四個手搭 ServiceProvider 的測試）。
+Leader 驗：build Release 0/0、12 專案 315 全過、`check-openapi` 綠、契約 YAML 與 `docs/05` 零改動、audit 通過；第六次部署 release `20260904015905167` 一次過。
+留下：#46 只讓事件不卡住，「已取消卻已交運」的業務狀態（退款／退貨入庫／成本迴轉）仍然沒人做，派工書 §2 明列不碰。
+
+## 生效中（已撤包）：BE-48　結帳成功後讓購物車退休（#44）＋ 取消已出貨的訂單不再讓事件卡住重試（#46）
 
 2026-09-04 00:34-00:51 使用者在正式站走新單後回報兩個症狀，Leader 查 log 與資料庫查出三件事，這一包修其中兩件（第三件 #45 是前端，同時派 FE-29）。
 **#44**：Storefront log 有**連續 15 次 `POST /v1/cart/checkout` → 422**（`checkout.cart-already-completed`），使用者是重新 `POST /v1/cart/lines` 才脫困。根因：`M1aEndpoints.cs` 全站只有 `AddCartLineAsync`（第 985-996 行，#36 的修法）會換車；`GetCartAsync`（第 1059 行）只處理 `cart-not-found`，`CompleteCheckoutAsync`（第 585-637 行）成功後完全不換。所以下單成功後 `gg_cart` 一直指著已結案的車。
@@ -68,6 +76,7 @@ allow: src/Modules/Inventory/
 allow: tests/
 
 > `docs/` 全域放行。`src/Modules/Fulfillment/`、`src/Modules/Ordering/`、`src/Hosts/GreyGray.Worker/`、`ops/`、契約 YAML 不在 allow——派工書 §2 說明過；真的需要就停下來回報。
+-->
 
 ---
 
@@ -965,6 +974,8 @@ allow: tests/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **BE-48** 結帳成功後讓購物車退休（#44：正式機 log 連續 15 次 422「購物車已完成結帳」）＋ 取消已出貨的訂單不再讓事件卡住重試（#46，BE-47 的回歸）　·　2026-09-04 通過　·　`89bb5c5`　·
+  測試 308 → 315；第六次部署 release `20260904015905167`；與前端 FE-29 同一輪；見 `.dispatch/reports/BE-48.md`
 - **BE-47** 把「出貨」這個階段接起來（#43、#42）：交運時扣庫存並結轉銷貨成本（`StockCostAllocated`）、運費成本入帳、訂單品項轉 `Shipped`／`Completed`；migration `0018` 給保留單第三個狀態「已出庫」；`LedgerCoverageTests` 釘住「分錄表每個階段都要有人發、有人收」　·　2026-09-04 通過　·　`ac63775`　·
   測試 286 → 308；兩輪（子代理兩個否決都成立，補授權 `767dbd5`）；是使用者問「要不要再測一次完整流程」時 Leader 去查帳才查出來的；見 `.dispatch/reports/BE-47.md`
 - **BE-46** Worker 掛上 Fulfillment 模組（#41：出貨單簽收後訂單永遠停在「準備出貨」）＋ 開機驗每個事件 handler 相依並點名 `IFulfillmentQuery` ＋ `WorkerCompositionTests`（同一個 `AddWorkerModules`、空 orderIds 重現炸點、負向對照）＋ Ordering 缺模組時例外講人話　·　2026-09-03 通過　·　`1d58dfa`　·
