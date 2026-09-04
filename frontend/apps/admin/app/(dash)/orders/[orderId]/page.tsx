@@ -22,9 +22,11 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { browserApi } from '../../../_lib/apiClient';
 import { usePayloadIdempotency } from '../../../_lib/usePayloadIdempotency';
+import { listShipments } from '../../shipments/_lib/api';
 import { CancelOrderDialog } from '../_components/CancelOrderDialog';
 import { CancelOrderLineDialog } from '../_components/CancelOrderLineDialog';
 import { MaskedContactNote } from '../_components/MaskedContactNote';
+import { OrderShipmentsSection } from '../_components/OrderShipmentsSection';
 import { RefundShortfallDialog } from '../_components/RefundShortfallDialog';
 import {
   deliveryMethodLabel,
@@ -54,6 +56,16 @@ export default function OrderDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<ApiError | Error | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+
+  // 出貨單區塊（#45）。契約沒有「依訂單查出貨單」的篩選，撈一頁在前端用
+  // `orderIds` 比對——同一個模式在 `shipments/[shipmentId]/page.tsx` 第 46-49 行
+  // 已經用了。M1b 的資料量吃得下；有下一頁時區塊會自己講「張數可能不完整」，
+  // 不會拿一頁的結果假裝是總數。
+  const [shipments, setShipments] = useState<readonly S['AdminShipment'][]>([]);
+  const [shipmentsLoading, setShipmentsLoading] = useState(true);
+  const [shipmentsFailed, setShipmentsFailed] = useState(false);
+  const [shipmentsTruncated, setShipmentsTruncated] = useState(false);
+  const [shipmentsReloadKey, setShipmentsReloadKey] = useState(0);
 
   const [cancelOrderOpen, setCancelOrderOpen] = useState(false);
   const [cancelLine, setCancelLine] = useState<OrderLine | null>(null);
@@ -96,6 +108,29 @@ export default function OrderDetailPage() {
       cancelled = true;
     };
   }, [order?.campaignId]);
+
+  // 讀失敗不擋整頁：訂單本身已經在上面那個 effect 讀到了，出貨單拿不到只讓
+  // 這一區塊自己顯示錯誤（理由同第 91-93 行 `getCampaign` 那段）。
+  useEffect(() => {
+    let cancelled = false;
+    setShipmentsLoading(true);
+    setShipmentsFailed(false);
+    void listShipments(browserApi(), { limit: 100 })
+      .then((page) => {
+        if (cancelled) return;
+        setShipments(page.items);
+        setShipmentsTruncated(page.nextCursor != null);
+      })
+      .catch(() => {
+        if (!cancelled) setShipmentsFailed(true);
+      })
+      .finally(() => {
+        if (!cancelled) setShipmentsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId, shipmentsReloadKey]);
 
   async function handleCancelOrder(input: { reason: string; refundTo: S['RefundDestination'] }) {
     const payload = { orderId, kind: 'order', input };
@@ -325,6 +360,15 @@ export default function OrderDetailPage() {
           emptyTitle="這張訂單沒有品項"
         />
       </section>
+
+      <OrderShipmentsSection
+        orderId={orderId}
+        shipments={shipments}
+        loading={shipmentsLoading}
+        loadFailed={shipmentsFailed}
+        truncated={shipmentsTruncated}
+        onRetry={() => setShipmentsReloadKey((current) => current + 1)}
+      />
 
       {order.payments && order.payments.length > 0 ? (
         <section className="flex flex-col gap-3">
