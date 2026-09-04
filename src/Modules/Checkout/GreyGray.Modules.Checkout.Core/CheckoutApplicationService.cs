@@ -577,6 +577,10 @@ internal sealed class CheckoutApplicationService(
         {
             GoodsTotal = goods.Value,
             HasMixedModes = HasMixedModes(lines.Select(line => line.Mode)),
+
+            // #44：唯一的組裝點，所以只要在這裡帶值，每一條讀車的路都看得到。
+            // 只加屬性不填就是「型別有了沒人填」——測試會綠，線上照樣壞。
+            IsCompleted = cart.IsCompleted,
         };
     }
 

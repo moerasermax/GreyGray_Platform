@@ -14,6 +14,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 
 namespace GreyGray.Modules.Inventory.Infra;
 
@@ -50,6 +51,10 @@ internal sealed class InventoryModule : IModuleRegistration
         });
         services.AddScoped<IInventoryQuery, InventoryAvailabilityQuery>();
         services.TryAddSingleton<EventTypeRegistry>();
+
+        // #46：StockReservationService 要在「已出庫所以不釋放」時留一行紀錄。冪等地補上
+        // logging，測試那幾個手搭的 ServiceProvider 才不必每個都記得加。
+        services.AddLogging();
         services.AddScoped<StockReservationService>(serviceProvider =>
         {
             var dbContext = serviceProvider.GetRequiredService<InventoryDbContext>();
@@ -60,7 +65,8 @@ internal sealed class InventoryModule : IModuleRegistration
                     serviceProvider.GetRequiredService<ICorrelationContext>(),
                     serviceProvider.GetRequiredService<EventTypeRegistry>()),
                 serviceProvider.GetRequiredService<IClock>(),
-                serviceProvider.GetRequiredService<ICorrelationContext>());
+                serviceProvider.GetRequiredService<ICorrelationContext>(),
+                serviceProvider.GetRequiredService<ILogger<StockReservationService>>());
         });
         services.AddScoped<IStockReservation>(serviceProvider =>
             serviceProvider.GetRequiredService<StockReservationService>());

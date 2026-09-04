@@ -151,6 +151,72 @@ public sealed class StorefrontCheckoutEndpointTests
         visible.Value.Status.ShouldBe(OrderStatus.AwaitingPayment);
     }
 
+    // ── #44 結帳成功後讓購物車退休 ─────────────────────────────────────────
+
+    [Fact(DisplayName = "#44 結帳成功就換一台新車：回應帶新的 gg_cart，重放同一把 key 也照樣帶")]
+    public async Task Successful_checkout_retires_the_cart_cookie()
+    {
+        var fixture = new CheckoutEndpointFixture();
+        await fixture.SeedCartLineAsync();
+
+        var (status, _) = await fixture.CheckoutAsync("key-1");
+
+        status.ShouldBe(StatusCodes.Status201Created);
+        var issued = NewCartIdFrom(fixture.LastContext!);
+        issued.ShouldNotBeNull("不換車的話 gg_cart 會一直指著已結案的車，購物車與徽章不會歸零。");
+        issued.ShouldNotBe(fixture.CartId.ToString(), "換的是一台全新的空車。");
+
+        // 選項要跟 ClearCartCookie／SetCartCookie 一致，否則瀏覽器當成兩顆 cookie。
+        var raw = fixture.LastContext!.Response.Headers.SetCookie
+            .Select(cookie => cookie ?? string.Empty)
+            .Last(cookie => cookie.StartsWith("gg_cart=", StringComparison.Ordinal));
+        raw.ShouldContain("path=/");
+        raw.ShouldContain("secure");
+        raw.ShouldContain("samesite=lax");
+        raw.ShouldContain("httponly");
+
+        // ★ 重放：ExecuteIdempotentAsync 兩階段多載在同一把 key 重放時根本不會進 work，
+        // 所以換車的判斷不能寫在 work 裡面。重放一樣要拿得到一台新車。
+        var (replayStatus, _) = await fixture.CheckoutAsync("key-1");
+        replayStatus.ShouldBe(StatusCodes.Status201Created);
+        fixture.Ordering.CreateCalls.ShouldBe(1, "重放不會再建一張訂單。");
+        var replayed = NewCartIdFrom(fixture.LastContext!);
+        replayed.ShouldNotBeNull("重放走的是快取那條路，寫在 work 裡就換不到車了。");
+        replayed.ShouldNotBe(fixture.CartId.ToString());
+    }
+
+    [Fact(DisplayName = "★ #44 串起來：下單成功後拿同一台車再結一次 → 換到新車＋講得出下一步，不是死路")]
+    public async Task Checking_out_the_same_cart_again_hands_out_a_fresh_cart_instead_of_a_dead_end()
+    {
+        var fixture = new CheckoutEndpointFixture();
+        await fixture.SeedCartLineAsync();
+
+        var first = await fixture.CheckoutAsync("key-1");
+        first.Status.ShouldBe(StatusCodes.Status201Created);
+
+        // 正式機發生的事：瀏覽器手上還是那顆舊 cookie（別的分頁、上一頁、或前端沒刷新），
+        // 再按一次「送出訂單」。BE-48 之前這裡連撞 15 次 422，只能重新加商品才脫身。
+        var (status, body) = await fixture.CheckoutAsync("key-2");
+
+        status.ShouldBe(StatusCodes.Status422UnprocessableEntity);
+        // 錯誤碼不動——前端與既有測試都認它；但訊息要講得出下一步，不然客人只能一直撞牆。
+        body.ShouldContain("checkout.cart-already-completed");
+        body.ShouldContain("已經幫你換一台新的");
+
+        var issued = NewCartIdFrom(fixture.LastContext!);
+        issued.ShouldNotBeNull();
+        issued.ShouldNotBe(fixture.CartId.ToString(), "按下一次就脫身：手上已經是一台新的空車。");
+
+        (await fixture.ListOrdersAsync()).Count.ShouldBe(1, "自救不能變成第二張訂單。");
+    }
+
+    /// <summary>回應裡新發的 <c>gg_cart</c>（沒有就是 null）。</summary>
+    private static string? NewCartIdFrom(HttpContext context) => context.Response.Headers.SetCookie
+        .Select(cookie => cookie ?? string.Empty)
+        .Where(cookie => cookie.StartsWith("gg_cart=", StringComparison.Ordinal))
+        .Select(cookie => cookie["gg_cart=".Length..].Split(';')[0])
+        .LastOrDefault();
+
     // ── 必做 3／(B) 購物車結案了但沒有訂單 ──────────────────────────────────
 
     [Fact(DisplayName = "BE-34 (B)：第 ② 步失敗時購物車已結案、訂單沒建立，冪等鍵一樣被 abandon")]
@@ -421,9 +487,13 @@ public sealed class StorefrontCheckoutEndpointTests
 
         public void HealPricingSnapshotRead() => _pricing.SnapshotReadFails = false;
 
+        /// <summary>最後一次 checkout 用的 <see cref="HttpContext"/>——#44 要驗的是 <c>Set-Cookie</c>。</summary>
+        public DefaultHttpContext? LastContext { get; private set; }
+
         public async Task<(int Status, string Body)> CheckoutAsync(string idempotencyKey)
         {
             var context = BuildContext(idempotencyKey);
+            LastContext = context;
             var result = await StorefrontEndpoints.CompleteCheckoutAsync(
                 new StorefrontEndpoints.CompleteCheckoutInput(
                     DeliveryMethod.ConvenienceStore,

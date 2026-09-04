@@ -200,6 +200,96 @@ public sealed class ShipmentDispatchInventoryTests : IAsyncLifetime
         (await ReservationStatusAsync(orderId, cancellationToken)).ShouldBe((short)0);
     }
 
+    // ── #46 取消已出貨的訂單：BE-47 帶進來的回歸 ────────────────────────────
+
+    [Fact(DisplayName =
+        "★ #46 取消已出庫的訂單：安靜成功、不把貨變回可賣，事件不再卡在 outbox 無限重試")]
+    public async Task Cancelling_an_order_that_already_shipped_is_a_no_op_instead_of_throwing()
+    {
+        // 正式機的樣子：outbox 有一則 ordering.OrderCancelled.v1 attempts=9，last_error 是
+        // 「allocation 與 lot 保留量不一致，拒絕部分釋放」。守衛是對的——貨在交運時就離開
+        // 倉庫了，取消訂單不能把它變回可賣庫存，那是退貨入庫的事。錯的是釋放路徑沒先看狀態。
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ResetAsync(cancellationToken);
+        await using var provider = BuildProvider();
+
+        var skuId = SkuId.New();
+        var lotId = await InsertLotAsync(skuId, quantity: 10, unitCostMinor: 2_000, cancellationToken);
+        var orderId = OrderId.New();
+        await ReserveAsync(provider, orderId, skuId, 4, cancellationToken);
+        await DispatchAsync(provider, Dispatch([orderId]), cancellationToken);
+
+        (await OnHandAsync(lotId, cancellationToken)).ShouldBe(6, "10 - 4，交運已經扣掉了。");
+        (await ReservedAsync(lotId, cancellationToken)).ShouldBe(0);
+
+        // BE-48 之前這一行會丟 InvalidOperationException，事件就永遠重試不完。
+        await DispatchAsync(provider, Cancel(orderId), cancellationToken);
+
+        (await OnHandAsync(lotId, cancellationToken)).ShouldBe(6, "★ 貨已經寄出去了，不准變回可賣。");
+        (await ReservedAsync(lotId, cancellationToken)).ShouldBe(0, "保留量早就在交運時歸零了。");
+        (await ReservationStatusAsync(orderId, cancellationToken)).ShouldBe(
+            (short)2,
+            "狀態維持「已出庫」，不會被改寫成「已釋放」。");
+        (await ConsumedAtIsNullAsync(orderId, cancellationToken)).ShouldBeFalse();
+        (await ReleasedAtIsNullAsync(orderId, cancellationToken)).ShouldBeTrue(
+            "沒有釋放這件事發生過，released_at 必須維持 NULL。");
+        (await CountOutboxAsync(StockReleased.EventType, cancellationToken)).ShouldBe(
+            0,
+            "沒有庫存回到可賣，就不該對外宣稱有。");
+    }
+
+    [Fact(DisplayName = "#46 保留中取消：照舊正常釋放，這一支沒有被改壞")]
+    public async Task Cancelling_an_order_that_has_not_shipped_still_releases_the_reservation()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ResetAsync(cancellationToken);
+        await using var provider = BuildProvider();
+
+        var skuId = SkuId.New();
+        var lotId = await InsertLotAsync(skuId, quantity: 10, unitCostMinor: 2_000, cancellationToken);
+        var orderId = OrderId.New();
+        await ReserveAsync(provider, orderId, skuId, 4, cancellationToken);
+        (await ReservedAsync(lotId, cancellationToken)).ShouldBe(4);
+
+        await DispatchAsync(provider, Cancel(orderId), cancellationToken);
+
+        (await OnHandAsync(lotId, cancellationToken)).ShouldBe(10, "還沒出貨，庫存本來就沒動過。");
+        (await ReservedAsync(lotId, cancellationToken)).ShouldBe(0, "保留放回去了。");
+        (await ReservationStatusAsync(orderId, cancellationToken)).ShouldBe((short)1);
+        (await CountOutboxAsync(StockReleased.EventType, cancellationToken)).ShouldBe(1);
+    }
+
+    [Fact(DisplayName = "#46 已釋放再取消一次：仍然安靜成功，不會重複釋放")]
+    public async Task Cancelling_twice_stays_idempotent()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        await ResetAsync(cancellationToken);
+        await using var provider = BuildProvider();
+
+        var skuId = SkuId.New();
+        var lotId = await InsertLotAsync(skuId, quantity: 10, unitCostMinor: 2_000, cancellationToken);
+        var orderId = OrderId.New();
+        await ReserveAsync(provider, orderId, skuId, 4, cancellationToken);
+
+        await DispatchAsync(provider, Cancel(orderId), cancellationToken);
+        // 不同 EventId：框架的 processed_message 擋不到，只有 reservation 狀態擋得住。
+        await DispatchAsync(provider, Cancel(orderId), cancellationToken);
+
+        (await OnHandAsync(lotId, cancellationToken)).ShouldBe(10);
+        (await ReservedAsync(lotId, cancellationToken)).ShouldBe(0);
+        (await CountOutboxAsync(StockReleased.EventType, cancellationToken)).ShouldBe(1);
+    }
+
+    private static OrderCancelled Cancel(OrderId orderId) =>
+        new(
+            Guid.CreateVersion7(),
+            Now,
+            TenantId.Default,
+            orderId,
+            "客人反悔",
+            Money.Zero(Currency.TWD),
+            RefundDestination.StoredValue);
+
     private static ShipmentDispatched Dispatch(IReadOnlyList<OrderId> orderIds) =>
         new(
             Guid.CreateVersion7(),
@@ -240,6 +330,7 @@ public sealed class ShipmentDispatchInventoryTests : IAsyncLifetime
         services.AddSingleton(EventTypeRegistry.FromAssemblies([
             typeof(StockReserved).Assembly,
             typeof(ShipmentDispatched).Assembly,
+            typeof(OrderCancelled).Assembly,
         ]));
         services.AddInventoryModule(configuration);
         return services.BuildServiceProvider();

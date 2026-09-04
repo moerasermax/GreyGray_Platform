@@ -616,7 +616,7 @@ internal static class M1aEndpoints
             input.ConvenienceStoreCode,
             input.BuyerNote,
             key.ToString().Trim());
-        return await BffHttp.ExecuteIdempotentAsync(
+        var result = await BffHttp.ExecuteIdempotentAsync(
             context,
             idempotency,
             "storefront:cart:checkout",
@@ -626,6 +626,18 @@ internal static class M1aEndpoints
                 var completed = await checkout.CompleteAsync(request, token);
                 if (completed.IsFailure)
                 {
+                    // #44 必做 B：cookie 指到的車已經下過單了。錯誤碼不動（前端與既有測試都認它），
+                    // 但換一顆新 cookie 並把訊息改成講得出下一步的話——原本的「購物車已完成結帳。」
+                    // 沒有出口，正式機上使用者就這樣連撞 15 次 422。
+                    // 這裡<b>不</b>拿新車重試 checkout：新車是空的，重試只會換成另一種錯誤。
+                    if (completed.Error.Code == "checkout.cart-already-completed")
+                    {
+                        SetCartCookie(context.Response, CartId.New());
+                        return Result<OrderView>.Failure(
+                            "checkout.cart-already-completed",
+                            "這台購物車已經下過單了，已經幫你換一台新的，請重新加入商品。");
+                    }
+
                     return Result<OrderView>.Failure(completed.Error);
                 }
 
@@ -634,6 +646,19 @@ internal static class M1aEndpoints
             (order, token) => ToOrderAsync(order, catalog, customers, logger, token),
             StatusCodes.Status201Created,
             cancellationToken);
+
+        // #44 必做 A：訂單成立了，那台車再也不能用。不換的話 gg_cart 一直指著已結案的車，
+        // 前台購物車與徽章不會歸零，而再按一次「送出訂單」就是 422（正式機連續 15 次）。
+        // 判斷放在<b>方法回傳之前</b>而不是 work 裡面：ExecuteIdempotentAsync 兩階段多載在
+        // 同一把 Idempotency-Key 重放時<b>根本不會進 work</b>（直接回快取），寫在 work 裡
+        // 重放就換不到車。用回應狀態判斷則兩條路都涵蓋，而且重放時再換一次也無害——
+        // 換到的一樣是一台全新的空車。
+        if (result is IStatusCodeHttpResult { StatusCode: StatusCodes.Status201Created })
+        {
+            SetCartCookie(context.Response, CartId.New());
+        }
+
+        return result;
     }
 
     private static void MapOrders(RouteGroupBuilder api)
@@ -1056,7 +1081,18 @@ internal static class M1aEndpoints
         var cartId = GetOrCreateCartId(context);
         var customer = await GetCustomerAsync(context, sessions, cancellationToken);
         var result = await checkout.GetCartAsync(cartId, customer, cancellationToken);
-        if (hadCartCookie && result.IsFailure && result.Error.Code == "checkout.cart-not-found")
+
+        // #44：這是第二道破口。只修 checkout 那條路的話，購物車頁與徽章還是會顯示上一張單的
+        // 東西——GetCartAsync 對已結案的車照樣回 200，車裡的品項一件不少。比照下面
+        // cart-not-found 的做法：換一顆新 cookie、回空車，客人就能重新開始。
+        // （服務層刻意不把「已結案」變成失敗——/cart/quote 與 /cart/checkout 的語意不動。）
+        if (result.IsSuccess && result.Value.IsCompleted)
+        {
+            cartId = CartId.New();
+            SetCartCookie(context.Response, cartId);
+            result = await checkout.GetCartAsync(cartId, customer, cancellationToken);
+        }
+        else if (hadCartCookie && result.IsFailure && result.Error.Code == "checkout.cart-not-found")
         {
             cartId = CartId.New();
             SetCartCookie(context.Response, cartId);

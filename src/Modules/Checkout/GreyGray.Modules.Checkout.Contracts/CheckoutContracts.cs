@@ -73,6 +73,14 @@ public sealed record CartView(
     public bool HasMixedModes { get; init; }
 
     public Money? GrandTotal { get; init; }
+
+    /// <summary>
+    /// 這台車已經結過帳（<c>Cart.IsCompleted</c>）。#44：Host 手上只有 <c>gg_cart</c> 這顆
+    /// cookie，看不出它指的車是不是已經下過單了——結果下單成功後購物車與徽章一直顯示上一張
+    /// 單的東西，再按「送出訂單」就是 422。<b>init 屬性、有預設值</b>，所以既有的
+    /// <c>new CartView(...)</c> 一個都不用改。
+    /// </summary>
+    public bool IsCompleted { get; init; }
 }
 
 public sealed record CheckoutQuote(

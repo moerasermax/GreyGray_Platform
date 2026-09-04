@@ -4,6 +4,7 @@ using GreyGray.Platform.Abstractions.Messaging;
 using GreyGray.Shared.Kernel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 
 namespace GreyGray.Modules.Inventory.Infra;
@@ -12,7 +13,8 @@ internal sealed class StockReservationService(
     InventoryDbContext dbContext,
     IEventPublisher eventPublisher,
     IClock clock,
-    ICorrelationContext correlationContext) : IStockReservation
+    ICorrelationContext correlationContext,
+    ILogger<StockReservationService> logger) : IStockReservation
 {
     private const short ActiveStatus = 0;
     private const short ReleasedStatus = 1;
@@ -164,6 +166,20 @@ internal sealed class StockReservationService(
             if (reservation.Value.Status == ReleasedStatus)
             {
                 await CommitIfOwnedAsync(ownedTransaction, cancellationToken);
+                return Result.Success();
+            }
+
+            // #46：貨在交運時就離開倉庫了（BE-47 之後保留單轉「已出庫」並把 lot 的
+            // quantity_reserved 扣掉），這時取消訂單<b>不能</b>把它變回可賣庫存——那是退貨
+            // 流程（ReturnReceived → 開新批號入庫，docs/02 §4「拒收退回」）的事，不是釋放。
+            // 少了這一支，OrderCancelled 會一路撞到下面「allocation 與 lot 保留量不一致」的
+            // 一致性守衛（守衛是對的，是它把這個缺口叫出來的），事件就卡在 outbox 無限重試。
+            if (reservation.Value.Status == ConsumedStatus)
+            {
+                await CommitIfOwnedAsync(ownedTransaction, cancellationToken);
+                logger.LogInformation(
+                    "reservation {ReservationId:N} 已出庫，不釋放：貨已交運，回收要走退貨入庫。",
+                    reservation.Value.Id);
                 return Result.Success();
             }
 

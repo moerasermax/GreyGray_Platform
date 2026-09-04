@@ -122,6 +122,53 @@ public sealed class StorefrontCartCookieTests
         NewCartIdFrom(context).ShouldBe(newCartId);
     }
 
+    [Fact(DisplayName = "★ #44 看購物車拿到已結案的車 → 200 空車＋換一顆新 cookie，不是上一張單的品項")]
+    public async Task Getting_a_completed_cart_swaps_the_cookie_and_returns_an_empty_cart()
+    {
+        var fixture = new Fixture();
+        await fixture.SeedCartOwnedByCustomerAsync();
+        await fixture.CompleteCartAsync();
+        var context = fixture.BuildContext(fixture.SessionToken, fixture.CartId);
+
+        var (status, body) = await fixture.ExecuteAsync(
+            context,
+            StorefrontEndpoints.GetCartAsync(
+                context,
+                fixture.Sessions,
+                fixture.Service,
+                TestContext.Current.CancellationToken));
+
+        status.ShouldBe(StatusCodes.Status200OK, body);
+        using var payload = JsonDocument.Parse(body);
+        payload.RootElement.GetProperty("lines").GetArrayLength().ShouldBe(
+            0,
+            "不換車的話購物車頁與徽章會一直顯示上一張單的東西。");
+        NewCartIdFrom(context).ShouldNotBe(fixture.CartId.ToString());
+    }
+
+    [Fact(DisplayName = "★ #44 CartView.IsCompleted 服務端真的有填——只加屬性不填就是型別有了沒人填")]
+    public async Task Cart_view_reports_completion_so_the_host_can_see_it()
+    {
+        var fixture = new Fixture();
+        await fixture.SeedCartOwnedByCustomerAsync();
+
+        var before = await fixture.Service.GetCartAsync(
+            fixture.CartId,
+            fixture.Customer.Id,
+            TestContext.Current.CancellationToken);
+        before.IsSuccess.ShouldBeTrue();
+        before.Value.IsCompleted.ShouldBeFalse();
+
+        await fixture.CompleteCartAsync();
+
+        var after = await fixture.Service.GetCartAsync(
+            fixture.CartId,
+            fixture.Customer.Id,
+            TestContext.Current.CancellationToken);
+        after.IsSuccess.ShouldBeTrue("服務層刻意不把「已結案」變成失敗，語意不動。");
+        after.Value.IsCompleted.ShouldBeTrue("Host 只有 cookie，看不出這台車是不是下過單了。");
+    }
+
     [Fact(DisplayName = "#36 服務層 not-found 語意不變：詢價與結帳拿別人的車仍是 cart-not-found")]
     public async Task Quote_and_checkout_still_report_not_found_for_someone_elses_cart()
     {
@@ -228,6 +275,26 @@ public sealed class StorefrontCartCookieTests
                 TestContext.Current.CancellationToken);
             added.IsSuccess.ShouldBeTrue(
                 added.IsFailure ? $"seed 失敗就沒有測試前提：{added.Error.Code}" : string.Empty);
+        }
+
+        /// <summary>把這台車結掉——#44 要的前提是「已經下過單」。</summary>
+        public async Task CompleteCartAsync()
+        {
+            var completed = await Service.CompleteAsync(
+                new CompleteCheckoutRequest(
+                    CartId,
+                    Customer.Id,
+                    PricingDeliveryMethod.SelfPickup,
+                    null,
+                    null,
+                    null,
+                    null,
+                    "checkout-done"),
+                TestContext.Current.CancellationToken);
+            completed.IsSuccess.ShouldBeTrue(
+                completed.IsFailure
+                    ? $"seed 失敗就沒有測試前提：{completed.Error.Code} {completed.Error.Message}"
+                    : string.Empty);
         }
 
         public DefaultHttpContext BuildContext(string? sessionToken, CartId cartId)
