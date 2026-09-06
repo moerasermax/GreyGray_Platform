@@ -51,6 +51,29 @@ Leader 要明講。
 
 ---
 
+## 生效中：BE-49　綠界五個值缺一個就開不了機——拿掉兩個「悄悄指向測試站」的預設值，`deploy.ps1` 要求並投遞五個值
+
+Leader 2026-09-06 逐行查證：`Payment.Infra/ModuleRegistration.cs` 的 `MerchantId`／`HashKey`／`HashIV` 走 `Required()`（第 105-107 行）沒問題，
+但 `CheckoutUrl`（第 108-109 行）與 `CreditDetailUrl`（第 118-119 行）是 `??` 預設到 **`payment-stage.ecpay.com.tw`**。
+現有的網域守衛 `RequireEcpayEndpoint`（第 152-167 行）只認 `https` ＋ `*.ecpay.com.tw`——**測試站完全符合**，所以它擋得住「指到模擬器」，擋不住「留在測試站」。
+`ops/deploy.ps1` 第 242-248 行只驗三個鍵、第 266-269 行只注入三個，第 245 行的錯誤訊息本身就把格式寫成三鍵。
+**結論：拿到老闆的正式商店代號、照腳本自己的訊息只換三個值，正式金鑰會安靜地打到綠界測試站，一個字都不會抱怨。**
+E3 是上線必要條件、憑證要等老闆，但這個「不會報錯的錯」現在就能治，而且要趁憑證到手之前治好。
+
+★★ 最容易做錯的：① **不要改 `RequireEcpayEndpoint`**（它負責的是另一件事而且是對的）；② **不要把正式站網址變成新的預設值**（只是把病換一個方向）；
+③ 必做 A 會讓一票測試與 `ops/` 腳本開不了機，那是預期的，但要全部掃過補齊（`grep -rn "Payment:ECPay\|Payment__ECPay" src/ tests/ ops/` 目前 12 個檔）；
+④ **模擬器那條路（ADR-029）不能斷**；⑤ `ops/` 的腳本要能在 PowerShell 5.1 跑；⑥ 正式機的 `C:\Source\yc-deploy.ps1` 是 Leader 的事，不在這一包。
+
+package: BE-49
+doc: docs/47-後端第三十三波派工書.md
+allow: src/Modules/Payment/
+allow: ops/
+allow: tests/
+
+> `docs/` 全域放行。契約 YAML、`db/migrations/`、其他業務模組、前端不在 allow——派工書 §2 說明過；真的需要就停下來回報。
+
+---
+
 <!--
 ★ 2026-09-04 已通過整合驗收並提交（後端 `89bb5c5`），撤包。原文保留供追溯。
 
