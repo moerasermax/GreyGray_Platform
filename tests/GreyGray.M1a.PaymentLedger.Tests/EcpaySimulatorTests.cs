@@ -196,8 +196,8 @@ public sealed class EcpaySimulatorTests
         }));
     }
 
-    [Fact(DisplayName = "必做 2：兩個網址都不設（走綠界 stage 預設）時不開旗標也過")]
-    public void The_stage_defaults_still_pass_without_the_flag()
+    [Fact(DisplayName = "必做 2：明確填入綠界 stage 的兩個網址時不開旗標也過")]
+    public void Explicit_stage_urls_pass_without_the_flag()
         => Should.NotThrow(() => ResolveGateway([]));
 
     [Fact(DisplayName = "必做 2：https 的 ecpay.com.tw 子網域放行，http 或別的網域不放行")]
@@ -296,6 +296,8 @@ public sealed class EcpaySimulatorTests
             ["Payment:ECPay:MerchantId"] = FakeMerchantId,
             ["Payment:ECPay:HashKey"] = FakeHashKey,
             ["Payment:ECPay:HashIV"] = FakeHashIv,
+            ["Payment:ECPay:CheckoutUrl"] = "https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5",
+            ["Payment:ECPay:CreditDetailUrl"] = "https://payment-stage.ecpay.com.tw/CreditDetail/DoAction",
         };
         foreach (var pair in overrides)
         {

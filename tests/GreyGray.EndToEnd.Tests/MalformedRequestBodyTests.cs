@@ -147,6 +147,8 @@ public sealed class MalformedRequestBodyTests
             ["Payment__ECPay__MerchantId"] = "DEVFAKE0000",
             ["Payment__ECPay__HashKey"] = "DEVFAKEHASHKEY01",
             ["Payment__ECPay__HashIV"] = "DEVFAKEHASHIV001",
+            ["Payment__ECPay__CheckoutUrl"] = "https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5",
+            ["Payment__ECPay__CreditDetailUrl"] = "https://payment-stage.ecpay.com.tw/CreditDetail/DoAction",
         };
         string[] schemas =
         [

@@ -421,15 +421,16 @@ Write-Host "PASS Identity 個資保護金鑰：$dataProtectionKeyFile（$(if ($d
     現在假值是有目的的：ops\start-dev-ecpay-simulator.ps1 會起一支扮演綠界的
     行程（預設 5009），ops\start-dev-hosts.ps1 -UseEcpaySimulator 會把三個 Host 的
     Payment__ECPay__MerchantId／HashKey／HashIV（DEVFAKE 那一組）與兩個端點網址
-    指過去。要用就加那個開關，不加的話行為跟以前完全一樣。
+    指過去。要用就加那個開關；不加時需自行在父行程投遞五個值，兩個網址必填、沒有預設。
 
     正式碼不受影響：EcpayGateway、回呼判斷、事件、outbox、分錄全部照跑，
     dev 只換掉本來就可設定的 CheckoutUrl／CreditDetailUrl；
     Payment:ECPay:AllowNonEcpayEndpoints（預設 false）會擋住「正式機忘了拿掉 dev 設定」。
 
-    真憑證到手之後的接法沒變：$secretsDir\ecpay.json（格式見 docs/22 §5 必做 4 第 3 點，
-    與正式機同一份格式），存在就讀出三個值注入 Payment__ECPay__MerchantId／
-    HashKey／HashIV，不存在就跳過。正式機那半（ops/deploy.ps1）已經接好了。
+    正式機由 ops/deploy.ps1 讀 $secretsDir\ecpay.json（五鍵格式見該腳本）：
+    MerchantId／HashKey／HashIV／CheckoutUrl／CreditDetailUrl 缺一個就拒絕部署，
+    齊全才注入對應的 Payment__ECPay__*；檔案不存在就跳過。
+    本支整備腳本不讀取或投遞這份檔案。舊版只填三鍵會默默指到測試站，BE-49 已移除網址預設。
 #>
 
 Write-Host "PASS 本機開發環境整備完成：PostgreSQL 17 ($PostgreSqlPort)、Garnet ($GarnetPort)、migrations 0001~0017。"

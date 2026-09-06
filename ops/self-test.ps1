@@ -272,6 +272,78 @@ $deployAst = [System.Management.Automation.Language.Parser]::ParseInput(
     [System.IO.File]::ReadAllText($deployScriptPath, [System.Text.Encoding]::UTF8),
     $deployScriptPath, [ref]$deployTokens, [ref]$deployErrors)
 if ($deployErrors.Count -gt 0) { throw "deploy.ps1 解析失敗：$($deployErrors.Message -join ' | ')" }
+
+# BE-49：執行 deploy 的原始驗鍵與注入片段；ValidateOnly 在讀 ecpay.json 前就返回，驗不到這條路。
+# 只取頂層 $ecpayFile 到機密清除前的 statements，避免啟動部署、NSSM、排程或連線資料庫。
+$ecpayStart = @($deployAst.EndBlock.Statements | Where-Object { $_.Extent.Text -match '^\$ecpayFile\s*=' })
+$ecpayEnd = @($deployAst.EndBlock.Statements | Where-Object { $_.Extent.Text -match '^\$modulePassword\s*=\s*\$null' })
+if ($ecpayStart.Count -ne 1 -or $ecpayEnd.Count -ne 1) { throw '找不到唯一的 ECPay 投遞片段，拒絕空跑。' }
+$ecpayStatements = @($deployAst.EndBlock.Statements | Where-Object {
+    $_.Extent.StartOffset -ge $ecpayStart[0].Extent.StartOffset -and
+    $_.Extent.EndOffset -le $ecpayEnd[0].Extent.StartOffset
+})
+if ($ecpayStatements.Count -eq 0) { throw 'ECPay 投遞片段是空的，拒絕空跑。' }
+$ecpayBlock = [scriptblock]::Create(($ecpayStatements | ForEach-Object { $_.Extent.Text }) -join "`n")
+$ecpayTestRoot = Join-Path ([IO.Path]::GetTempPath()) ('greygray-ecpay-selftest-' + [guid]::NewGuid().ToString('N'))
+
+function Invoke-EcpayDeploymentFixture {
+    param([string]$SecretsDir)
+    $moduleSchemas = @('payment')
+    $DatabaseHost = 'localhost'
+    $DatabasePort = 5432
+    $DatabaseName = 'selftest'
+    $modulePassword = 'fixture-only'
+    $dataProtectionKey = 'fixture-only'
+    # 5.1 的 6> 會依 console 寬度替訊息換行；直接取 InformationRecord 的文字再存檔。
+    $messages = @(. $ecpayBlock 6>&1)
+    $messages | ForEach-Object { $_.ToString() } |
+        Set-Content -LiteralPath (Join-Path $SecretsDir 'output.log') -Encoding UTF8
+    return $secretConnectionStrings
+}
+
+try {
+    New-Item -ItemType Directory -Path $ecpayTestRoot | Out-Null
+    $ecpayTestFile = Join-Path $ecpayTestRoot 'ecpay.json'
+    $fixture = @{
+        MerchantId = 'DEVFAKE0000'; HashKey = 'DEVFAKEHASHKEY01'; HashIV = 'DEVFAKEHASHIV001'
+        CheckoutUrl = 'https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5'
+        CreditDetailUrl = 'https://payment-stage.ecpay.com.tw/CreditDetail/DoAction'
+    }
+    $fixture | ConvertTo-Json | Set-Content -LiteralPath $ecpayTestFile -Encoding UTF8
+    $injected = Invoke-EcpayDeploymentFixture -SecretsDir $ecpayTestRoot
+    foreach ($key in $fixture.Keys) {
+        if ($injected["Payment__ECPay__$key"] -cne $fixture[$key]) { throw "ECPay $key 未原樣注入。" }
+    }
+
+    # 每個鍵各驗缺少、空字串、空白；錯誤訊息需點名鍵，JSON 範例也必須含五鍵。
+    foreach ($key in $fixture.Keys) {
+        foreach ($badValue in @($null, '', '   ')) {
+            $invalid = $fixture.Clone()
+            if ($null -eq $badValue) { $invalid.Remove($key) } else { $invalid[$key] = $badValue }
+            $invalid | ConvertTo-Json | Set-Content -LiteralPath $ecpayTestFile -Encoding UTF8
+            $failure = $null
+            try { Invoke-EcpayDeploymentFixture -SecretsDir $ecpayTestRoot | Out-Null }
+            catch { $failure = $_.Exception.Message }
+            if ($null -eq $failure -or -not $failure.Contains("缺少或空白的 $key")) { throw "ECPay $key 缺少或空白未被明確拒絕。" }
+            foreach ($exampleKey in $fixture.Keys) {
+                if (-not $failure.Contains('"' + $exampleKey + '"')) { throw "ECPay 錯誤訊息的 JSON 範例漏了 $exampleKey。" }
+            }
+        }
+    }
+    Remove-Item -LiteralPath $ecpayTestFile
+    $withoutFile = Invoke-EcpayDeploymentFixture -SecretsDir $ecpayTestRoot
+    if (@($withoutFile.Keys | Where-Object { $_ -like 'Payment__ECPay__*' }).Count -ne 0) { throw '缺 ecpay.json 時不應注入 ECPay 設定。' }
+    $expectedMessage = "⚠ 找不到 $ecpayTestFile；Payment:ECPay:* 不注入，Payment 模組會照舊明確報缺設定（等 E3 憑證到位）。"
+    if ((Get-Content -LiteralPath (Join-Path $ecpayTestRoot 'output.log') -Raw -Encoding UTF8).Trim() -cne $expectedMessage) { throw '缺 ecpay.json 的既有訊息被改變。' }
+    Write-Host 'PASS ECPay 五鍵投遞：值原樣注入；五鍵 × 缺少／空字串／空白共 15 案拒絕且 JSON 範例完整；缺檔不注入且訊息不變'
+}
+finally {
+    $resolvedEcpayRoot = [IO.Path]::GetFullPath($ecpayTestRoot)
+    $allowedEcpayPrefix = Join-Path ([IO.Path]::GetFullPath([IO.Path]::GetTempPath())) 'greygray-ecpay-selftest-'
+    if (-not $resolvedEcpayRoot.StartsWith($allowedEcpayPrefix, [StringComparison]::OrdinalIgnoreCase)) { throw '拒絕清除非 ECPay 測試暫存路徑。' }
+    if (Test-Path -LiteralPath $resolvedEcpayRoot) { Remove-Item -LiteralPath $resolvedEcpayRoot -Recurse -Force }
+}
+
 $closureCalls = @($deployAst.FindAll({
     param($node)
     $node -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and

@@ -105,18 +105,25 @@ internal sealed class PaymentModule : IModuleRegistration
         var merchantId = Required(configuration, "Payment:ECPay:MerchantId");
         var hashKey = Required(configuration, "Payment:ECPay:HashKey");
         var hashIv = Required(configuration, "Payment:ECPay:HashIV");
-        var checkout = configuration["Payment:ECPay:CheckoutUrl"] ??
-            "https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5";
+        // BE-49：只填三個憑證值會讓正式金鑰安靜地打到測試站，網址必須由投遞者明確選擇。
+        // docs/46「D3 開張資料基準與還原演練」要求還原設定且隔離對外副作用；不可用預設猜環境。
+        var checkout = Required(configuration, "Payment:ECPay:CheckoutUrl",
+            "正式站：https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5；" +
+            "測試站：https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5。" +
+            "這兩個網址刻意沒有預設，因為預設會讓正式金鑰安靜地打到測試站。");
         if (!Uri.TryCreate(checkout, UriKind.Absolute, out var checkoutUrl))
         {
             throw new InvalidOperationException("Payment:ECPay:CheckoutUrl 必須是絕對網址。");
         }
 
-        // 退刷／關帳 API（DoAction）：正式站與 aio 導轉頁不同網域，要另一個設定鍵。
+        // 退刷／關帳 API（DoAction）與 aio 導轉頁不同路徑，要另一個設定鍵。
         // 綠界官方文件明講測試環境「因無法提供實際授權，故無法使用此 API」——
         // stage 網址只是給簽章／串接層面驗證用，不代表能在 stage 真的退成功。
-        var creditDetail = configuration["Payment:ECPay:CreditDetailUrl"] ??
-            "https://payment-stage.ecpay.com.tw/CreditDetail/DoAction";
+        var creditDetail = Required(configuration, "Payment:ECPay:CreditDetailUrl",
+            "正式站：https://payment.ecpay.com.tw/CreditDetail/DoAction；" +
+            "測試站串接設定：https://payment-stage.ecpay.com.tw/CreditDetail/DoAction" +
+            "（綠界測試環境不支援實際授權／退刷）。" +
+            "這兩個網址刻意沒有預設，因為預設會讓正式金鑰安靜地打到測試站。");
         if (!Uri.TryCreate(creditDetail, UriKind.Absolute, out var creditDetailUrl))
         {
             throw new InvalidOperationException("Payment:ECPay:CreditDetailUrl 必須是絕對網址。");
@@ -166,11 +173,11 @@ internal sealed class PaymentModule : IModuleRegistration
             "必須明確把 'Payment:ECPay:AllowNonEcpayEndpoints' 設成 true。");
     }
 
-    private static string Required(IConfiguration configuration, string key)
+    private static string Required(IConfiguration configuration, string key, string guidance = "")
     {
         var value = configuration[key];
         return !string.IsNullOrWhiteSpace(value)
             ? value
-            : throw new InvalidOperationException($"缺少綠界設定 '{key}'。");
+            : throw new InvalidOperationException($"缺少綠界設定 '{key}'。" + guidance);
     }
 }

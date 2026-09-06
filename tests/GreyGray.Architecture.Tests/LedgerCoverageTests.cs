@@ -202,6 +202,8 @@ public sealed class LedgerCoverageTests
             ["Payment:ECPay:MerchantId"] = "2000132",
             ["Payment:ECPay:HashKey"] = "5294y06JbISpM5x9",
             ["Payment:ECPay:HashIV"] = "v77hoKGq4kWxNNIS",
+            ["Payment:ECPay:CheckoutUrl"] = "https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5",
+            ["Payment:ECPay:CreditDetailUrl"] = "https://payment-stage.ecpay.com.tw/CreditDetail/DoAction",
         };
         foreach (var schema in ModuleSchemas)
         {

@@ -226,26 +226,28 @@ Write-Host "✓ Identity 個資保護金鑰：$dataProtectionKeyFile（$(if ($da
 
 <#
     綠界憑證（E3）：正式商店代號與金鑰是老闆要去辦的事，不是這支腳本能生的。
-    這裡只把管道接好——憑證到手之後把檔案放進 $secretsDir\ecpay.json 就好，
-    不必再改任何程式：
+    憑證到手之後，把三個憑證值與兩個必填網址一起放進 $secretsDir\ecpay.json。
+    舊版只給三個會打到測試站；現在五個值缺一個就拒絕部署，兩個網址刻意沒有預設。
+    以下是正式站範例；測試站請將兩個網址的 host 明確填成 payment-stage.ecpay.com.tw
+    （測試站 DoAction 僅供串接設定，不支援實際退刷），不必改任何程式：
 
-        { "MerchantId": "...", "HashKey": "...", "HashIV": "..." }
+        { "MerchantId": "...", "HashKey": "...", "HashIV": "...", "CheckoutUrl": "https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5", "CreditDetailUrl": "https://payment.ecpay.com.tw/CreditDetail/DoAction" }
 
     檔案不存在就跳過（不 throw）。Payment 模組維持現有的清楚報錯
-    （ModuleRegistration.cs:105-107 的 Required），比灌一組編出來的假值好。
+    （ModuleRegistration.cs 的 Required），比灌一組編出來的假值好。
 #>
 $ecpayFile = Join-Path $secretsDir 'ecpay.json'
 $ecpaySettings = $null
 if (Test-Path -LiteralPath $ecpayFile -PathType Leaf) {
     $ecpaySettings = Get-Content -LiteralPath $ecpayFile -Raw | ConvertFrom-Json
-    foreach ($key in @('MerchantId', 'HashKey', 'HashIV')) {
+    foreach ($key in @('MerchantId', 'HashKey', 'HashIV', 'CheckoutUrl', 'CreditDetailUrl')) {
         # StrictMode 下不存在的屬性會直接丟，所以先問 PSObject 有沒有這個名字。
         $present = @($ecpaySettings.PSObject.Properties.Name) -contains $key
         if (-not $present -or [string]::IsNullOrWhiteSpace([string]$ecpaySettings.$key)) {
-            throw "$ecpayFile 缺少或空白的 $key；格式：{ ""MerchantId"": ""..."", ""HashKey"": ""..."", ""HashIV"": ""..."" }"
+            throw "$ecpayFile 缺少或空白的 $key；正式站格式：{ ""MerchantId"": ""..."", ""HashKey"": ""..."", ""HashIV"": ""..."", ""CheckoutUrl"": ""https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5"", ""CreditDetailUrl"": ""https://payment.ecpay.com.tw/CreditDetail/DoAction"" }；測試站請明確填入 payment-stage.ecpay.com.tw 的對應網址（DoAction 不支援實際退刷）。兩個網址刻意沒有預設，避免正式金鑰安靜地打到測試站。"
         }
     }
-    Write-Host "✓ 綠界憑證：$ecpayFile 三個鍵齊全，將注入三個 .NET 服務"
+    Write-Host "✓ 綠界憑證：$ecpayFile 五個鍵齊全，將注入三個 .NET 服務"
 }
 else {
     Write-Host "⚠ 找不到 $ecpayFile；Payment:ECPay:* 不注入，Payment 模組會照舊明確報缺設定（等 E3 憑證到位）。"
@@ -267,6 +269,8 @@ if ($null -ne $ecpaySettings) {
     $secretConnectionStrings['Payment__ECPay__MerchantId'] = [string]$ecpaySettings.MerchantId
     $secretConnectionStrings['Payment__ECPay__HashKey'] = [string]$ecpaySettings.HashKey
     $secretConnectionStrings['Payment__ECPay__HashIV'] = [string]$ecpaySettings.HashIV
+    $secretConnectionStrings['Payment__ECPay__CheckoutUrl'] = [string]$ecpaySettings.CheckoutUrl
+    $secretConnectionStrings['Payment__ECPay__CreditDetailUrl'] = [string]$ecpaySettings.CreditDetailUrl
 }
 $modulePassword = $null
 $dataProtectionKey = $null

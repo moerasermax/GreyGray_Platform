@@ -10,7 +10,7 @@ using GreyGray.Tools.EcpaySimulator.Core;
 //   → 顯示 webhook 的回應（預期 1|OK）→ 提供「返回商店」（ClientBackURL）。
 // 另外回應退刷 /CreditDetail/DoAction。
 //
-// 換回正式綠界 ＝ 不設 Payment:ECPay:CheckoutUrl／CreditDetailUrl（或設正式站）＋ 真憑證
+// 換回正式綠界 ＝ 明確填入 Payment:ECPay:CheckoutUrl／CreditDetailUrl 的正式站網址（兩者必填、沒有預設）＋ 真憑證
 //              ＋ 不開 Payment:ECPay:AllowNonEcpayEndpoints。沒有任何一行程式碼要改。
 
 var builder = WebApplication.CreateBuilder(args);

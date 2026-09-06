@@ -57,6 +57,8 @@ $environment = @{
     'Payment__ECPay__MerchantId'   = 'DEVFAKE0000'
     'Payment__ECPay__HashKey'      = 'DEVFAKEHASHKEY01'
     'Payment__ECPay__HashIV'       = 'DEVFAKEHASHIV001'
+    'Payment__ECPay__CheckoutUrl'  = "http://127.0.0.1:$Port/Cashier/AioCheckOut/V5"
+    'Payment__ECPay__CreditDetailUrl' = "http://127.0.0.1:$Port/CreditDetail/DoAction"
 }
 
 $proc = Start-Process -FilePath $exe -WorkingDirectory (Split-Path -Parent $exe) `

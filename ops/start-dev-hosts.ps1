@@ -137,7 +137,8 @@ function Wait-HealthOk {
 #
 # 假的不是我們的 adapter，假的是綠界的伺服器。這裡只換掉「本來就可設定」的兩個端點網址，
 # 外加明確打開 AllowNonEcpayEndpoints——正式機忘了拿掉這些設定會在 DI 解析期立刻炸。
-# 換回正式綠界 ＝ 不加 -UseEcpaySimulator ＋ 真憑證。沒有任何一行程式碼要改。
+# 換回正式綠界 ＝ 不加 -UseEcpaySimulator ＋ 真憑證 ＋ 明確投遞 CheckoutUrl／CreditDetailUrl。
+# 不開模擬器時，五個 Payment__ECPay__* 值由父行程環境提供；兩個網址必填、沒有預設。
 #
 # 退款跑在 Worker（Payment.Infra/OrderingEventHandlers），所以三個 Host 都要拿到這一組。
 $ecpayEnv = @{}

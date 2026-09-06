@@ -247,6 +247,8 @@ public sealed class CustomerNotificationFlowTests : IAsyncLifetime
             ["Payment__ECPay__MerchantId"] = "2000132",
             ["Payment__ECPay__HashKey"] = "5294y06JbISpM5x9",
             ["Payment__ECPay__HashIV"] = "v77hoKGq4kWxNNIS",
+            ["Payment__ECPay__CheckoutUrl"] = "https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5",
+            ["Payment__ECPay__CreditDetailUrl"] = "https://payment-stage.ecpay.com.tw/CreditDetail/DoAction",
         };
         foreach (var schema in WorkerModuleSchemas)
         {
