@@ -51,6 +51,16 @@ Leader 要明講。
 
 ---
 
+<!--
+★ 2026-09-06 已通過整合驗收並提交（後端 `2ad080a`），撤包。原文保留供追溯。
+
+兩輪。第一輪子代理**還沒動任何原始碼就停下來**，指出必做 E 自相矛盾（`ops/build.ps1:39` 無條件跑整支 `ops/test.ps1`，與「分專案前景跑」不可能同時成立——這個矛盾從 BE-46 之後每一份派工書都帶著），並回報 `EcpaySimulator/Program.cs:13` 的註解會在 E3 換憑證那一刻誤導人。兩則裁決見 `docs/47` §6；第二條補了 `src/Tools/GreyGray.Tools.EcpaySimulator/` 的授權（只准改那一句註解）。
+第二輪交付：兩個網址改走 `Required()`（錯誤訊息同時給正式站與測試站網址，網址是去查綠界官方文件抄的）、`RequireEcpayEndpoint` 零改動、`deploy.ps1` 五鍵齊全才過並全部投遞、12 個設定點補齊、`ops/self-test.ps1` 加五鍵投遞與缺鍵拒絕的檢查並在 PowerShell 5.1 實跑。先讓新測試在舊實作上紅了 6 條才移除預設，又注入違規版本反向確認，原始碼以 SHA-256 確認逐位元還原。測試 315 → **332**。
+Leader 驗：`dotnet build -c Debug` 0/0、12 專案 332（0 失敗、2 個既有 Skip）、`check-openapi` PASS、`ops/self-test.ps1` 全過、`selftest.sh` claude 137／codex 139、audit 通過、`git diff` 逐行（契約 YAML、其他業務模組、前端零改動）。
+★ 部署前必做（Leader）：正式機 `yc-deploy.ps1` 與 YC 上的 `ecpay.json` 要先改成五個值，否則部署後三個服務會拒絕開機。
+★ 行為變更：`ops\start-dev-hosts.ps1` 不加 `-UseEcpaySimulator` 時，父行程必須提供五個 `Payment__ECPay__*` 值。
+留下：`ops/build.ps1` 該不該有「只建置」的參數（子代理提，裁決不在這一包做）。
+
 ## 生效中：BE-49　綠界五個值缺一個就開不了機——拿掉兩個「悄悄指向測試站」的預設值，`deploy.ps1` 要求並投遞五個值
 
 Leader 2026-09-06 逐行查證：`Payment.Infra/ModuleRegistration.cs` 的 `MerchantId`／`HashKey`／`HashIV` 走 `Required()`（第 105-107 行）沒問題，
@@ -69,9 +79,12 @@ doc: docs/47-後端第三十三波派工書.md
 allow: src/Modules/Payment/
 allow: ops/
 allow: tests/
+allow: src/Tools/GreyGray.Tools.EcpaySimulator/
 
 > `docs/` 全域放行。契約 YAML、`db/migrations/`、其他業務模組、前端不在 allow——派工書 §2 說明過；真的需要就停下來回報。
+> **2026-09-06 Leader 補授權**：`src/Tools/GreyGray.Tools.EcpaySimulator/` —— 子代理查證後回報 `Program.cs:13` 附近的註解說「換回正式綠界可以不設兩個 URL」，必做 A 之後那句話會是錯的，而且會剛好在 E3 換憑證那一刻誤導人。**只准改那一句註解，不准動那支工具的行為。**
 
+-->
 ---
 
 <!--

@@ -1,6 +1,14 @@
 # 啟動 prompt
 
-**生效中：第三十七波兩包並行（2026-09-06）——後端 BE-49（綠界五個值 fail-loud）＋ 前端 FE-30（#48／#49 兩張列表頁）。**兩包分屬兩棵樹、`allow` 零重疊。基準：後端 `cf2e770`、前端 `72b885b`；測試基準 後端 **315**／前端 **481**。
+**目前沒有生效中的派工（2026-09-06 下午）。** 第三十七波兩包都已驗收撤包：後端 **BE-49**（`2ad080a`：綠界五個值缺一個就開不了機，測試 315 → **332**）＋ 前端 **FE-30**（`398f37a`：出貨單與訂單在列表上互相看得見，測試 481 → **500**）。**這一波還沒有部署。**
+
+★★ **部署這一波之前一定要先做**：正式機 `C:\Source\yc-deploy.ps1` 與 YC 上的 `secrets\ecpay.json` 改成五個值（`MerchantId`／`HashKey`／`HashIV`／`CheckoutUrl`／`CreditDetailUrl`），**否則部署後三個 .NET 服務會拒絕開機**——那是 BE-49 刻意造成的行為。
+
+★ **BE-49 的子代理還沒動任何原始碼就停下來**，指出必做 E 自相矛盾：`ops/build.ps1:39` 無條件跑整支 `ops/test.ps1`，與「測試分專案前景跑」不可能同時成立。**這個矛盾從 BE-46 之後每一份派工書都帶著（BE-46／BE-47／BE-48 各一次），前面三包都照著跑、只是剛好沒炸。**下一波寫派工書時：建置寫 `dotnet build .\GreyGray.slnx -c Debug --nologo`，並要求把 `GreyGray.Architecture.Tests` 列進分專案清單、單獨貼出 `Total:`。
+
+★ **行為變更**：`ops\start-dev-hosts.ps1` 不加 `-UseEcpaySimulator` 時，父行程必須提供五個 `Payment__ECPay__*` 值（以前三個就夠，網址吃預設）。
+
+第三十七波這兩包分屬兩棵樹、`allow` 零重疊；派工時的基準是後端 `d49cf9b`、前端 `c78480d`，測試基準 後端 315／前端 481。上一波（第三十六波）BE-48 `89bb5c5`／FE-29 `b241f48` 也早已撤包並部署（release `20260904015905167`）。
 
 ★ 這一波之前 Leader 先補了 `docs/45-開發工作流與設計準則.md`（兩棵樹共用、**已加進 `audit-dispatch.sh` ⑦ 的比對清單**）＋ ADR-034（架構準則的界線）／ADR-035（跨平台手機）。閘門檔改過，所以稽核 **⑩ 會要求重跑 `selftest.sh`**（兩棵樹 × 兩個 agent，共四次）。
 ★ 使用者 2026-09-06 拍板 D3：測試資料**全部不留、全新資料庫重建**；**11 月中開張**，在那之前要開發完、測試完，而且使用者要自己做紅隊攻擊。計畫書 `docs/46-D3開張資料基準與還原演練計畫書.md`（後端樹）。
@@ -42,7 +50,7 @@ ADR-030：規則的主人是後端——契約 `shippingPolicy` 改成「混合�
 
 ---
 
-## BE-49 的啟動 prompt（生效中）
+## BE-49 的啟動 prompt（已撤包，保留供參考）
 
 ```
 專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
@@ -99,7 +107,7 @@ git checkout -- .、以及 git commit。
 
 ---
 
-## FE-30 的啟動 prompt（生效中；在前端樹）
+## FE-30 的啟動 prompt（已撤包，保留供參考；在前端樹）
 
 ```
 專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe
