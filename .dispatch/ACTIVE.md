@@ -51,6 +51,29 @@ Leader 要明講。
 
 ---
 
+## 生效中：FE-30　兩張列表頁補上「這張出貨單掛哪張訂單」（#48）與「這張訂單的出貨進度」（#49）
+
+使用者 2026-09-04 明確說這兩件放優化，但它們是**會產生錯誤業務資料**的操作面缺口：那天兩張相隔四秒建立的出貨單日期／配送方式／狀態全一樣，
+使用者**真的把交運按在別張訂單的出貨單上**。`shipments/page.tsx` 第 117-125 行的欄位只有「N 張（合併出貨）」沒有編號；
+`orders/page.tsx` 第 123-170 行的欄位完全沒有出貨資訊——FE-29 只做了訂單詳情頁那一側。
+
+★ 判斷用的純函式 FE-29 已經寫好而且有測試：`shipments/_lib/orderShipments.ts`（`shipmentsOfOrder` 第 46 行、`summarizeOrderShipments` 第 53 行、
+`orderShipmentSummaryText` 第 76 行、`countShipmentsByOrderId` 第 111 行）。**這一包重用，不准複製一份**。
+資料照 `shipments/[shipmentId]/page.tsx` 第 46-49／70-76 行既有的模式（`limit: 100` 一次抓、前端組 map、拿不到就退回原始 id 且不擋整頁），**契約零改動**。
+
+★★ 最容易做錯的：① 訂單 map 查不到要退回 `id.slice(0,8)`，不是空白；② 一張出貨單可以掛多張訂單，`orderIds` 是陣列；
+③ **不要每一列各打一次 API**（訂單列表有分頁，那是 N+1）；④ `limit: 100` 只有第一頁，不要顯示會騙人的總數；
+⑤ 已取消的訂單不要顯示會誤導的進度文字。
+
+package: FE-30
+doc: docs/33-前端第十九波派工書.md
+allow: frontend/apps/admin/app/(dash)/orders/
+allow: frontend/apps/admin/app/(dash)/shipments/
+
+> `docs/` 全域放行。契約、`packages/*`、前台 `apps/storefront`、`shipments/[shipmentId]/page.tsx` 的交運／送達流程不在範圍——派工書 §2 說明過。
+
+---
+
 <!--
 ★ 2026-09-04 已通過整合驗收並提交（前端 `b241f48`），撤包。原文保留供追溯。
 

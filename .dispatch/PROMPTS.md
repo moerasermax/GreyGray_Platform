@@ -1,6 +1,11 @@
 # 啟動 prompt
 
-**目前沒有生效中的派工（2026-09-04 上午）。** 第三十六波兩包都已驗收撤包：後端 BE-48（`89bb5c5`：#44 結帳成功後讓購物車退休、#46 取消已出貨訂單不再卡住，測試 308 → 315）＋ 前端 FE-29（`b241f48`：#45 讓「掛了幾張出貨單、還差幾張沒簽收」看得見，測試 461 → 481）。第六次部署 release `20260904015905167` 一次過。
+**生效中：第三十七波兩包並行（2026-09-06）——後端 BE-49（綠界五個值 fail-loud）＋ 前端 FE-30（#48／#49 兩張列表頁）。**兩包分屬兩棵樹、`allow` 零重疊。基準：後端 `cf2e770`、前端 `72b885b`；測試基準 後端 **315**／前端 **481**。
+
+★ 這一波之前 Leader 先補了 `docs/45-開發工作流與設計準則.md`（兩棵樹共用、**已加進 `audit-dispatch.sh` ⑦ 的比對清單**）＋ ADR-034（架構準則的界線）／ADR-035（跨平台手機）。閘門檔改過，所以稽核 **⑩ 會要求重跑 `selftest.sh`**（兩棵樹 × 兩個 agent，共四次）。
+★ 使用者 2026-09-06 拍板 D3：測試資料**全部不留、全新資料庫重建**；**11 月中開張**，在那之前要開發完、測試完，而且使用者要自己做紅隊攻擊。計畫書 `docs/46-D3開張資料基準與還原演練計畫書.md`（後端樹）。
+
+上一波（第三十六波）已撤包： 第三十六波兩包都已驗收撤包：後端 BE-48（`89bb5c5`：#44 結帳成功後讓購物車退休、#46 取消已出貨訂單不再卡住，測試 308 → 315）＋ 前端 FE-29（`b241f48`：#45 讓「掛了幾張出貨單、還差幾張沒簽收」看得見，測試 461 → 481）。第六次部署 release `20260904015905167` 一次過。
 下一波派工前先讀 `ACTIVE.md` 的「已經通過」清單與本檔最後一節「下一波派工前」。
 
 ★ **BE-48**：正式機 log 有連續 15 次 `POST /v1/cart/checkout` → 422「購物車已完成結帳」——下單成功後 `gg_cart` 還指著已結案的車，全站只有「加入商品」那條路會換車。修：結帳成功就換新車、撞到已結案時換車並給自救指引、`GET /v1/cart` 拿到已結案的車也換（`CartView` 加 init 屬性且服務端要真的填值）。另修 BE-47 的回歸：取消已出貨的訂單時 `ReleaseByKeyAsync` 要對「已出庫」安靜跳過（那是退貨流程的事）。
@@ -34,6 +39,117 @@ tunnel `greygray`（`7daa50aa-…`）與兩筆 DNS Leader 已在 YC 上建好；
 ADR-030：規則的主人是後端——契約 `shippingPolicy` 改成「混合才必填」（向下相容），後端混合沒帶回 422、單一模式依 line 組成推導。
 併：壞 body 兩個環境都回 400 problem+json；#36 登出清 `gg_cart`＋「不是你的車」換新車；#38 兩支 dev 啟動腳本改 `Start-Process -Environment`。
 ★ dev Host 現在是 Release 在跑、使用者正在走旅程：子代理一律 `-Configuration Debug`，不准停 dev 行程。
+
+---
+
+## BE-49 的啟動 prompt（生效中）
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
+GreyGray Platform 後端（.NET 10 modular monolith）。這一包動 Payment 模組的組合根、ops/、tests。沒有契約變更、沒有 migration、沒有前端。
+
+GG_PACKAGE=BE-49
+
+開工前務必先讀：
+  CLAUDE.md                          六條鐵則 ＋ 派工規則
+  docs/45-開發工作流與設計準則.md      ★ 新增（兩棵樹共用）：設計準則、平行派工、自驗＝必要不充分、§6 邊界測試六類
+  docs/47-後端第三十三波派工書.md      ★ 整份讀完：§0 事實（所有行號）＋ §1 必做 A～E ＋ §2 不要做 ＋ §5 可能寫錯的地方
+  src/Modules/Payment/GreyGray.Modules.Payment.Infra/ModuleRegistration.cs   第 103-146（ReadEcpaySettings）、152-167（RequireEcpayEndpoint，不要改）、169-175（Required）
+  ops/deploy.ps1                     第 229 附近（說明文字）、237-251（驗鍵）、266-269（注入）
+  .dispatch/reports/README.md        ★ 自驗報告格式，以及「測試要分專案前景跑」
+
+這一包要治的是一個「不會報錯的錯」：只填 MerchantId／HashKey／HashIV 三個值時，
+CheckoutUrl 與 CreditDetailUrl 會 ?? 預設到 payment-stage.ecpay.com.tw，
+而現有的網域守衛認得 *.ecpay.com.tw，所以測試站完全通過——正式金鑰會安靜地打到綠界測試站。
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/BE-49.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 不准把驗證丟背景、不准排程 wakeup。要跑的是：
+     ops\build.ps1 -Configuration Debug（0 警告 0 錯誤）
+     測試分專案前景跑，基準 315 ＋ 你新增的，逐專案條數貼進報告
+     ops\check-openapi.ps1 -Configuration Debug（這一包不該動契約，要維持綠燈）
+     pwsh -File ops\self-test.ps1（改過 deploy.ps1 就要跑，BE-45 已有 20 項）
+     bash .dispatch/audit-dispatch.sh
+     輸出貼進報告。
+
+★ 不要改 RequireEcpayEndpoint（第 152-167 行）——它負責的是「正式機忘了拿掉 dev 模擬器設定」，做對了它該做的事。
+★ 不要把正式站網址變成新的預設值，那只是把同一個病換一個方向。
+★ 必做 A 會讓一票測試與 ops/ 腳本開不了機，那是預期的：用
+  grep -rn "Payment:ECPay\|Payment__ECPay" src/ tests/ ops/
+  掃過（目前 12 個檔）逐一補上兩個網址鍵，讓每個地方實際打到哪裡都不變——這一包只把「隱含」變成「明講」。
+★ 模擬器那條路（ADR-029：AllowNonEcpayEndpoints=true ＋ 兩個網址指到模擬器）必須繼續可用，改完實際跑一次 EcpaySimulatorTests。
+★ ops/ 的腳本要能在 PowerShell 5.1 跑（正式機只有 5.1），不要用 .NET 5+ 才有的 API。
+★ 正式機的 C:\Source\yc-deploy.ps1 不在這棵樹裡，也不在這一包——那是 Leader 的事，不要試著連線。
+★ 派工書 §5 列了五個可能寫錯的地方：撞到就停下來寫進報告問，不要自己換做法。
+
+★ 質疑被鼓勵，但不准自己改方向：派工書寫錯了就停下來寫進報告問，
+  不要一邊照做一邊在報告裡抱怨，也不要自己換一個做法。
+
+檔案所有權：見派工書 §3（ACTIVE.md 的 allow 是機械執行的那份）。
+docs/、management/、STATE.md、CLAUDE.md、AGENTS.md 每一包都寫得了。
+
+不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
+git checkout -- .、以及 git commit。
+
+你不可以自己宣告通過。交付完就停。
+```
+
+---
+
+## FE-30 的啟動 prompt（生效中；在前端樹）
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe
+GreyGray Platform 前端（Next.js ＋ pnpm workspace）。這一包只動 apps/admin 的 orders/ 與 shipments/ 兩個路由資料夾。不動契約、不動 packages/*、不動前台。
+
+GG_PACKAGE=FE-30
+
+開工前務必先讀：
+  CLAUDE.md                          前端四條 ＋ 派工規則
+  docs/45-開發工作流與設計準則.md      ★ 新增（兩棵樹共用）：§5 自驗＝必要不充分、§6 邊界測試六類
+  docs/33-前端第十九波派工書.md        ★ 整份讀完：§0 事實（所有行號）＋ §1 必做 A～D ＋ §2 不要做 ＋ §5 可能寫錯的地方
+  frontend/apps/admin/app/(dash)/shipments/_lib/orderShipments.ts   FE-29 已寫好的純函式（第 46／53／76／111 行），這一包重用、不要複製
+  frontend/apps/admin/app/(dash)/shipments/[shipmentId]/page.tsx    第 46-49、70-76 行：limit:100 一次抓 ＋ 前端組 map ＋ 拿不到就退回原始 id 且不擋整頁
+  .dispatch/reports/README.md        ★ 自驗報告格式
+
+這一包補的是 FE-29 只做了一半的方向：訂單看得到它的出貨單，但
+出貨單列表看不出掛的是哪一張訂單（使用者 2026-09-04 因此把交運按錯單），
+訂單列表也看不出出貨進度。
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/FE-30.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 不准把驗證丟背景、不准排程 wakeup。要跑的是：
+     pnpm --recursive typecheck（全綠）
+     pnpm --recursive test（基準 481 ＋ 你新增的，逐專案條數貼進報告）
+     bash .dispatch/audit-dispatch.sh
+     輸出貼進報告。build 由 Leader 跑，你不跑；不要起或停任何 dev server。
+
+★ 不要複製 orderShipments.ts 的邏輯到 orders/ 底下，跨資料夾 import 現成那份；標籤用 shipments/_lib/labels.ts。
+★ 訂單 map 查不到要退回 id.slice(0,8)，不是空白——查不到跟沒有掛訂單是兩件事。
+★ 一張出貨單可以掛多張訂單，orderIds 是陣列。
+★ 不要每一列各打一次 API（訂單列表有分頁，那是 N+1）：一次 limit:100 抓完前端比對，並在註解寫明這是刻意的取捨。
+★ 不要顯示會騙人的總數（例如「共 N 張」），除非確定沒有下一頁。
+★ 已取消的訂單不要顯示會誤導的出貨進度文字。
+★ 邊界測試要涵蓋派工書 §1 必做 C 那五項（含「讀取失敗時兩張頁面都還能渲染其他欄位」）。
+★ 派工書 §5 列了可能寫錯的地方：撞到就停下來寫進報告問，不要自己換做法。
+
+★ 質疑被鼓勵，但不准自己改方向：派工書寫錯了就停下來寫進報告問，
+  不要一邊照做一邊在報告裡抱怨，也不要自己換一個做法。
+
+檔案所有權：見派工書 §3（ACTIVE.md 的 allow 是機械執行的那份）。
+docs/、management/、STATE.md、CLAUDE.md、AGENTS.md 每一包都寫得了。
+
+不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
+git checkout -- .、以及 git commit。
+
+你不可以自己宣告通過。交付完就停。
+```
 
 ---
 

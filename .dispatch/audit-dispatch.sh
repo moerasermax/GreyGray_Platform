@@ -298,7 +298,7 @@ else
   # 只要有一次忘了，兩棵樹的判斷規則就不一樣，而且沒有任何東西會說話。
   # ★ .claude/settings.json 刻意不在這張清單裡——它帶各樹自己的
   #   CLAUDE_PROJECT_DIR 後備路徑，那三行本來就該不同，不要去「同步」它。
-  for f in docs/00-decisions.md docs/05-API契約.md            docs/api/openapi.admin.yaml docs/api/openapi.storefront.yaml \
+  for f in docs/00-decisions.md docs/05-API契約.md docs/45-開發工作流與設計準則.md            docs/api/openapi.admin.yaml docs/api/openapi.storefront.yaml \
            .dispatch/lib.sh .dispatch/shell-guard-lib.sh .dispatch/selftest.sh \
            .dispatch/audit-dispatch.sh .dispatch/gate-fingerprint.sh .dispatch/check-progress.py \
            .dispatch/PROMPTS.md .dispatch/reports/README.md \
