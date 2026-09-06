@@ -1,6 +1,7 @@
 'use client';
 
 import { ApiError, formatMoney } from '@greygray/api-client';
+import { listOrders } from '@greygray/api-client/endpoints/admin';
 import {
   DataTable,
   ErrorState,
@@ -22,6 +23,7 @@ import { createShipment, listShipments, type CreateShipmentRequest, type ListShi
 import { shipmentMethodLabel, shipmentStatusLabel, shipmentStatusTone } from './_lib/labels';
 import { Button } from './_components/Button';
 import { CreateShipmentDialog } from './_components/CreateShipmentDialog';
+import { ShipmentOrderLinksCell } from './_components/ShipmentOrderLinksCell';
 
 type S = components['schemas'];
 type Shipment = S['AdminShipment'];
@@ -50,6 +52,8 @@ export default function ShipmentsPage() {
   const [error, setError] = useState<ApiError | Error | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
+  const [orderNumberByOrderId, setOrderNumberByOrderId] = useState<ReadonlyMap<string, string>>(new Map());
+  const [ordersLoadFailed, setOrdersLoadFailed] = useState(false);
 
   function buildQuery(cursor?: string): ListShipmentsQuery {
     return {
@@ -79,6 +83,27 @@ export default function ShipmentsPage() {
       cancelled = true;
     };
   }, [status, reloadKey]);
+
+  // 出貨單掛的是哪一張訂單（#48）：契約沒有「依出貨單反查訂單」的端點，這裡撈一頁
+  // 訂單在前端組 map；跟出貨單列表本身的抓取分開，失敗只讓「訂單」欄退化，不擋整個
+  // 列表（做法照 `[shipmentId]/page.tsx` 第 67-82 行）。M1b 資料量吃得下 limit:100
+  // 這個刻意的取捨，只影響訂單編號查得到查不到，不影響 orderIds 本身（那是出貨單
+  // 自己的欄位），所以不會出現騙人的總數。
+  useEffect(() => {
+    let cancelled = false;
+    void listOrders(browserApi(), { limit: 100 }).then(
+      (page) => {
+        if (cancelled) return;
+        setOrderNumberByOrderId(new Map(page.items.map((order) => [order.id, order.orderNumber])));
+      },
+      () => {
+        if (!cancelled) setOrdersLoadFailed(true);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleLoadMore() {
     if (!nextCursor) return;
@@ -116,11 +141,13 @@ export default function ShipmentsPage() {
     },
     {
       key: 'orderIds',
-      header: '訂單數',
+      header: '訂單',
       renderCell: (row) => (
-        <td className="px-3 py-2 text-fg">
-          {row.orderIds.length} 張{row.orderIds.length > 1 ? '（合併出貨）' : ''}
-        </td>
+        <ShipmentOrderLinksCell
+          orderIds={row.orderIds}
+          orderNumberByOrderId={orderNumberByOrderId}
+          ordersLoadFailed={ordersLoadFailed}
+        />
       ),
     },
     {

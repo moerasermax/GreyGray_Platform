@@ -17,6 +17,8 @@ import {
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { browserApi } from '../../_lib/apiClient';
+import { listShipments } from '../shipments/_lib/api';
+import { ShipmentProgressCell } from './_components/ShipmentProgressCell';
 import { orderStatusLabel, orderStatusTone } from './_lib/labels';
 import type { ListAdminOrdersQuery } from '@greygray/api-client/endpoints/admin';
 
@@ -49,11 +51,36 @@ export default function OrdersPage() {
   const [error, setError] = useState<ApiError | Error | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
+  // 出貨進度欄（#49）。契約沒有「依訂單查出貨單」的篩選，撈一頁在前端用 `orderIds`
+  // 比對——同一個模式在 `[orderId]/page.tsx` 第 60-63 行、`shipments/[shipmentId]/page.tsx`
+  // 第 24-26 行已經用了。一次抓、前端比對，不對每一列各打一次 API（訂單列表有分頁，
+  // 那會變成 N+1）；有下一頁時文案自己講「可能不完整」，不假裝張數是總數。
+  const [shipments, setShipments] = useState<readonly S['AdminShipment'][]>([]);
+  const [shipmentsFailed, setShipmentsFailed] = useState(false);
+  const [shipmentsTruncated, setShipmentsTruncated] = useState(false);
+
   // 搜尋框打字去抖動，避免每個按鍵都打一次 API。
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQ(q.trim()), 300);
     return () => clearTimeout(timer);
   }, [q]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void listShipments(browserApi(), { limit: 100 }).then(
+      (page) => {
+        if (cancelled) return;
+        setShipments(page.items);
+        setShipmentsTruncated(page.nextCursor != null);
+      },
+      () => {
+        if (!cancelled) setShipmentsFailed(true);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -144,6 +171,18 @@ export default function OrdersPage() {
         <td className="px-3 py-2">
           <StatusPill label={orderStatusLabel(row.status)} tone={orderStatusTone(row.status)} />
         </td>
+      ),
+    },
+    {
+      key: 'shipmentProgress',
+      header: '出貨進度',
+      renderCell: (row) => (
+        <ShipmentProgressCell
+          orderId={row.id}
+          orderStatus={row.status}
+          shipments={shipmentsFailed ? null : shipments}
+          truncated={shipmentsTruncated}
+        />
       ),
     },
     {
