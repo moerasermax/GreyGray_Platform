@@ -164,6 +164,7 @@ describe('activeTabHref：現在停在哪一個分頁', () => {
     ['/orders/abc123', '/me'],
     ['/wallet', '/me'],
     ['/addresses', '/me'],
+    ['/favorites', '/me'],
     ['/login', '/me'],
     ['/register', '/me'],
   ])('%s 亮的是 %s', (pathname, expected) => {

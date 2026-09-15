@@ -411,6 +411,141 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/favorites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 我的最愛
+         * @description 最新收藏的在前（ADR-036）。**只列出目前看得到的商品**——判定與 `GET /v1/products/{productId}` 相同
+         *     （商品上架，而且至少有一個上架中的規格），在分頁之前過濾。
+         *     收藏之後不再符合的商品不會刪掉收藏紀錄，只是不出現在這裡；恢復之後就會回來。
+         *     清單裡的商品可能還沒定價（`priceFrom` 為 `null`）。每一筆的 `isFavorited` 恆為 `true`。
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description 上一頁回傳的 `nextCursor`。第一頁不帶。 */
+                    cursor?: components["parameters"]["Cursor"];
+                    limit?: components["parameters"]["Limit"];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["ProductListItem"][];
+                            nextCursor: string | null;
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                /** @description `catalog.invalid-cursor`（cursor 無效，或 limit 不在 1 到 100 之間） */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/favorites/{productId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: components["schemas"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 加入最愛
+         * @description **冪等**：已經在最愛裡再加一次也回 `204`。
+         *     可收藏的判定與 `GET /v1/products/{productId}` 相同——那支回 `404` 的（不存在或已下架），這裡也回 `404`。
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header: {
+                    /** @description 同一個使用者動作用同一把 key，重試時不變。詳見 `docs/05-API契約.md` §4。 */
+                    "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                };
+                path: {
+                    productId: components["schemas"]["Id"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 已在最愛裡 */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        post?: never;
+        /**
+         * 移出最愛
+         * @description **冪等**：本來就不在最愛裡也回 `204`，也不因商品已下架而失敗。
+         *     只有 `productId` 格式不合法時回 `404`（與其他路由參數一致）。
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header: {
+                    /** @description 同一個使用者動作用同一把 key，重試時不變。詳見 `docs/05-API契約.md` §4。 */
+                    "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                };
+                path: {
+                    productId: components["schemas"]["Id"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 已不在最愛裡 */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["Unauthorized"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/categories": {
         parameters: {
             query?: never;
@@ -1494,7 +1629,7 @@ export interface components {
             unitPriceLabel?: string | null;
             /** @description 前台卡片上的標籤。已知值：`New` · `Popular` · `LastCall`。前端要容忍未知值。 */
             badges: string[];
-            /** @description 未登入時恆為 false。 */
+            /** @description 登入時反映這位客戶的最愛（ADR-036）；未登入時恆為 false。 */
             isFavorited: boolean;
             mode?: components["schemas"]["FulfillmentMode"];
             /** @description `mode = Preorder` 時指向所屬的團。 */
@@ -1537,6 +1672,7 @@ export interface components {
             /** @description `mode = Preorder` 時附上團的摘要，前端要顯示截團倒數。 */
             campaign?: components["schemas"]["CampaignListItem"] | null;
             skus: components["schemas"]["Sku"][];
+            /** @description 登入時反映這位客戶的最愛（ADR-036）；未登入時恆為 false。 */
             isFavorited?: boolean;
         };
         /**

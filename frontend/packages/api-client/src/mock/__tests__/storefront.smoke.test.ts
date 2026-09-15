@@ -41,6 +41,36 @@ describe('storefront mock：每個 M1a 端點打一次，回應要通過型別�
     expect(detail.skus.length).toBeGreaterThan(0);
   });
 
+  it('最愛列表：最新收藏在前、能翻到末頁，且未定價商品仍會出現', async () => {
+    const first = await api.listFavorites(client, { limit: 1 });
+    expect(first.items).toHaveLength(1);
+    expect(first.items[0]?.priceFrom).toBeNull();
+    expect(first.items[0]?.isFavorited).toBe(true);
+    expect(first.nextCursor).not.toBeNull();
+
+    const second = await api.listFavorites(client, { cursor: first.nextCursor!, limit: 100 });
+    expect(second.items.length).toBeGreaterThan(0);
+    expect(second.nextCursor).toBeNull();
+  });
+
+  it('最愛 PUT 重放只留一筆；DELETE 對不存在的收藏仍回 204', async () => {
+    const products = await api.listProducts(client, { limit: 100 });
+    const target = products.items.find((product) => !product.isFavorited);
+    expect(target).toBeDefined();
+    const replayOptions = { idempotencyKey: 'favorite-put-replay' };
+
+    await api.addFavorite(client, target!.id, replayOptions);
+    await api.addFavorite(client, target!.id, replayOptions);
+    const afterPut = await api.listFavorites(client, { limit: 100 });
+    expect(afterPut.items.filter((product) => product.id === target!.id)).toHaveLength(1);
+    expect(afterPut.items[0]?.id).toBe(target!.id);
+
+    await api.removeFavorite(client, target!.id, { idempotencyKey: 'favorite-delete-once' });
+    await api.removeFavorite(client, target!.id, { idempotencyKey: 'favorite-delete-replay' });
+    const afterDelete = await api.listFavorites(client, { limit: 100 });
+    expect(afterDelete.items.some((product) => product.id === target!.id)).toBe(false);
+  });
+
   it('campaigns 預設只回 Open', async () => {
     const page = await api.listCampaigns(client);
     for (const c of page.items) expect(c.status).toBe('Open');
@@ -208,5 +238,31 @@ describe('storefront mock：錯誤情境', () => {
       expect((error as ApiError).status).toBe(500);
       expect((error as ApiError).problem.title).toBe('系統發生問題，請稍後再試。');
     }
+  });
+
+  it('404：不存在的商品不能加入最愛', async () => {
+    await expect(
+      api.addFavorite(client, '00000000-0000-0000-0000-000000000000', mutationOptions()),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('DELETE 最愛：合法但不存在的 id 仍 204，格式不合法才 404', async () => {
+    await expect(
+      api.removeFavorite(client, '00000000000000000000000000000000', mutationOptions()),
+    ).resolves.toBeUndefined();
+    await expect(api.removeFavorite(client, 'not-an-id', mutationOptions())).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+
+  it('422：最愛列表拒絕壞 cursor 與超出 1 到 100 的 limit', async () => {
+    await expect(api.listFavorites(client, { cursor: 'not-a-cursor' })).rejects.toMatchObject({
+      status: 422,
+      code: 'catalog.invalid-cursor',
+    });
+    await expect(api.listFavorites(client, { limit: 101 })).rejects.toMatchObject({
+      status: 422,
+      code: 'catalog.invalid-cursor',
+    });
   });
 });

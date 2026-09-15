@@ -25,6 +25,7 @@ import { usePayloadIdempotency } from '../../_lib/usePayloadIdempotency';
 import { isUnauthorized } from '../_lib/authRedirect';
 import { generalErrorMessage, traceIdOf } from '../_lib/formErrors';
 import { performLogout } from './logout';
+import { InfoLinks } from '../../(info)/_components/InfoLinks';
 
 type Me = components['schemas']['Me'];
 
@@ -33,6 +34,7 @@ const ACCOUNT_LINKS: ReadonlyArray<{ href: string; label: string; description: s
   { href: '/orders', label: '我的訂單', description: '查看訂單狀態、付款與取消' },
   { href: '/addresses', label: '收件地址', description: '管理宅配用的收件地址' },
   { href: '/wallet', label: '儲值金', description: '查看目前的儲值金餘額' },
+  { href: '/favorites', label: '我的最愛', description: '收藏的商品' },
 ];
 
 const LOGOUT_FAILED_MESSAGE = '登出時發生問題，請稍後再試。';
@@ -137,6 +139,11 @@ export default function MePage() {
               </Link>
             ))}
           </nav>
+
+          <Card className="flex flex-col gap-[var(--gg-space-2)]">
+            <p className="font-bold text-fg">幫助與資訊</p>
+            <InfoLinks />
+          </Card>
 
           <div className="flex flex-col gap-[var(--gg-space-2)]">
             {logoutError && (

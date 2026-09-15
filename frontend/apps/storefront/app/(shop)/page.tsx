@@ -4,6 +4,7 @@ import { HomeSearchHeader } from './_components/HomeSearchHeader';
 import { HeroBanner } from './_components/HeroBanner';
 import { CategoryRail } from './_components/CategoryRail';
 import { ProductWall } from './_components/ProductWall';
+import { InfoLinks } from '../(info)/_components/InfoLinks';
 
 /**
  * 首頁走 SSR：搜尋列 ＋ 頭像 → 柔粉漸層 banner ＋ 圓形產品 →
@@ -32,6 +33,11 @@ export default async function HomePage() {
         <h2 className="font-display text-[length:var(--gg-text-lg)] font-bold text-fg">為你精選</h2>
         <ProductWall products={products.items} />
       </section>
+
+      {/* 匿名訪客的唯一入口——「我的」要登入才看得到，見 (info)/_components/InfoLinks.tsx */}
+      <footer className="border-t border-border-soft pt-[var(--gg-space-4)]">
+        <InfoLinks />
+      </footer>
     </main>
   );
 }

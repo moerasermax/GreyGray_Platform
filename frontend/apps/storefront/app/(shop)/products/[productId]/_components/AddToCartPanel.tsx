@@ -1,13 +1,17 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { BottomActionBar, Button, FavoriteHeart, QuantityStepper, Toast } from '@greygray/ui';
 import { addCartLine } from '@greygray/api-client/endpoints/storefront';
 import { formatMoney, ApiError } from '@greygray/api-client';
 import type { components } from '@greygray/api-client/storefront';
 import { browserApi } from '../../../../_lib/apiClient';
+import { useFavoriteToggle } from '../../../../_lib/favorites';
 import { usePayloadIdempotency } from '../../../../_lib/usePayloadIdempotency';
 import { publishCart } from '../../../../_lib/cartCountStore';
+import { loginHrefForCurrentPage } from '../../../../(account)/_lib/authRedirect';
+import { executeCartIntent, type CartIntent } from '../_lib/buyNow';
 import { BottomBarSummary } from './BottomBarSummary';
 import { UnitPriceBlock } from './UnitPriceBlock';
 
@@ -28,14 +32,20 @@ export interface AddToCartPanelProps {
  *   預購商品的 `available` 恆為 0，那個規則不適用在這裡。
  */
 export function AddToCartPanel({ product }: AddToCartPanelProps) {
+  const router = useRouter();
   const idempotency = usePayloadIdempotency();
+  const pendingRef = useRef(false);
   const skus = product.skus;
   const hasVariants = skus.length > 1;
   const [selectedSkuId, setSelectedSkuId] = useState(skus[0]?.id ?? '');
   const [quantity, setQuantity] = useState(1);
-  const [favorited, setFavorited] = useState(product.isFavorited ?? false);
   const [state, setState] = useState<SubmitState>('idle');
   const [errorMessage, setErrorMessage] = useState('');
+  const favorite = useFavoriteToggle({
+    productId: product.id,
+    initialFavorited: product.isFavorited ?? false,
+    onUnauthorized: () => router.replace(loginHrefForCurrentPage()),
+  });
 
   const selectedSku = useMemo(
     () => skus.find((sku) => sku.id === selectedSkuId) ?? skus[0],
@@ -76,26 +86,39 @@ export function AddToCartPanel({ product }: AddToCartPanelProps) {
 
   const maxQuantity = !isPreorder && hasPrice ? Math.max(selectedSku.available, 1) : 99;
 
-  async function handleAdd() {
+  async function handleAdd(intent: CartIntent) {
     if (!selectedSku || disabled) return;
-    setState('loading');
-    try {
-      const body = {
-        skuId: selectedSku.id,
-        mode: product.mode,
-        campaignOfferId: selectedSku.campaignOfferId ?? null,
-        quantity,
-      };
-      const updated = await addCartLine(browserApi(), body, { idempotencyKey: idempotency.current(body) });
-      idempotency.complete();
-      // 端點回的就是更新後的整張購物車，直接推給分頁列的徽章——不必等重新整理，也不用自己 +1。
-      publishCart(updated);
-      setState('success');
-    } catch (cause) {
-      setState('error');
-      setErrorMessage(cause instanceof ApiError ? cause.problem.title : '加入購物車失敗，請稍後再試。');
-    }
+    const body = {
+      skuId: selectedSku.id,
+      mode: product.mode,
+      campaignOfferId: selectedSku.campaignOfferId ?? null,
+      quantity,
+    };
+    await executeCartIntent({
+      intent,
+      selection: { skuId: selectedSku.id, quantity },
+      pendingRef,
+      addLine: async () => {
+        const updated = await addCartLine(browserApi(), body, {
+          idempotencyKey: idempotency.current(body),
+        });
+        idempotency.complete();
+        return updated;
+      },
+      onStart: () => setState('loading'),
+      // 端點回的就是整張購物車，不自行加總徽章。
+      onCartUpdated: publishCart,
+      onAdded: () => setState('success'),
+      onNavigate: (href) => router.push(href),
+      onError: (cause) => {
+        setState('error');
+        setErrorMessage(cause instanceof ApiError ? cause.problem.title : '加入購物車失敗，請稍後再試。');
+      },
+    });
   }
+
+  const actionLoading = state === 'loading';
+  const actionDisabled = disabled || actionLoading;
 
   return (
     <div className="flex flex-col gap-[var(--gg-space-4)]">
@@ -132,9 +155,9 @@ export function AddToCartPanel({ product }: AddToCartPanelProps) {
 
       <div className="flex items-center gap-[var(--gg-space-3)]">
         <FavoriteHeart
-          pressed={favorited}
-          onToggle={() => setFavorited((value) => !value)}
-          aria-label={favorited ? `取消收藏 ${product.name}` : `加入收藏 ${product.name}`}
+          pressed={favorite.favorited}
+          onToggle={() => void favorite.toggle()}
+          aria-label={favorite.favorited ? `取消收藏 ${product.name}` : `加入收藏 ${product.name}`}
         />
         <QuantityStepper
           value={quantity}
@@ -149,15 +172,33 @@ export function AddToCartPanel({ product }: AddToCartPanelProps) {
       {disabledReason && <p className="text-[length:var(--gg-text-sm)] text-danger">{disabledReason}</p>}
 
       <BottomActionBar>
-        <div className="flex flex-1 items-center justify-between gap-[var(--gg-space-3)]">
-          <BottomBarSummary quantity={quantity} price={price} unitPriceLabel={unitPriceLabel} />
-          <Button onClick={handleAdd} disabled={disabled} loading={state === 'loading'}>
-            加入購物車
-          </Button>
+        <div className="flex min-w-0 flex-1 items-center gap-[var(--gg-space-2)]">
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <BottomBarSummary quantity={quantity} price={price} unitPriceLabel={unitPriceLabel} />
+          </div>
+          <div className="flex shrink-0 gap-[var(--gg-space-2)]">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void handleAdd('add-to-cart')}
+              disabled={actionDisabled}
+              loading={actionLoading}
+            >
+              加入購物車
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void handleAdd('buy-now')}
+              disabled={actionDisabled}
+              loading={actionLoading}
+            >
+              立即購買
+            </Button>
+          </div>
         </div>
       </BottomActionBar>
 
-      <div className="fixed inset-x-[var(--gg-space-4)] bottom-[calc(var(--gg-bottom-bar-height)+var(--gg-space-3))] z-[var(--gg-z-modal)] mx-auto max-w-sm">
+      <div className="fixed inset-x-[var(--gg-space-4)] bottom-[calc(var(--gg-bottom-bar-height)+var(--gg-space-3))] z-[var(--gg-z-modal)] mx-auto flex max-w-sm flex-col gap-[var(--gg-space-2)]">
         {/*
           #32：提示裡要有一條真的走得到購物車的路。5 秒不是隨手挑的——
           預設的 2.5 秒是「看一眼」的長度，按不到的按鈕比沒有按鈕更糟。
@@ -171,6 +212,13 @@ export function AddToCartPanel({ product }: AddToCartPanelProps) {
           action={{ label: '查看購物車', href: '/cart' }}
         />
         <Toast open={state === 'error'} variant="error" message={errorMessage} onClose={() => setState('idle')} duration={4000} />
+        <Toast
+          open={favorite.errorMessage !== null}
+          variant="error"
+          message={favorite.errorMessage ?? ''}
+          onClose={favorite.clearError}
+          duration={4000}
+        />
       </div>
     </div>
   );

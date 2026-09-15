@@ -44,6 +44,9 @@ let addressList: S['ShippingAddress'][] = addressFixtures.map((a) => ({ ...a }))
 let cartLines: S['CartLine'][] = initialCartLines();
 let cartQuote: S['QuoteResult'] | null = null;
 let ordersStore: S['Order'][] = orderFixtures.map((o) => ({ ...o }));
+const initialFavoriteProductIds = () =>
+  productListItems.filter((product) => product.isFavorited).map((product) => product.id).reverse();
+let favoriteProductIds: string[] = initialFavoriteProductIds();
 
 /** 測試之間重置 mock 的可變狀態，避免前一個測試的購物車／訂單影響下一個。 */
 export function resetStorefrontMockState(): void {
@@ -52,6 +55,7 @@ export function resetStorefrontMockState(): void {
   cartLines = initialCartLines();
   cartQuote = null;
   ordersStore = orderFixtures.map((o) => ({ ...o }));
+  favoriteProductIds = initialFavoriteProductIds();
   if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(SESSION_KEY);
 }
 
@@ -77,13 +81,14 @@ function loadSession(): void {
     if (!raw) return;
     const d = JSON.parse(raw) as Partial<{
       me: S['Me']; addressList: S['ShippingAddress'][]; cartLines: S['CartLine'][];
-      cartQuote: S['QuoteResult'] | null; ordersStore: S['Order'][];
+      cartQuote: S['QuoteResult'] | null; ordersStore: S['Order'][]; favoriteProductIds: string[];
     }>;
     if (d.me) me = d.me;
     if (d.addressList) addressList = d.addressList;
     if (d.cartLines) cartLines = d.cartLines;
     if (d.cartQuote !== undefined) cartQuote = d.cartQuote;
     if (d.ordersStore) ordersStore = d.ordersStore;
+    if (d.favoriteProductIds) favoriteProductIds = d.favoriteProductIds;
   } catch {
     // 壞掉的話就用初始 fixture，不要讓 mock 自己炸掉整頁
   }
@@ -93,7 +98,7 @@ function saveSession(): void {
   if (typeof sessionStorage === 'undefined') return;
   try {
     sessionStorage.setItem(SESSION_KEY,
-      JSON.stringify({ me, addressList, cartLines, cartQuote, ordersStore }));
+      JSON.stringify({ me, addressList, cartLines, cartQuote, ordersStore, favoriteProductIds }));
   } catch {
     // 配額滿了就算了，mock 不值得為此中斷
   }
@@ -183,6 +188,44 @@ export const storefrontHandlers = [
 
   http.get(url('/v1/me/stored-value'), () => HttpResponse.json(storedValueBalance)),
 
+  http.get(url('/v1/me/favorites'), ({ request }) => {
+    const q = new URL(request.url).searchParams;
+    const cursor = q.get('cursor') ?? undefined;
+    const limitText = q.get('limit');
+    const limit = limitText === null ? undefined : Number(limitText);
+    const invalidCursor = cursor !== undefined && !/^\d+$/.test(cursor);
+    const invalidLimit = limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 100);
+    if (invalidCursor || invalidLimit) {
+      return jsonProblem(problem(422, 'catalog.invalid-cursor', '分頁游標或筆數不正確。'));
+    }
+
+    const items = favoriteProductIds
+      .map((productId) => productListItems.find((product) => product.id === productId))
+      .filter((product): product is S['ProductListItem'] => product !== undefined)
+      .map((product) => ({ ...product, isFavorited: true }));
+    return HttpResponse.json(paginate(items, cursor, limit));
+  }),
+
+  http.put(url('/v1/me/favorites/:productId'), ({ params }) => {
+    const productId = String(params.productId);
+    if (!productDetailsById.has(productId)) {
+      return jsonProblem(problem(404, 'platform.not-found', '找不到這個商品。'));
+    }
+    if (!favoriteProductIds.includes(productId)) {
+      favoriteProductIds = [productId, ...favoriteProductIds];
+    }
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.delete(url('/v1/me/favorites/:productId'), ({ params }) => {
+    const productId = String(params.productId);
+    if (!/^[0-9a-f]{32}$/i.test(productId)) {
+      return jsonProblem(problem(404, 'platform.not-found', '找不到這個商品。'));
+    }
+    favoriteProductIds = favoriteProductIds.filter((id) => id !== productId);
+    return new HttpResponse(null, { status: 204 });
+  }),
+
   // ── catalog ───────────────────────────────────────────────────────────
   http.get(url('/v1/categories'), () => HttpResponse.json(categories)),
 
@@ -204,13 +247,17 @@ export const storefrontHandlers = [
       return true;
     });
 
-    return HttpResponse.json(paginate(filtered, cursor, limit));
+    return HttpResponse.json(paginate(
+      filtered.map((product) => ({ ...product, isFavorited: favoriteProductIds.includes(product.id) })),
+      cursor,
+      limit,
+    ));
   }),
 
   http.get(url('/v1/products/:productId'), ({ params }) => {
     const detail = productDetailsById.get(String(params.productId));
     if (!detail) return jsonProblem(problem(404, 'platform.not-found', '找不到這個商品。'));
-    return HttpResponse.json(detail);
+    return HttpResponse.json({ ...detail, isFavorited: favoriteProductIds.includes(detail.id) });
   }),
 
   // ── campaign ──────────────────────────────────────────────────────────

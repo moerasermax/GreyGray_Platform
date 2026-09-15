@@ -7,7 +7,7 @@
  */
 
 import type { ApiClient, Page } from '../http';
-import type { components } from '../types.storefront';
+import type { components, paths } from '../types.storefront';
 
 type S = components['schemas'];
 /** `RequestOptions.query` 要求索引簽章；具名 query 介面沒有，這裡轉一手。 */
@@ -77,6 +77,11 @@ export interface ListOrdersQuery {
   readonly limit?: number;
 }
 
+type ListFavoritesOperation = paths['/v1/me/favorites']['get'];
+export type ListFavoritesQuery = NonNullable<ListFavoritesOperation['parameters']['query']>;
+type ListFavoritesResponse = ListFavoritesOperation['responses'][200]['content']['application/json'];
+type FavoriteProductId = paths['/v1/me/favorites/{productId}']['parameters']['path']['productId'];
+
 // ── auth ──────────────────────────────────────────────────────────────────
 
 export function register(
@@ -139,6 +144,30 @@ export function getStoredValueBalance(
   options: { signal?: AbortSignal } = {},
 ): Promise<{ balance: S['Money'] }> {
   return client.get('/v1/me/stored-value', options);
+}
+
+export function listFavorites(
+  client: ApiClient,
+  query: ListFavoritesQuery = {},
+  options: { signal?: AbortSignal } = {},
+): Promise<ListFavoritesResponse> {
+  return client.get('/v1/me/favorites', { query: query as QueryRecord, ...options });
+}
+
+export function addFavorite(
+  client: ApiClient,
+  productId: FavoriteProductId,
+  options: MutationOptions,
+): Promise<void> {
+  return client.put(`/v1/me/favorites/${productId}`, { ...options });
+}
+
+export function removeFavorite(
+  client: ApiClient,
+  productId: FavoriteProductId,
+  options: MutationOptions,
+): Promise<void> {
+  return client.delete(`/v1/me/favorites/${productId}`, { ...options });
 }
 
 // ── catalog ───────────────────────────────────────────────────────────────

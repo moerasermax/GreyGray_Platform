@@ -119,7 +119,7 @@ interface ProductSeed {
   readonly categoryId: string;
   readonly mode: S['FulfillmentMode'];
   readonly campaignId?: string;
-  readonly unitPriceNTD: number;
+  readonly unitPriceNTD: number | null;
   readonly unitOfMeasure?: string;
   readonly unitCount?: number;
   readonly badges: string[];
@@ -450,6 +450,18 @@ const PRODUCT_SEEDS: readonly ProductSeed[] = [
     available: 300,
     isFavorited: true,
   },
+  {
+    key: '旅行收納袋-未定價',
+    name: '旅行收納袋',
+    shortDescription: '新品價格確認中，先收藏之後再回來看。',
+    description: '輕量旅行收納袋，商品已上架，售價仍在確認中。',
+    categoryId: CATEGORY_IDS.household,
+    mode: 'Stock',
+    unitPriceNTD: null,
+    badges: ['New'],
+    available: 20,
+    isFavorited: true,
+  },
 ];
 
 interface BuiltProduct {
@@ -460,7 +472,7 @@ interface BuiltProduct {
 
 function buildProduct(seed: ProductSeed): BuiltProduct {
   const productId = hexId(`product:${seed.key}`);
-  const price = twd(seed.unitPriceNTD);
+  const price = seed.unitPriceNTD === null ? null : twd(seed.unitPriceNTD);
   const variantNames = seed.variants ?? [seed.name];
   const campaignOfferIdFor = (variantName: string): string | null =>
     seed.mode === 'Preorder' ? hexId(`offer:${seed.key}:${variantName}`) : null;
@@ -479,7 +491,7 @@ function buildProduct(seed: ProductSeed): BuiltProduct {
     campaignOfferId: campaignOfferIdFor(variantName),
   }));
 
-  const unitPriceLabel = seed.unitOfMeasure
+  const unitPriceLabel = seed.unitPriceNTD !== null && seed.unitOfMeasure
     ? `NT$${seed.unitPriceNTD}／${seed.unitCount ?? 1} ${seed.unitOfMeasure}`
     : null;
 

@@ -18,6 +18,9 @@ import { CartLineRow } from '../_components/CartLineRow';
 import { useCart } from '../_lib/useCart';
 import { blockingAvailabilityWarning } from '../_lib/cartRules';
 import { describeError } from '../_lib/errorDisplay';
+import { shouldShowBuyNowNotice } from '../_lib/buyNowNotice';
+
+const BUY_NOW_NOTICE = '購物車裡還有其他商品，或這件商品原本就在購物車裡，請確認品項與數量後再結帳。';
 
 /*
  * #32：這一頁的分頁列被自己的 `BottomActionBar` 擠掉了，畫面上只有「前往結帳」——
@@ -28,9 +31,23 @@ import { describeError } from '../_lib/errorDisplay';
  * 內容原封不動搬進 `CartPageContent`，版面與邏輯零改動。
  */
 export default function CartPage() {
+  const [showBuyNowNotice, setShowBuyNowNotice] = useState(false);
+
+  useEffect(() => {
+    setShowBuyNowNotice(shouldShowBuyNowNotice(window.location.search));
+  }, []);
+
   return (
     <>
       <PageTopBar title="購物車" />
+      {showBuyNowNotice && (
+        <p
+          role="status"
+          className="mx-auto mt-[var(--gg-space-3)] max-w-[var(--gg-container-max)] px-[var(--gg-space-4)] text-[length:var(--gg-text-sm)] text-primary-text"
+        >
+          {BUY_NOW_NOTICE}
+        </p>
+      )}
       <CartPageContent />
     </>
   );

@@ -21,6 +21,9 @@
 | PUT | `/v1/me/addresses/{addressId}` | `updateAddress` |
 | DELETE | `/v1/me/addresses/{addressId}` | `deleteAddress` |
 | GET | `/v1/me/stored-value` | `getStoredValueBalance` |
+| GET | `/v1/me/favorites` | `listFavorites` |
+| PUT | `/v1/me/favorites/{productId}` | `addFavorite` |
+| DELETE | `/v1/me/favorites/{productId}` | `removeFavorite` |
 | GET | `/v1/categories` | `listCategories` |
 | GET | `/v1/products` | `listProducts` |
 | GET | `/v1/products/{productId}` | `getProduct` |
@@ -86,4 +89,4 @@ const me = await storefrontApi.getMe(client);
 ```
 
 `endpoints/*.ts` 的函式簽章一律是 `(client, ...參數, options?) => Promise<T>`，
-`options` 只有寫入端點才有，形狀是 `{ idempotencyKey?, signal? }`。
+`options` 只有寫入端點才有，形狀是 `{ idempotencyKey, signal? }`；冪等鍵不可省略。

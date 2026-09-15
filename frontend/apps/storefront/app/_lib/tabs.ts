@@ -131,7 +131,7 @@ export const STOREFRONT_TABS: readonly StorefrontTab[] = [
     label: '我的',
     icon: 'account',
     // 登入／註冊算在「我的」底下：未登入的人點「我的」會被 router.replace 丟到 /login。
-    alsoActiveFor: ['/orders', '/wallet', '/addresses', '/login', '/register'],
+    alsoActiveFor: ['/orders', '/wallet', '/addresses', '/favorites', '/login', '/register'],
   },
 ];
 
