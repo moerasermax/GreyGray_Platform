@@ -48,6 +48,23 @@ const initialFavoriteProductIds = () =>
   productListItems.filter((product) => product.isFavorited).map((product) => product.id).reverse();
 let favoriteProductIds: string[] = initialFavoriteProductIds();
 
+/** 開出去的選店票（ADR-038）。mock 只記票，讀到的門市一律是 {@link MOCK_CVS_STORE}。 */
+let cvsSelectionIds: string[] = [];
+let cvsSelectionSequence = 0;
+
+export const MOCK_CVS_STORE = {
+  storeCode: '991234',
+  storeName: '7-ELEVEN 信義門市',
+  storeAddress: '台北市信義區松仁路 100 號',
+  isOutlying: false,
+} as const;
+
+/** 20 個英數，跟後端選店票同形。時間前綴讓整頁重新載入之後（序號歸零）也不會撞號。 */
+function nextMockCvsSelectionId(): string {
+  cvsSelectionSequence += 1;
+  return `MOCKCVS${String(Date.now() % 10_000_000).padStart(7, '0')}${String(cvsSelectionSequence).padStart(6, '0')}`;
+}
+
 /** 測試之間重置 mock 的可變狀態，避免前一個測試的購物車／訂單影響下一個。 */
 export function resetStorefrontMockState(): void {
   me = { ...meFixture };
@@ -56,6 +73,8 @@ export function resetStorefrontMockState(): void {
   cartQuote = null;
   ordersStore = orderFixtures.map((o) => ({ ...o }));
   favoriteProductIds = initialFavoriteProductIds();
+  cvsSelectionIds = [];
+  cvsSelectionSequence = 0;
   if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(SESSION_KEY);
 }
 
@@ -82,6 +101,7 @@ function loadSession(): void {
     const d = JSON.parse(raw) as Partial<{
       me: S['Me']; addressList: S['ShippingAddress'][]; cartLines: S['CartLine'][];
       cartQuote: S['QuoteResult'] | null; ordersStore: S['Order'][]; favoriteProductIds: string[];
+      cvsSelectionIds: string[];
     }>;
     if (d.me) me = d.me;
     if (d.addressList) addressList = d.addressList;
@@ -89,6 +109,8 @@ function loadSession(): void {
     if (d.cartQuote !== undefined) cartQuote = d.cartQuote;
     if (d.ordersStore) ordersStore = d.ordersStore;
     if (d.favoriteProductIds) favoriteProductIds = d.favoriteProductIds;
+    // 選門市也是整頁導覽（地圖表單 POST），不存的話回來讀票必定 404。
+    if (d.cvsSelectionIds) cvsSelectionIds = d.cvsSelectionIds;
   } catch {
     // 壞掉的話就用初始 fixture，不要讓 mock 自己炸掉整頁
   }
@@ -98,7 +120,7 @@ function saveSession(): void {
   if (typeof sessionStorage === 'undefined') return;
   try {
     sessionStorage.setItem(SESSION_KEY,
-      JSON.stringify({ me, addressList, cartLines, cartQuote, ordersStore, favoriteProductIds }));
+      JSON.stringify({ me, addressList, cartLines, cartQuote, ordersStore, favoriteProductIds, cvsSelectionIds }));
   } catch {
     // 配額滿了就算了，mock 不值得為此中斷
   }
@@ -354,13 +376,20 @@ export const storefrontHandlers = [
       deliveryMethod: S['DeliveryMethod'];
       shippingPolicy: S['ShippingPolicy'];
       shippingAddressId?: string | null;
+      convenienceStoreSelectionId?: string | null;
       convenienceStoreCode?: string | null;
       buyerNote?: string | null;
     };
     if (body.deliveryMethod === 'HomeDelivery' && !body.shippingAddressId) {
       return jsonProblem(problem(422, 'checkout.address-required', '請選擇收件地址'));
     }
-    if (body.deliveryMethod === 'ConvenienceStore' && !body.convenienceStoreCode) {
+    // ADR-038：帶了選店票就以票為準、忽略代號；沒帶票才看舊的 `convenienceStoreCode`。
+    const selectionId =
+      body.deliveryMethod === 'ConvenienceStore' ? (body.convenienceStoreSelectionId ?? null) : null;
+    if (selectionId !== null && !cvsSelectionIds.includes(selectionId)) {
+      return jsonProblem(problem(422, 'checkout.store-selection-expired', '門市選擇已逾時，請重新選擇門市'));
+    }
+    if (body.deliveryMethod === 'ConvenienceStore' && selectionId === null && !body.convenienceStoreCode) {
       return jsonProblem(problem(422, 'checkout.store-code-required', '請選擇取貨門市'));
     }
     const quote = buildQuote(body.deliveryMethod);
@@ -392,7 +421,12 @@ export const storefrontHandlers = [
         refundedAmount: null,
       })),
       shippingAddress: address,
-      convenienceStoreName: body.convenienceStoreCode ? '7-ELEVEN 信義門市' : null,
+      convenienceStoreName: selectionId
+        ? MOCK_CVS_STORE.storeName
+        : body.deliveryMethod === 'ConvenienceStore' && body.convenienceStoreCode
+          ? '7-ELEVEN 信義門市'
+          : null,
+      convenienceStoreAddress: selectionId ? MOCK_CVS_STORE.storeAddress : null,
       placedAt: new Date().toISOString(),
       paymentDueAt: new Date(Date.now() + 2 * 3_600_000).toISOString(),
       quoteExplain: quote.explain,
@@ -401,6 +435,45 @@ export const storefrontHandlers = [
     cartLines = [];
     cartQuote = null;
     return HttpResponse.json(newOrder, { status: 201 });
+  }),
+
+  // ── logistics（超商取貨門市，ADR-038）─────────────────────────────────
+  http.post(url('/v1/logistics/cvs-map-sessions'), () => {
+    const selectionId = nextMockCvsSelectionId();
+    cvsSelectionIds = [...cvsSelectionIds, selectionId];
+    const session: S['CvsMapSession'] = {
+      selectionId,
+      method: 'POST',
+      /*
+       * **mock 模式不可以指向真的綠界**（理由同付款的 `action`）。
+       * mock 沒有假地圖可以選，直接送回結帳頁並帶上票，模擬「選好門市、後端 303 導回來」的結果。
+       * `fields` 維持綠界地圖的形狀（`ExtraData` 就是選店票）。
+       */
+      action: `/checkout?cvsSelection=${selectionId}`,
+      fields: {
+        MerchantID: '2000933',
+        LogisticsType: 'CVS',
+        LogisticsSubType: 'UNIMARTC2C',
+        IsCollection: 'N',
+        ServerReplyURL: `${STOREFRONT_BASE_URL}/v1/logistics/cvs-map/reply`,
+        ExtraData: selectionId,
+      },
+      expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+    };
+    return HttpResponse.json(session);
+  }),
+
+  http.get(url('/v1/logistics/cvs-selections/:selectionId'), ({ params }) => {
+    const selectionId = String(params.selectionId);
+    if (!cvsSelectionIds.includes(selectionId)) {
+      return jsonProblem(problem(404, 'platform.not-found', '找不到這次的門市選擇。'));
+    }
+    const selection: S['CvsStoreSelection'] = {
+      selectionId,
+      ...MOCK_CVS_STORE,
+      expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+    };
+    return HttpResponse.json(selection);
   }),
 
   // ── order ─────────────────────────────────────────────────────────────
@@ -511,4 +584,7 @@ export const storefrontErrorScenarios = {
     jsonProblem(problem(409, 'ordering.order-already-paid', '這筆訂單已經付款了。')),
   ),
   serverError: http.get(url('/v1/products'), () => jsonProblem(problem(500, 'platform.unexpected', '系統發生問題，請稍後再試。'))),
+  cvsMapNotConfigured: http.post(url('/v1/logistics/cvs-map-sessions'), () =>
+    jsonProblem(problem(503, 'logistics.not-configured', '目前暫停超商取貨')),
+  ),
 };

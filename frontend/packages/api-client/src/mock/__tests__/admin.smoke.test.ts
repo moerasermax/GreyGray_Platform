@@ -209,6 +209,16 @@ describe('admin mock：每個 M1a 端點打一次，回應要通過型別檢查'
     expect(detail.customerContactMasked).toMatch(/\*/);
   });
 
+  it('超商訂單帶得出門市代號、名稱、地址（ADR-038）', async () => {
+    const page = await api.listOrders(client);
+    const mixed = page.items.find((o) => o.status === 'Purchasing');
+    const detail = await api.getOrder(client, mixed!.id);
+    expect(detail.deliveryMethod).toBe('ConvenienceStore');
+    expect(detail.convenienceStoreCode).toBe('991234');
+    expect(detail.convenienceStoreName).toBe('7-ELEVEN 信義門市');
+    expect(detail.convenienceStoreAddress).toBe('台北市信義區松仁路 100 號');
+  });
+
   it('取消單一品項', async () => {
     const page = await api.listOrders(client, { status: 'AwaitingPayment' });
     const order = page.items[0];

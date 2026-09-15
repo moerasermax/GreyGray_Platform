@@ -49,6 +49,9 @@ export interface CheckoutRequest {
   /** ADR-030：只有 `Cart.hasMixedModes` 時必填；單一模式可省略或 `null`，後端依 line 組成推導。 */
   readonly shippingPolicy?: S['ShippingPolicy'] | null;
   readonly shippingAddressId?: string | null;
+  /** ADR-038：超商取貨帶選店票，後端從票取出門市代號、名稱、地址凍結進訂單。同時帶了代號時以這個為準。 */
+  readonly convenienceStoreSelectionId?: string | null;
+  /** 相容舊用戶端（契約保留）：沒帶 `convenienceStoreSelectionId` 時才看這個。 */
   readonly convenienceStoreCode?: string | null;
   readonly buyerNote?: string | null;
 }
@@ -278,6 +281,37 @@ export function cancelOrder(
   options: MutationOptions,
 ): Promise<S['Order']> {
   return client.post(`/v1/orders/${orderId}/cancel`, { body, ...options });
+}
+
+// ── logistics（超商取貨門市，ADR-038）──────────────────────────────────────
+
+type CreateCvsMapSessionOperation = paths['/v1/logistics/cvs-map-sessions']['post'];
+/** 契約裡是 inline object、沒有 `S['…']`，從 `paths` 推導，不另外手寫一份。 */
+export type CreateCvsMapSessionRequest =
+  CreateCvsMapSessionOperation['requestBody']['content']['application/json'];
+type CvsSelectionId = paths['/v1/logistics/cvs-selections/{selectionId}']['parameters']['path']['selectionId'];
+
+/**
+ * 開啟 7-ELEVEN 電子地圖（產生一次性選店票）。**沒有冪等鍵**——契約沒有要求，
+ * 每開一次就是一張新票；連點由呼叫端的同步鎖擋。
+ *
+ * `POST /v1/logistics/cvs-map/reply` 不做函式：那是綠界經客人的瀏覽器 POST 回後端的，不是給前端呼叫的。
+ */
+export function createCvsMapSession(
+  client: ApiClient,
+  body: CreateCvsMapSessionRequest,
+  options: { signal?: AbortSignal } = {},
+): Promise<S['CvsMapSession']> {
+  return client.post('/v1/logistics/cvs-map-sessions', { body, ...options });
+}
+
+/** 讀選好的門市。只有同一台購物車讀得到；不存在、過期、屬於別台購物車一律 `404`。 */
+export function getCvsSelection(
+  client: ApiClient,
+  selectionId: CvsSelectionId,
+  options: { signal?: AbortSignal } = {},
+): Promise<S['CvsStoreSelection']> {
+  return client.get(`/v1/logistics/cvs-selections/${encodeURIComponent(selectionId)}`, options);
 }
 
 // ── payment ───────────────────────────────────────────────────────────────

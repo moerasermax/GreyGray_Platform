@@ -7,11 +7,14 @@
  * 掛載時只建立一次（`useRef` lazy init）；相同 payload 的整個送出流程含重試都共用
  * 同一把 key，連點五次也只會真正送出一次 HTTP 請求。失敗後若使用者修改欄位，
  * payload 改變就會換 key，避免後端判定同 key 不同內容。邏輯與驗收腳本都在 `_lib`。
+ *
+ * **超商門市（ADR-038）**：選門市要整頁離開去 7-ELEVEN 電子地圖再回來，
+ * 進頁初始化與錯誤分支都在 `_lib/cvsSelection.ts`。
  */
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import {
   BottomActionBar,
   Button,
@@ -25,7 +28,7 @@ import {
 } from '@greygray/ui';
 import * as api from '@greygray/api-client/endpoints/storefront';
 import type { components } from '@greygray/api-client/storefront';
-import { ApiError, type IdempotentAction, type PayloadIdempotentAction } from '@greygray/api-client';
+import { type IdempotentAction, type PayloadIdempotentAction } from '@greygray/api-client';
 import { PageTopBar } from '../../_components/PageTopBar';
 import { browserApi } from '../../_lib/apiClient';
 import { loginHref } from '../../_lib/auth';
@@ -41,7 +44,17 @@ import {
   clearOtherCheckoutDrafts,
   loadCheckoutDraft,
   saveCheckoutDraft,
+  type CheckoutDraft,
 } from '../_lib/checkoutDraft';
+import {
+  checkoutStoreSelectionId,
+  clearCvsSelection,
+  handleCheckoutFailure,
+  loadCvsSelection,
+  mergeCheckoutEntry,
+  parseCvsReturn,
+  startCvsMapSession,
+} from '../_lib/cvsSelection';
 import { describeError, type ErrorDisplay } from '../_lib/errorDisplay';
 import { DELIVERY_METHOD_LABEL } from '../_lib/labels';
 import { useCart } from '../_lib/useCart';
@@ -50,23 +63,38 @@ type S = components['schemas'];
 
 type CheckoutInput = Parameters<typeof api.checkout>[1];
 
+/** 購物車載入中與 Suspense fallback 共用同一組——從地圖回來時畫面不會短暫全白。 */
+const CHECKOUT_SKELETON = (
+  <main className="mx-auto flex max-w-[var(--gg-container-max)] flex-col gap-[var(--gg-space-4)] px-[var(--gg-space-4)] py-[var(--gg-space-6)]">
+    <Skeleton variant="text" className="h-8 w-32" />
+    <Skeleton variant="block" className="h-40 w-full" />
+    <Skeleton variant="block" className="h-40 w-full" />
+  </main>
+);
+
 /*
  * #32：同 `cart/page.tsx`——分頁列被自己的 `BottomActionBar` 擠掉，
  * 有東西時畫面上只有「送出訂單」，返回不了也離不開。
  * 返回指向 `/cart` 而不是 `/`：結帳的上一步就是購物車（見 `_lib/topBar.ts`）。
  * 四種狀態都要有出口，所以包在外層；內容原封不動搬進 `CheckoutPageContent`。
+ *
+ * `useSearchParams()`（讀地圖回程的 `cvsSelection`）要求 Suspense 邊界，否則 `next build`
+ * 靜態化這一頁時會報錯（前例：`(account)/login/page.tsx`）。頂部列留在邊界外面，出口一直都在。
  */
 export default function CheckoutPage() {
   return (
     <>
       <PageTopBar title="結帳" />
-      <CheckoutPageContent />
+      <Suspense fallback={CHECKOUT_SKELETON}>
+        <CheckoutPageContent />
+      </Suspense>
     </>
   );
 }
 
 function CheckoutPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { cart, loading, error, reload } = useCart();
 
   const [deliveryMethod, setDeliveryMethod] = useState<S['DeliveryMethod'] | null>(null);
@@ -79,8 +107,13 @@ function CheckoutPageContent() {
 
   const [shippingPolicy, setShippingPolicy] = useState<S['ShippingPolicy'] | null>(null);
   const [shippingAddressId, setShippingAddressId] = useState<string | null>(null);
-  const [convenienceStoreCode, setConvenienceStoreCode] = useState('');
   const [buyerNote, setBuyerNote] = useState('');
+
+  const [convenienceStoreSelectionId, setConvenienceStoreSelectionId] = useState<string | null>(null);
+  const [cvsSelection, setCvsSelection] = useState<S['CvsStoreSelection'] | null>(null);
+  const [cvsSelectionLoading, setCvsSelectionLoading] = useState(false);
+  const [cvsSelectionError, setCvsSelectionError] = useState<string | null>(null);
+  const cvsSelectionRequestRef = useRef(0);
 
   const [addresses, setAddresses] = useState<S['ShippingAddress'][]>([]);
   const [addressesLoading, setAddressesLoading] = useState(false);
@@ -94,8 +127,10 @@ function CheckoutPageContent() {
    * 購物車第一次載入時做兩件事，只做一次——之後使用者自己選的配送方式
    * 不該被 cart 的重新整理蓋掉。
    *
-   * ① 還原被 401 彈走前填的東西（`_lib/checkoutDraft.ts`）。
-   *    沒有草稿、草稿壞掉、草稿屬於別張車，都會拿到 `null` ＝ 什麼都不做。
+   * ① 還原整頁離開前填的東西（被 401 彈走、或去 7-ELEVEN 電子地圖），並接上地圖的回程參數。
+   *    **固定順序、同一個步驟**：讀草稿 → 解析回程 → 純函式合併 → 一次設定 state
+   *    → 存回完整草稿 → 清網址 → 讀票。不要拆成好幾個 effect 靠執行順序——
+   *    那樣會把草稿蓋成空的、或在 `router.replace` 之後把票弄丟。
    * ② 沿用上一次詢價的結果（例如從購物車頁點過來）。
    *
    * **順序：草稿優先。** 草稿裡的配送方式是使用者最後一次自己選的，
@@ -108,18 +143,27 @@ function CheckoutPageContent() {
     if (!cart || quoteInitializedRef.current) return;
     quoteInitializedRef.current = true;
 
+    // 1. 讀草稿。換過車之後，上一張車的草稿就沒有意義了，順手掃掉。
     const draft = loadCheckoutDraft(cart.id);
-    // 換過車之後，上一張車的草稿就沒有意義了，順手掃掉。
     clearOtherCheckoutDrafts(cart.id);
+    // 2. 解析回程參數。
+    const cvsReturn = parseCvsReturn(searchParams);
+    // 3. 合併。
+    const entry = mergeCheckoutEntry(draft, cvsReturn);
+    // 4. 一次設定 state（配送方式在下面跟詢價一起設）。
+    setShippingPolicy(entry.draft.shippingPolicy);
+    setShippingAddressId(entry.draft.shippingAddressId);
+    setBuyerNote(entry.draft.buyerNote);
+    setConvenienceStoreSelectionId(entry.draft.convenienceStoreSelectionId);
+    setCvsSelectionError(entry.errorMessage);
+    // 5. 存回合併後的完整草稿：之後重新整理，票還在。
+    if (entry.shouldSaveDraft) saveCheckoutDraft(cart.id, entry.draft);
+    // 6. 清網址：票與錯誤代碼不留在網址與瀏覽紀錄裡。
+    if (entry.shouldClearUrl) router.replace('/checkout');
+    // 7. 讀票。
+    if (entry.draft.convenienceStoreSelectionId) void readCvsSelection(entry.draft.convenienceStoreSelectionId);
 
-    if (draft) {
-      setShippingPolicy(draft.shippingPolicy);
-      setShippingAddressId(draft.shippingAddressId);
-      setConvenienceStoreCode(draft.convenienceStoreCode);
-      setBuyerNote(draft.buyerNote);
-    }
-
-    const restored = draft?.deliveryMethod ?? null;
+    const restored = entry.draft.deliveryMethod;
     if (restored && cart.quote?.deliveryMethod !== restored) {
       void handleSelectDeliveryMethod(restored);
     } else if (cart.quote) {
@@ -148,6 +192,46 @@ function CheckoutPageContent() {
   checkoutActionRef.current ??= createPayloadIdempotentAction((input, idempotencyKey) =>
     api.checkout(browserApi(), input, { idempotencyKey }),
   );
+
+  function currentDraft(): CheckoutDraft {
+    return { deliveryMethod, shippingPolicy, shippingAddressId, convenienceStoreSelectionId, buyerNote };
+  }
+
+  /*
+   * 選店票失效（讀票 404、送出 422）：**只清選店票**，state 與草稿都清，其他欄位不動。
+   * 草稿從 storage 讀回來再清，不從 state 組——這支也會在進頁那個 effect 的閉包裡被叫到，
+   * 那時候 state 還是初始值，照 state 存會把剛合併好的草稿蓋成空的。
+   * 不准用 `clearCheckoutDraft`：那會連留言一起刪。
+   */
+  function clearStoreSelection() {
+    setConvenienceStoreSelectionId(null);
+    setCvsSelection(null);
+    if (!cart) return;
+    const stored = loadCheckoutDraft(cart.id);
+    if (stored) saveCheckoutDraft(cart.id, clearCvsSelection(stored));
+  }
+
+  function readCvsSelection(selectionId: string) {
+    const requestSequence = ++cvsSelectionRequestRef.current;
+    return loadCvsSelection(selectionId, {
+      getSelection: (id) => api.getCvsSelection(browserApi(), id),
+      isCurrent: () => requestSequence === cvsSelectionRequestRef.current,
+      setLoading: setCvsSelectionLoading,
+      setSelection: setCvsSelection,
+      setError: setCvsSelectionError,
+      clearSelectionId: clearStoreSelection,
+    });
+  }
+
+  /** 前往地圖是整頁離開：先把目前完整的狀態存成草稿，再開票。 */
+  function handleStartCvsMap() {
+    return startCvsMapSession({
+      saveDraft: () => {
+        if (cart) saveCheckoutDraft(cart.id, currentDraft());
+      },
+      createSession: () => api.createCvsMapSession(browserApi(), {}),
+    });
+  }
 
   async function handleSelectDeliveryMethod(method: S['DeliveryMethod']) {
     const requestSequence = ++quoteRequestSequenceRef.current;
@@ -184,7 +268,8 @@ function CheckoutPageContent() {
         // ADR-030：單一模式送 `null` 是對的，後端依 line 組成推導；只有混合購物車才必填。
         shippingPolicy,
         shippingAddressId,
-        convenienceStoreCode: convenienceStoreCode || null,
+        // ADR-038：只送選店票，不送 `convenienceStoreCode`；只有超商取貨才送。
+        convenienceStoreSelectionId: checkoutStoreSelectionId(deliveryMethod, convenienceStoreSelectionId),
         buyerNote: buyerNote || null,
       };
       const order = await checkoutActionRef.current!.run(input);
@@ -200,45 +285,34 @@ function CheckoutPageContent() {
        */
       router.push(`/payment/${order.id}`);
     } catch (cause) {
-      /*
-       * **401 要給一條去登入的路，不能只顯示錯誤訊息。**
-       * 匿名訪客整段流程都走得到這裡（加入購物車、詢價、選地址都不需要登入），
-       * 到「送出訂單」才撞牆——原本畫面上只會多一行 problem title，
-       * 人被留在結帳頁，看不出下一步是什麼。這是 #30／#32 的第三種形狀：
-       * 路是有的，但走到一半被彈開之後回不去。
-       *
-       * 回程寫死 `/checkout`：購物車 cookie 不受登入影響，登入完回來東西還在。
-       * `submitting` 不放掉——導向是非同步的，放掉會讓人在空隙裡再按一次。
-       */
-      if (cause instanceof ApiError && cause.isUnauthorized) {
+      handleCheckoutFailure(cause, {
         /*
-         * **走之前先把已填的東西存起來。** FE-25 給了一條回得來的路，
-         * 但回來看到的是一張空表單：配送方式變回「尚未選擇」，門市代號與留言都沒了。
-         * 只存使用者自己填的五個欄位，鍵含 cart id，`sessionStorage`（分頁關掉就消失）。
+         * **401 要給一條去登入的路，不能只顯示錯誤訊息。**
+         * 匿名訪客整段流程都走得到這裡（加入購物車、詢價、選地址、選門市都不需要登入），
+         * 到「送出訂單」才撞牆——原本畫面上只會多一行 problem title，
+         * 人被留在結帳頁，看不出下一步是什麼。這是 #30／#32 的第三種形狀：
+         * 路是有的，但走到一半被彈開之後回不去。
+         *
+         * 回程寫死 `/checkout`：購物車 cookie 不受登入影響，登入完回來東西還在。
+         * `submitting` 不放掉——導向是非同步的，放掉會讓人在空隙裡再按一次。
+         *
+         * **走之前先把已填的東西存起來**（含選店票）。只存使用者自己填的五個欄位，
+         * 鍵含 cart id，`sessionStorage`（分頁關掉就消失）。
          */
-        saveCheckoutDraft(cart.id, {
-          deliveryMethod,
-          shippingPolicy,
-          shippingAddressId,
-          convenienceStoreCode,
-          buyerNote,
-        });
-        router.push(loginHref('/checkout'));
-        return;
-      }
-      setSubmitError(describeError(cause));
-      setSubmitting(false);
+        onUnauthorized: () => {
+          saveCheckoutDraft(cart.id, currentDraft());
+          router.push(loginHref('/checkout'));
+        },
+        clearSelectionId: clearStoreSelection,
+        setStoreError: setCvsSelectionError,
+        setSubmitError,
+        setSubmitting,
+      });
     }
   }
 
   if (loading) {
-    return (
-      <main className="mx-auto flex max-w-[var(--gg-container-max)] flex-col gap-[var(--gg-space-4)] px-[var(--gg-space-4)] py-[var(--gg-space-6)]">
-        <Skeleton variant="text" className="h-8 w-32" />
-        <Skeleton variant="block" className="h-40 w-full" />
-        <Skeleton variant="block" className="h-40 w-full" />
-      </main>
-    );
+    return CHECKOUT_SKELETON;
   }
 
   if (error) {
@@ -259,12 +333,17 @@ function CheckoutPageContent() {
     );
   }
 
+  // 畫面上的門市必須是目前這張票讀回來的——票換了或清了，舊門市就不算。
+  const loadedCvsSelection =
+    cvsSelection && cvsSelection.selectionId === convenienceStoreSelectionId ? cvsSelection : null;
+
   const readiness = evaluateCheckoutReadiness({
     cart,
     deliveryMethod,
     shippingPolicy,
     shippingAddressId,
-    convenienceStoreCode: convenienceStoreCode || null,
+    convenienceStoreSelectionId,
+    convenienceStoreSelection: loadedCvsSelection,
   });
 
   return (
@@ -333,7 +412,12 @@ function CheckoutPageContent() {
 
       {deliveryMethod === 'ConvenienceStore' && (
         <Card padding="md">
-          <ConvenienceStoreField value={convenienceStoreCode} onChange={setConvenienceStoreCode} />
+          <ConvenienceStoreField
+            selection={loadedCvsSelection}
+            loading={cvsSelectionLoading}
+            error={cvsSelectionError}
+            onStart={handleStartCvsMap}
+          />
         </Card>
       )}
 

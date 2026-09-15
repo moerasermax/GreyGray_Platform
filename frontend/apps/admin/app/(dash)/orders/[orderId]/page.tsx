@@ -41,9 +41,22 @@ import {
   refundedAmountText,
   shippingPolicyLabel,
 } from '../_lib/labels';
+import { convenienceStoreDisplay } from '../_lib/convenienceStore';
 
 type S = components['schemas'];
 type OrderLine = S['AdminOrderLine'];
+
+/** 「取貨門市」那一格（ADR-038）：名稱（代號）、下一行地址。文字判斷在 `_lib/convenienceStore.ts`。 */
+function ConvenienceStoreCell({ order }: { order: S['AdminOrder'] }) {
+  const store = convenienceStoreDisplay(order);
+  return (
+    <div>
+      <p className="text-xs text-fg-muted">取貨門市</p>
+      {store.primary ? <p className="mt-1 text-sm font-medium text-fg">{store.primary}</p> : null}
+      {store.address ? <p className="mt-1 text-xs text-fg-muted">{store.address}</p> : null}
+    </div>
+  );
+}
 
 export default function OrderDetailPage() {
   const params = useParams<{ orderId: string }>();
@@ -317,6 +330,7 @@ export default function OrderDetailPage() {
           <p className="text-xs text-fg-muted">出貨政策</p>
           <p className="mt-1 text-sm font-medium text-fg">{shippingPolicyLabel(order.shippingPolicy)}</p>
         </div>
+        {order.deliveryMethod === 'ConvenienceStore' ? <ConvenienceStoreCell order={order} /> : null}
         <div>
           <p className="text-xs text-fg-muted">商品小計</p>
           <p className="gg-numeric mt-1 text-sm font-semibold text-fg">{formatMoney(order.goodsTotal)}</p>

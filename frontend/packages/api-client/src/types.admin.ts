@@ -2088,6 +2088,12 @@ export interface components {
             shippingFee: components["schemas"]["Money"];
             deliveryMethod: components["schemas"]["DeliveryMethod"];
             shippingPolicy: components["schemas"]["ShippingPolicy"];
+            /** @description 超商取貨的門市代號（ADR-038）；其他配送方式為 null。 */
+            convenienceStoreCode?: string | null;
+            /** @description 超商取貨的門市名稱（下單當時凍結）；ADR-038 之前的舊訂單只有代號，這裡是 null。 */
+            convenienceStoreName?: string | null;
+            /** @description 超商取貨的門市地址（下單當時凍結）；舊訂單為 null。 */
+            convenienceStoreAddress?: string | null;
             lines: components["schemas"]["AdminOrderLine"][];
             payments?: components["schemas"]["PaymentSummary"][];
             quoteExplain?: string[];

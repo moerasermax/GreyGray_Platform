@@ -227,6 +227,9 @@ export default function OrderDetailPage() {
         {order.convenienceStoreName && (
           <p className="text-[length:var(--gg-text-sm)] text-fg-muted">取貨門市：{order.convenienceStoreName}</p>
         )}
+        {order.convenienceStoreAddress && (
+          <p className="text-[length:var(--gg-text-sm)] text-fg-muted">{order.convenienceStoreAddress}</p>
+        )}
       </Card>
 
       {order.quoteExplain && order.quoteExplain.length > 0 && (

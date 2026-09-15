@@ -3,7 +3,8 @@ import type { components } from '@greygray/api-client/storefront';
 import {
   blockingAvailabilityWarning,
   evaluateCheckoutReadiness,
-  requiresConvenienceStoreCode,
+  hasLoadedConvenienceStore,
+  requiresConvenienceStore,
   requiresShippingAddress,
   requiresShippingPolicyChoice,
 } from '../cartRules';
@@ -47,14 +48,34 @@ describe('requiresShippingPolicyChoice', () => {
   });
 });
 
-describe('requiresShippingAddress ／ requiresConvenienceStoreCode', () => {
-  it('宅配才要地址，超商才要門市代號', () => {
+describe('requiresShippingAddress ／ requiresConvenienceStore', () => {
+  it('宅配才要地址，超商才要門市', () => {
     expect(requiresShippingAddress('HomeDelivery')).toBe(true);
     expect(requiresShippingAddress('ConvenienceStore')).toBe(false);
     expect(requiresShippingAddress('SelfPickup')).toBe(false);
 
-    expect(requiresConvenienceStoreCode('ConvenienceStore')).toBe(true);
-    expect(requiresConvenienceStoreCode('HomeDelivery')).toBe(false);
+    expect(requiresConvenienceStore('ConvenienceStore')).toBe(true);
+    expect(requiresConvenienceStore('HomeDelivery')).toBe(false);
+  });
+});
+
+describe('hasLoadedConvenienceStore：讀到了門市才算選好（ADR-038）', () => {
+  const TICKET = 'ABCDEFGHIJ0123456789';
+
+  it('沒有票 → false', () => {
+    expect(hasLoadedConvenienceStore(null, null)).toBe(false);
+  });
+
+  it('有票但還沒讀到（讀取中或讀失敗）→ false', () => {
+    expect(hasLoadedConvenienceStore(TICKET, null)).toBe(false);
+  });
+
+  it('讀到的門市屬於另一張票 → false', () => {
+    expect(hasLoadedConvenienceStore(TICKET, { selectionId: 'ZZZZZZZZZZZZZZZZZZZZ' })).toBe(false);
+  });
+
+  it('讀到了這張票的門市 → true', () => {
+    expect(hasLoadedConvenienceStore(TICKET, { selectionId: TICKET })).toBe(true);
   });
 });
 
@@ -64,8 +85,10 @@ describe('evaluateCheckoutReadiness', () => {
     deliveryMethod: null,
     shippingPolicy: null,
     shippingAddressId: null,
-    convenienceStoreCode: null,
+    convenienceStoreSelectionId: null,
+    convenienceStoreSelection: null,
   } as const;
+  const TICKET = 'ABCDEFGHIJ0123456789';
 
   it('空購物車擋下，且說明原因', () => {
     const result = evaluateCheckoutReadiness({ ...baseInput, cart: { lines: [], hasMixedModes: false } });
@@ -104,6 +127,32 @@ describe('evaluateCheckoutReadiness', () => {
     expect(
       evaluateCheckoutReadiness({ ...baseInput, deliveryMethod: 'ConvenienceStore' }).ready,
     ).toBe(false);
+  });
+
+  it('超商取貨：有選店票 id 但還沒讀到門市 → 不能送，原因是「請選擇取貨門市。」', () => {
+    const result = evaluateCheckoutReadiness({
+      ...baseInput,
+      deliveryMethod: 'ConvenienceStore',
+      convenienceStoreSelectionId: TICKET,
+      convenienceStoreSelection: null,
+    });
+    expect(result).toEqual({ ready: false, reason: '請選擇取貨門市。' });
+  });
+
+  it('超商取貨：讀到了門市 → 可以送', () => {
+    const result = evaluateCheckoutReadiness({
+      ...baseInput,
+      deliveryMethod: 'ConvenienceStore',
+      convenienceStoreSelectionId: TICKET,
+      convenienceStoreSelection: { selectionId: TICKET },
+    });
+    expect(result).toEqual({ ready: true, reason: null });
+  });
+
+  it('宅配不受選店票影響：沒有門市也能送、有沒讀到的票也能送', () => {
+    const home = { ...baseInput, deliveryMethod: 'HomeDelivery' as const, shippingAddressId: 'addr_1' };
+    expect(evaluateCheckoutReadiness(home).ready).toBe(true);
+    expect(evaluateCheckoutReadiness({ ...home, convenienceStoreSelectionId: TICKET }).ready).toBe(true);
   });
 
   it('條件都滿足時可以結帳', () => {

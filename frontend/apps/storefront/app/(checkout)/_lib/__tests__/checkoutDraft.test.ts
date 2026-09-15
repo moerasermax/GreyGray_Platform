@@ -61,7 +61,7 @@ const FILLED: CheckoutDraft = {
   deliveryMethod: 'ConvenienceStore',
   shippingPolicy: 'HoldUntilComplete',
   shippingAddressId: 'addr_1',
-  convenienceStoreCode: '991234',
+  convenienceStoreSelectionId: 'ABCDEFGHIJ0123456789',
   buyerNote: '麻煩包好一點',
 };
 
@@ -88,7 +88,7 @@ describe('存 → 取回，五個欄位一字不差', () => {
       [
         'buyerNote',
         'cartId',
-        'convenienceStoreCode',
+        'convenienceStoreSelectionId',
         'deliveryMethod',
         'shippingAddressId',
         'shippingPolicy',
@@ -164,15 +164,60 @@ describe('壞掉的東西一律當作沒有草稿', () => {
       deliveryMethod: 'Teleport',
       shippingPolicy: 'Whenever',
       shippingAddressId: 42,
-      convenienceStoreCode: { evil: true },
+      convenienceStoreSelectionId: { evil: true },
       buyerNote: 'ok',
     });
     expect(parseCheckoutDraft(raw, 'cart_1')).toEqual({
       deliveryMethod: null,
       shippingPolicy: null,
       shippingAddressId: null,
-      convenienceStoreCode: '',
+      convenienceStoreSelectionId: null,
       buyerNote: 'ok',
+    });
+  });
+});
+
+describe('選店票欄位（ADR-038）', () => {
+  it('新欄位存取往返', () => {
+    const storage = fakeStorage();
+    saveCheckoutDraft('cart_1', { ...emptyCheckoutDraft(), convenienceStoreSelectionId: 'Zz0123456789abcdefGH' }, storage);
+    expect(loadCheckoutDraft('cart_1', storage)?.convenienceStoreSelectionId).toBe('Zz0123456789abcdefGH');
+  });
+
+  it('只有選店票的草稿不算空的——從地圖回來還得還原得到', () => {
+    expect(isEmptyDraft({ ...emptyCheckoutDraft(), convenienceStoreSelectionId: 'ABCDEFGHIJ0123456789' })).toBe(false);
+  });
+
+  it('舊格式（只有 convenienceStoreCode）：其他欄位照常還原、選店票為 null', () => {
+    const raw = JSON.stringify({
+      cartId: 'cart_1',
+      deliveryMethod: 'ConvenienceStore',
+      shippingPolicy: 'HoldUntilComplete',
+      shippingAddressId: 'addr_1',
+      convenienceStoreCode: '991234',
+      buyerNote: '麻煩包好一點',
+    });
+    expect(parseCheckoutDraft(raw, 'cart_1')).toEqual({
+      deliveryMethod: 'ConvenienceStore',
+      shippingPolicy: 'HoldUntilComplete',
+      shippingAddressId: 'addr_1',
+      convenienceStoreSelectionId: null,
+      buyerNote: '麻煩包好一點',
+    });
+  });
+
+  it.each([
+    ['19 字', 'ABCDEFGHIJ012345678'],
+    ['21 字', 'ABCDEFGHIJ01234567890'],
+    ['含 -', 'ABCDEFGHIJ-123456789'],
+    ['空字串', ''],
+    ['數字', 12345678901234567890],
+  ])('選店票格式不對（%s）→ null，其他欄位不受影響', (_label, value) => {
+    const raw = JSON.stringify({ cartId: 'cart_1', convenienceStoreSelectionId: value, buyerNote: '留言' });
+    expect(parseCheckoutDraft(raw, 'cart_1')).toEqual({
+      ...emptyCheckoutDraft(),
+      convenienceStoreSelectionId: null,
+      buyerNote: '留言',
     });
   });
 });

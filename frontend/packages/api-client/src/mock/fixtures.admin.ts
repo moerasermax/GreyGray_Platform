@@ -214,6 +214,9 @@ const mixedOrder: S['AdminOrder'] = {
   shippingFee: twd(60),
   deliveryMethod: 'ConvenienceStore',
   shippingPolicy: 'ShipSeparately',
+  convenienceStoreCode: '991234',
+  convenienceStoreName: '7-ELEVEN 信義門市',
+  convenienceStoreAddress: '台北市信義區松仁路 100 號',
   lines: orderLineMixed,
   payments: [
     {

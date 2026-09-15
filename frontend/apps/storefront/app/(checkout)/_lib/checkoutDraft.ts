@@ -1,37 +1,41 @@
 /**
- * 結帳頁被 401 彈去登入、登入完再回來時，把已填的內容帶回來。
+ * 結帳頁整頁離開再回來時，把已填的內容帶回來。兩種離開：
+ * 被 401 彈去登入、以及前往 7-ELEVEN 電子地圖選門市（ADR-038，同一個分頁頂層導向）。
  *
  * ── 為什麼需要它 ──
  * 匿名訪客整段流程都走得到「送出訂單」（加入購物車、詢價、選門市都不需要登入），
  * 到最後一步才撞 401。FE-25 已經給了一條回得來的路（`?next=/checkout`），
- * 但回來的是一張**空表單**：配送方式變回「尚未選擇」、門市代號與留言全沒了。
+ * 但回來的是一張**空表單**：配送方式變回「尚未選擇」、門市與留言全沒了。
  * 「路是有的，但走回來之後東西不見了」是同一個病的下一節——人要重填一次才知道。
+ * 選門市也一樣：去地圖是整頁離開，頁面 state 全部消失。
  *
  * ── 為什麼是 `sessionStorage` 而不是 `localStorage` ──
  * 這是一份**只在這一趟旅程裡有意義**的暫存：分頁關掉就該消失。
  * `localStorage` 會讓「三天前那次沒結成的帳」在今天重新開站時冒出來，
- * 把舊的門市代號與留言默默塞進一張新的單子——那是畫面宣稱了不成立的事。
+ * 把舊的選店票與留言默默塞進一張新的單子——那是畫面宣稱了不成立的事。
  *
  * ── 為什麼鍵含 cart id、值裡也再記一次 ──
  * 購物車換了一張（登出後訪客拿到新車、或後端換發 `gg_cart`）就不該還原：
- * 上一張車的門市代號跟這一張沒有關係。鍵含 cart id 讓不同的車天生互不干擾；
+ * 選店票綁的是上一張車，跟這一張沒有關係。鍵含 cart id 讓不同的車天生互不干擾；
  * 值裡再記一次是**第二道**——鍵可能被別的東西寫過，內容自己說得出它屬於誰才算數。
  *
  * ── 只存五個欄位，不存整份購物車 ──
  * 購物車的真相在後端（價格、庫存、可否購買都會變），存一份複本回來覆蓋
  * 就是拿舊資料畫新畫面。這裡只存**使用者自己填的東西**，其餘一律重新跟後端要。
+ * 門市也只存選店票 id；名稱與地址每次跟後端讀，不落地（ADR-038）。
  */
 import type { components } from '@greygray/api-client/storefront';
 import { DELIVERY_METHOD_LABEL, SHIPPING_POLICY_LABEL } from './labels';
 
 type S = components['schemas'];
 
-/** 被 401 彈走時要保住的五個欄位。 */
+/** 整頁離開時要保住的五個欄位。 */
 export interface CheckoutDraft {
   readonly deliveryMethod: S['DeliveryMethod'] | null;
   readonly shippingPolicy: S['ShippingPolicy'] | null;
   readonly shippingAddressId: string | null;
-  readonly convenienceStoreCode: string;
+  /** 選店票（`/v1/logistics/cvs-selections/{selectionId}`）。沒選過或已清掉是 `null`。 */
+  readonly convenienceStoreSelectionId: string | null;
   readonly buyerNote: string;
 }
 
@@ -40,6 +44,13 @@ export const CHECKOUT_DRAFT_KEY_PREFIX = 'gg:checkout-draft:';
 
 export function checkoutDraftKey(cartId: string): string {
   return `${CHECKOUT_DRAFT_KEY_PREFIX}${cartId}`;
+}
+
+/** 選店票的形狀：20 個英數（後端以密碼學亂數產生，ADR-038）。 */
+const CVS_SELECTION_ID_PATTERN = /^[A-Za-z0-9]{20}$/;
+
+export function isCvsSelectionId(value: unknown): value is string {
+  return typeof value === 'string' && CVS_SELECTION_ID_PATTERN.test(value);
 }
 
 /**
@@ -59,7 +70,7 @@ const EMPTY_DRAFT: CheckoutDraft = {
   deliveryMethod: null,
   shippingPolicy: null,
   shippingAddressId: null,
-  convenienceStoreCode: '',
+  convenienceStoreSelectionId: null,
   buyerNote: '',
 };
 
@@ -69,7 +80,7 @@ export function isEmptyDraft(draft: CheckoutDraft): boolean {
     draft.deliveryMethod === null &&
     draft.shippingPolicy === null &&
     draft.shippingAddressId === null &&
-    draft.convenienceStoreCode === '' &&
+    draft.convenienceStoreSelectionId === null &&
     draft.buyerNote === ''
   );
 }
@@ -80,7 +91,7 @@ export function serializeCheckoutDraft(cartId: string, draft: CheckoutDraft): st
     deliveryMethod: draft.deliveryMethod,
     shippingPolicy: draft.shippingPolicy,
     shippingAddressId: draft.shippingAddressId,
-    convenienceStoreCode: draft.convenienceStoreCode,
+    convenienceStoreSelectionId: draft.convenienceStoreSelectionId,
     buyerNote: draft.buyerNote,
   });
 }
@@ -103,7 +114,9 @@ function asString(value: unknown): string {
  *
  * 不做「盡量救回一部分」——一份自己都對不上的草稿還原出來，
  * 使用者會看到一半是他填的、一半不是，比空白更難察覺。
- * （單一欄位型別不對時退回該欄位的空值，那是欄位層級的保守化，不是猜。）
+ * （單一欄位型別不對時退回該欄位的空值，那是欄位層級的保守化，不是猜。
+ * ADR-038 之前存的舊格式只有 `convenienceStoreCode`、沒有選店票，
+ * 一樣走這條：選店票為 `null`，其他欄位照常還原。）
  */
 export function parseCheckoutDraft(raw: string | null | undefined, cartId: string): CheckoutDraft | null {
   if (typeof raw !== 'string' || raw === '') return null;
@@ -125,7 +138,9 @@ export function parseCheckoutDraft(raw: string | null | undefined, cartId: strin
     deliveryMethod: asEnum<S['DeliveryMethod']>(record.deliveryMethod, DELIVERY_METHOD_LABEL),
     shippingPolicy: asEnum<S['ShippingPolicy']>(record.shippingPolicy, SHIPPING_POLICY_LABEL),
     shippingAddressId: asNullableString(record.shippingAddressId),
-    convenienceStoreCode: asString(record.convenienceStoreCode),
+    convenienceStoreSelectionId: isCvsSelectionId(record.convenienceStoreSelectionId)
+      ? record.convenienceStoreSelectionId
+      : null,
     buyerNote: asString(record.buyerNote),
   };
 }
@@ -145,7 +160,7 @@ function defaultStorage(): DraftStorage | null {
   }
 }
 
-/** 存草稿。空草稿等同清掉。任何例外都吞掉——存不起來不該擋住登入導向。 */
+/** 存草稿。空草稿等同清掉。任何例外都吞掉——存不起來不該擋住登入導向或前往地圖。 */
 export function saveCheckoutDraft(
   cartId: string,
   draft: CheckoutDraft,
@@ -176,7 +191,10 @@ export function loadCheckoutDraft(
   }
 }
 
-/** 刪掉這張車的草稿。送出成功之後一定要叫。 */
+/**
+ * 刪掉這張車的草稿。送出成功之後一定要叫。
+ * **選店票失效（404／422）不要用這個**——那會連留言一起刪；用 `cvsSelection.ts` 的 `clearCvsSelection`。
+ */
 export function clearCheckoutDraft(
   cartId: string,
   storage: DraftStorage | null = defaultStorage(),

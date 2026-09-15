@@ -747,6 +747,7 @@ function buildOrder(seed: OrderSeed, index: number): S['Order'] {
     lines,
     shippingAddress: addresses[0] ?? null,
     convenienceStoreName: '7-ELEVEN 信義門市',
+    convenienceStoreAddress: '台北市信義區松仁路 100 號',
     placedAt,
     paymentDueAt: seed.status === 'AwaitingPayment' ? hoursFromNow(2) : null,
     quoteExplain: ['超商取貨一口價 NT$60（ADR-010）。'],

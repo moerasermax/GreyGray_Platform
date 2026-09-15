@@ -1040,7 +1040,16 @@ export interface paths {
                         shippingPolicy?: components["schemas"]["ShippingPolicy"] | null;
                         /** @description `deliveryMethod = HomeDelivery` 時必填。 */
                         shippingAddressId?: components["schemas"]["Id"] | null;
-                        /** @description `deliveryMethod = ConvenienceStore` 時必填，綠界電子地圖回傳的門市代號。 */
+                        /**
+                         * @description `deliveryMethod = ConvenienceStore` 時**建議**帶這個（ADR-038）：`/v1/logistics/cvs-selections/{selectionId}` 的選店票。
+                         *     後端從選店票取出門市代號、名稱、地址凍結進訂單。票過期、不存在或屬於別台購物車回 `422 checkout.store-selection-expired`。
+                         *     同時帶了 `convenienceStoreCode` 時以這個為準、忽略代號。
+                         */
+                        convenienceStoreSelectionId?: string | null;
+                        /**
+                         * @description **相容舊用戶端**：沒帶 `convenienceStoreSelectionId` 時才看這個。只有代號、沒有名稱與地址。
+                         *     `deliveryMethod = ConvenienceStore` 時兩者至少要有一個，都沒有回 `422 checkout.store-code-required`。
+                         */
                         convenienceStoreCode?: string | null;
                         buyerNote?: string | null;
                     };
@@ -1060,7 +1069,8 @@ export interface paths {
                 409: components["responses"]["Conflict"];
                 /**
                  * @description `checkout.cart-empty` · `checkout.address-required` ·
-                 *     `checkout.store-code-required` · `checkout.shipping-policy-required` ·
+                 *     `checkout.store-code-required` · `checkout.store-selection-expired` ·
+                 *     `checkout.shipping-policy-required` ·
                  *     `campaign.not-accepting-orders` · `inventory.insufficient-stock` ·
                  *     `payment.provider-does-not-support-delivery-method`
                  */
@@ -1285,6 +1295,162 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/logistics/cvs-map-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 開啟 7-ELEVEN 電子地圖（產生一次性選店票）
+         * @description 綁定目前的購物車（`gg_cart` cookie），**不需要登入**——選門市在送出訂單之前。
+         *     回傳綠界電子地圖的導轉參數：前端建一個 hidden form，把 `fields` 原封不動用 `method` 送到 `action`，
+         *     **頂層導向**（不可放 iframe、iOS 不可開新視窗）。選店票 15 分鐘內有效、只能用一次（ADR-038）。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description 綠界地圖載入電腦版還是手機版；不帶由綠界自己判斷。 */
+                        device?: ("Desktop" | "Mobile") | null;
+                    };
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CvsMapSession"];
+                    };
+                };
+                /** @description `logistics.not-configured`：這台伺服器沒有物流設定，客人要改選其他配送方式 */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/logistics/cvs-map/reply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 綠界電子地圖回傳（不是給前端呼叫的）
+         * @description 綠界經**客人的瀏覽器**以表單 POST 回來。這份回傳**沒有檢查碼**，所以後端驗：選店票（`ExtraData`）存在、未過期、未用過，
+         *     `MerchantID` 與 `LogisticsSubType` 與設定相符，門市欄位的格式與長度。
+         *     一律 **303** 導回 `{Storefront:PublicOrigin}/checkout`：成功帶 `cvsSelection=<選店票>`，失敗帶 `cvsSelectionError=<錯誤碼>`。
+         *     不回 JSON、不給客人看 500。門市名稱與地址**不放在導回網址裡**。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/x-www-form-urlencoded": {
+                        MerchantID?: string;
+                        MerchantTradeNo?: string;
+                        LogisticsSubType?: string;
+                        CVSStoreID?: string;
+                        CVSStoreName?: string;
+                        CVSAddress?: string;
+                        CVSTelephone?: string;
+                        CVSOutSide?: string;
+                        ExtraData?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description 導回結帳頁（成功或失敗都是 303） */
+                303: {
+                    headers: {
+                        Location?: string;
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/logistics/cvs-selections/{selectionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                selectionId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * 讀取選好的門市
+         * @description 只有**同一台購物車**讀得到；不存在、過期、或屬於別台購物車一律回 `404`（不區分，免得被拿來猜票）。
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    selectionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CvsStoreSelection"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1808,7 +1974,13 @@ export interface components {
             paidAmount?: components["schemas"]["Money"] | null;
             lines: components["schemas"]["OrderLine"][];
             shippingAddress?: components["schemas"]["ShippingAddress"] | null;
+            /**
+             * @description 取貨門市名稱（下單當時凍結，ADR-038）。**舊訂單**只存了代號，這裡會退回顯示代號——
+             *     ADR-038 之前實作把代號塞進這個欄位，保持舊訂單畫面不變。
+             */
             convenienceStoreName?: string | null;
+            /** @description 取貨門市地址（下單當時凍結）；舊訂單與非超商取貨為 null。 */
+            convenienceStoreAddress?: string | null;
             /** Format: date-time */
             placedAt: string;
             /**
@@ -1819,6 +1991,32 @@ export interface components {
             paymentDueAt?: string | null;
             /** @description 下單當時凍結的計價說明。運費規則之後改了也不影響這裡。 */
             quoteExplain?: string[];
+        };
+        /**
+         * @description 綠界 7-ELEVEN 電子地圖的導轉參數（ADR-038）。前端建一個 hidden form，把 `fields` 原封不動用 `method` 送到 `action`，
+         *     頂層導向。**不要改任何欄位的值**；`ExtraData` 就是選店票。
+         */
+        CvsMapSession: {
+            selectionId: string;
+            /** @enum {string} */
+            method: "POST";
+            /** Format: uri */
+            action: string;
+            fields: {
+                [key: string]: string;
+            };
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        CvsStoreSelection: {
+            selectionId: string;
+            storeCode: string;
+            storeName: string;
+            storeAddress: string;
+            /** @description 綠界 `CVSOutSide = 1`（離島門市）。M1a 只顯示，不擋、不加運費。 */
+            isOutlying: boolean;
+            /** Format: date-time */
+            expiresAt: string;
         };
         /**
          * @description 綠界導轉參數。前端建一個 hidden form，把 `fields` 原封不動 POST 到 `action`。

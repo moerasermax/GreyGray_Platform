@@ -127,6 +127,26 @@ describe('storefront mock：每個 M1a 端點打一次，回應要通過型別�
     expect(cartAfter.lines).toHaveLength(0);
   });
 
+  it('超商取貨（ADR-038）：開票 → 讀票 → 帶票結帳，訂單有門市名稱與地址', async () => {
+    const session = await api.createCvsMapSession(client, {});
+    expect(session.method).toBe('POST');
+    expect(session.selectionId).toMatch(/^[A-Za-z0-9]{20}$/);
+    expect(session.fields['ExtraData']).toBe(session.selectionId);
+
+    const selection = await api.getCvsSelection(client, session.selectionId);
+    expect(selection.selectionId).toBe(session.selectionId);
+    expect(selection.storeName).toBeTruthy();
+    expect(selection.storeAddress).toBeTruthy();
+
+    const order = await api.checkout(client, {
+      deliveryMethod: 'ConvenienceStore',
+      shippingPolicy: 'ShipSeparately',
+      convenienceStoreSelectionId: session.selectionId,
+    }, mutationOptions());
+    expect(order.convenienceStoreName).toBe(selection.storeName);
+    expect(order.convenienceStoreAddress).toBe(selection.storeAddress);
+  });
+
   it('訂單列表與詳情、取消、付款導轉', async () => {
     const order = await api.checkout(client, {
       deliveryMethod: 'SelfPickup',
@@ -201,8 +221,54 @@ describe('storefront mock：每個 M1a 端點打一次，回應要通過型別�
   });
 });
 
+describe('logistics 端點（ADR-038）：路徑與方法', () => {
+  it('createCvsMapSession 是 POST、不帶冪等鍵；getCvsSelection 是 GET', async () => {
+    const calls: Array<[string, string, unknown]> = [];
+    const recorder = {
+      post: (path: string, options: unknown) => {
+        calls.push(['POST', path, options]);
+        return Promise.resolve({});
+      },
+      get: (path: string, options: unknown) => {
+        calls.push(['GET', path, options]);
+        return Promise.resolve({});
+      },
+    } as unknown as ApiClient;
+
+    await api.createCvsMapSession(recorder, {});
+    await api.getCvsSelection(recorder, 'ABCDEFGHIJ0123456789');
+
+    expect(calls).toEqual([
+      ['POST', '/v1/logistics/cvs-map-sessions', { body: {} }],
+      ['GET', '/v1/logistics/cvs-selections/ABCDEFGHIJ0123456789', {}],
+    ]);
+  });
+});
+
 describe('storefront mock：錯誤情境', () => {
   beforeEach(() => resetStorefrontMockState());
+
+  it('503：沒有物流設定時開票回 logistics.not-configured', async () => {
+    storefrontServer.use(storefrontErrorScenarios.cvsMapNotConfigured);
+    await expect(api.createCvsMapSession(client, {})).rejects.toMatchObject({
+      status: 503,
+      problem: { code: 'logistics.not-configured' },
+    });
+  });
+
+  it('404：沒開過的選店票讀不到', async () => {
+    await expect(api.getCvsSelection(client, 'ZZZZZZZZZZZZZZZZZZZZ')).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('422：帶沒開過的選店票結帳回 checkout.store-selection-expired', async () => {
+    await expect(
+      api.checkout(client, {
+        deliveryMethod: 'ConvenienceStore',
+        shippingPolicy: 'ShipSeparately',
+        convenienceStoreSelectionId: 'ZZZZZZZZZZZZZZZZZZZZ',
+      }, mutationOptions()),
+    ).rejects.toMatchObject({ status: 422, problem: { code: 'checkout.store-selection-expired' } });
+  });
 
   it('422：註冊密碼太弱時 ApiError.fieldErrors 有值', async () => {
     storefrontServer.use(storefrontErrorScenarios.registerWeakPassword);

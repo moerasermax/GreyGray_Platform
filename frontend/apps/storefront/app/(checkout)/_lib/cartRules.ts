@@ -32,8 +32,19 @@ export function requiresShippingAddress(deliveryMethod: S['DeliveryMethod']): bo
   return deliveryMethod === 'HomeDelivery';
 }
 
-export function requiresConvenienceStoreCode(deliveryMethod: S['DeliveryMethod']): boolean {
+export function requiresConvenienceStore(deliveryMethod: S['DeliveryMethod']): boolean {
   return deliveryMethod === 'ConvenienceStore';
+}
+
+/**
+ * 「讀到了門市」才算選好（ADR-038）。**不是「有選店票 id」**：
+ * 讀取中、讀失敗、或畫面上的門市屬於另一張票，都不能送——客人看不到要寄到哪一家。
+ */
+export function hasLoadedConvenienceStore(
+  selectionId: string | null,
+  selection: Pick<S['CvsStoreSelection'], 'selectionId'> | null,
+): boolean {
+  return selectionId !== null && selection !== null && selection.selectionId === selectionId;
 }
 
 export interface CheckoutReadiness {
@@ -47,7 +58,9 @@ export interface CheckoutReadinessInput {
   readonly deliveryMethod: S['DeliveryMethod'] | null;
   readonly shippingPolicy: S['ShippingPolicy'] | null;
   readonly shippingAddressId: string | null;
-  readonly convenienceStoreCode: string | null;
+  readonly convenienceStoreSelectionId: string | null;
+  /** 讀票讀到的門市；讀取中或讀失敗是 `null`。 */
+  readonly convenienceStoreSelection: Pick<S['CvsStoreSelection'], 'selectionId'> | null;
 }
 
 /** 結帳頁「送出」鈕能不能按，以及按不了的原因——集中在一處，畫面只負責顯示。 */
@@ -73,7 +86,10 @@ export function evaluateCheckoutReadiness(input: CheckoutReadinessInput): Checko
     return { ready: false, reason: '請選擇收件地址。' };
   }
 
-  if (requiresConvenienceStoreCode(input.deliveryMethod) && !input.convenienceStoreCode) {
+  if (
+    requiresConvenienceStore(input.deliveryMethod) &&
+    !hasLoadedConvenienceStore(input.convenienceStoreSelectionId, input.convenienceStoreSelection)
+  ) {
     return { ready: false, reason: '請選擇取貨門市。' };
   }
 

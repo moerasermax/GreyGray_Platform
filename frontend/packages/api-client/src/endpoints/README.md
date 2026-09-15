@@ -35,6 +35,9 @@
 | DELETE | `/v1/cart/lines/{lineId}` | `removeCartLine` |
 | POST | `/v1/cart/quote` | `quoteCart` |
 | POST | `/v1/cart/checkout` | `checkout` |
+| POST | `/v1/logistics/cvs-map-sessions` | `createCvsMapSession`（ADR-038；契約沒有冪等鍵，`options` 只有 `signal?`） |
+| POST | `/v1/logistics/cvs-map/reply` | **不做函式**（綠界經客人的瀏覽器 POST 回後端，不是給前端呼叫的） |
+| GET | `/v1/logistics/cvs-selections/{selectionId}` | `getCvsSelection`（ADR-038） |
 | GET | `/v1/orders` | `listOrders` |
 | GET | `/v1/orders/{orderId}` | `getOrder` |
 | POST | `/v1/orders/{orderId}/cancel` | `cancelOrder` |
