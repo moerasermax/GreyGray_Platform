@@ -51,6 +51,31 @@ Leader 要明講。
 
 ---
 
+## 生效中：BE-52　最愛清單後端——`catalog.favorite` ＋ 三條新端點 ＋ `isFavorited` 填真值（ADR-036）
+
+使用者 2026-09-15 以 `/goal` 下達「不是購物車而是最愛清單——可以加上我的最愛瀏覽」。Leader 查證：契約從 M1a 起就有 `isFavorited`，
+但**沒有任何寫入端點**，後端在 `M1aEndpoints.cs` 第 1390、1441 行寫死 `false`，前台愛心是本地狀態、重新整理就消失。
+契約（`docs/api/openapi.storefront.yaml` 三條 operation）與 `docs/05` 三列 Leader 已寫好並複製進前端樹。同一波前端 FE-31／FE-32 平行（前端樹 `docs/34`）。
+
+★★ 最容易做錯的：① migration **先 `SET ROLE greygray_owner`**（照 0018），否則 `greygray_catalog` 拿不到預設權限；
+② **cursor 要同時帶 `created_at` 與 `product_id`**，現有 Catalog 的 `Slice`／cursor 不能沿用；③ 重複／併發加入用 `ON CONFLICT DO NOTHING`，**不准先查再寫**；
+④ 可見規則＝商品詳情那一套（上架且至少一個上架 SKU），**在 SQL 分頁之前**過濾；⑤ 匿名看商品時**不准查最愛**（測試要斷言「沒查」）；
+⑥ 資料庫測試用**正式 migrations**（`M1aCoreMigrationTests` 那一套），不准往 IdentityCatalog 手寫的 `SchemaSql` 加表；⑦ 不改契約、不改 `ops/`。
+（`check-openapi` 的 M1a 模式只比 method＋path，參數與回應碼要靠自己的 HTTP 層測試——Codex 覆驗更正。）
+
+package: BE-52
+doc: docs/51-後端第三十六波派工書.md
+allow: db/migrations/0019
+allow: src/Modules/Catalog/
+allow: src/Hosts/GreyGray.Api.Storefront/
+allow: tests/GreyGray.M1a.IdentityCatalog.Tests/
+allow: tests/GreyGray.M1a.Migrations.Tests/
+allow: tests/GreyGray.Contracts.Tests/
+
+> `db/migrations/` 只准新增 `0019_catalog_favorite.sql`；後兩個 tests 專案只在既有測試因新 migration／新 operation 需要調整時才動。`docs/` 全域放行，但契約 YAML 與 `docs/05` 不准動。
+
+---
+
 <!--
 ★ 2026-09-06 已通過整合驗收並提交（後端 `2ad080a`），撤包。原文保留供追溯。
 

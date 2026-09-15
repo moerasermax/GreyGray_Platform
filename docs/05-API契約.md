@@ -254,6 +254,9 @@ GET /v1/orders?cursor=0198c3d4e5f607189abc0123456789ab&limit=20
 | `PUT` | `/v1/me/addresses/{addressId}` | M1a | |
 | `DELETE` | `/v1/me/addresses/{addressId}` | M1a | |
 | `GET` | `/v1/me/stored-value` | M1a | 儲值金餘額（Ledger） |
+| `GET` | `/v1/me/favorites` | M1a | 我的最愛（ADR-036）；可見規則與商品詳情相同，最新收藏在前 |
+| `PUT` | `/v1/me/favorites/{productId}` | M1a | 加入最愛；冪等 |
+| `DELETE` | `/v1/me/favorites/{productId}` | M1a | 移出最愛；冪等 |
 | `GET` | `/v1/categories` | M1a | 橫捲圓形分類標的資料來源 |
 | `GET` | `/v1/products` | M1a | 商品卡牆；支援 `categoryId` / `q` / `mode` |
 | `GET` | `/v1/products/{productId}` | M1a | 含所有 SKU 與可用量 |
