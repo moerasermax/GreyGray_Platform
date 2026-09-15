@@ -1359,6 +1359,15 @@ components:
             shippingFee: { $ref: '#/components/schemas/Money' }
             deliveryMethod: { $ref: '#/components/schemas/DeliveryMethod' }
             shippingPolicy: { $ref: '#/components/schemas/ShippingPolicy' }
+            convenienceStoreCode:
+              type: [string, 'null']
+              description: 超商取貨的門市代號（ADR-038）；其他配送方式為 null。
+            convenienceStoreName:
+              type: [string, 'null']
+              description: 超商取貨的門市名稱（下單當時凍結）；ADR-038 之前的舊訂單只有代號，這裡是 null。
+            convenienceStoreAddress:
+              type: [string, 'null']
+              description: 超商取貨的門市地址（下單當時凍結）；舊訂單為 null。
             lines:
               type: array
               items: { $ref: '#/components/schemas/AdminOrderLine' }

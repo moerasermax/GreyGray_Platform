@@ -1,8 +1,127 @@
 # 啟動 prompt
 
-**目前沒有生效中的派工（2026-09-15）。** 第三十八波三包都已驗收撤包：後端 **BE-52**（`46ec1c5`：最愛清單後端，測試 332 → **340**）＋ 前端 **FE-31**／**FE-32**（`b7250db`：資訊頁、立即購買與最愛清單前端，測試 500 → **558**）。
+**第三十九波（2026-09-15）——兩包平行、跨兩棵樹、`allow` 零重疊。**
+後端 **BE-53**（7-ELEVEN 選店票、綠界回傳驗證、門市凍結進訂單、後台門市欄位、模擬器假地圖，`docs/52`）＋ 前端 **FE-33**（結帳頁電子地圖選門市、前後台訂單詳情顯示門市，前端樹 `docs/35`）。
+使用者以 `/goal` 問「可以新增 7-11 收貨嗎」。契約（三條 `/v1/logistics/*`、`CheckoutRequest.convenienceStoreSelectionId`、`Order.convenienceStoreAddress`、`AdminOrder` 三個門市欄位）與 ADR-038 由 Leader 寫好並逐位元複製進前端樹。
+兩份派工書經 Codex `gpt-5.6-sol` 逐行覆驗（後端 13 條、前端 13 條）與 Gemini `3.1-pro-high` 情境覆驗（10 條），採納的已改進派工書。
+測試基準：後端 **340**、前端 **558**。實作者分派：BE-53 給 Codex `gpt-5.6-sol`＋high，FE-33 給 Claude `opus`＋medium（跨家）。
+★ 後端樹 dev Host 與綠界模擬器現在**有在跑**（上一波驗收留下的），子代理不要起停。Docker Desktop 在跑。
+★ 子代理跑 audit 用 `C:\Program Files\Git\bin\bash.exe` 明確路徑（裸 `bash` 會命中 WSL stub）。
+
+---
+
+## BE-53 的啟動 prompt
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
+GreyGray Platform 後端（.NET 10 modular monolith）。這一包動 Storefront Host（新 Logistics/）、Checkout／Ordering 的門市快照、Admin 訂單回應、一支新 migration（0020）、綠界模擬器假地圖、ops/start-dev-hosts.ps1 一段、tests。契約 Leader 已寫好，不准改。沒有前端。
+
+GG_PACKAGE=BE-53
+
+開工前務必先讀：
+  CLAUDE.md                                六條鐵則 ＋ 派工規則
+  docs/45-開發工作流與設計準則.md            §4 平行派工、§5 自驗＝必要不充分、§6 邊界測試
+  docs/00-decisions.md                     ADR-038（7-ELEVEN 電子地圖）、ADR-029（綠界模擬器與網域守衛）
+  docs/52-後端第三十七波派工書.md            ★ 整份讀完：§0 事實（所有行號）＋ §1 必做 ＋ §2 不要做 ＋ §3 所有權 ＋ §5 可能寫錯的地方
+  docs/api/openapi.storefront.yaml         logistics 三條 operation、CvsMapSession、CvsStoreSelection、CheckoutRequest、Order（不准改）
+  docs/api/openapi.admin.yaml              AdminOrder 三個門市欄位（不准改）
+  .dispatch/reports/README.md              ★ 自驗報告格式，以及「測試要分專案前景跑」
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/BE-53.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 不准把驗證丟背景、不准排程 wakeup。要跑的是：
+     docker info（沒在跑就停下來回報）
+     dotnet build .\GreyGray.slnx -c Debug --nologo（0 警告 0 錯誤；不要跑 ops\build.ps1）
+     測試分專案前景跑，基準 340（含 2 個既有 Skip）＋ 你新增的；GreyGray.Architecture.Tests 必須在裡面、Total: 單獨貼出
+     ops\check-openapi.ps1 -Configuration Debug（Storefront M1a 29 → 32、Admin 30）
+     & 'C:\Program Files\Git\bin\bash.exe' .dispatch/audit-dispatch.sh
+     輸出貼進報告。
+
+★ 綠界地圖的回傳沒有檢查碼、而且是從 ecpay.com.tw 發起的跨站 POST：SameSite=Lax 的 gg_cart 不會帶。回傳端點不准讀、也不准發 cookie，只信自己發的選店票。
+★ 回傳端點一律 303（不是 302），失敗也 303 帶 cvsSelectionError；form 用 ReadFormAsync 手動讀並接住解析例外，不要 [FromForm]。
+★ 結帳解票放在 ExecuteIdempotentAsync 的 work 裡；指紋含選店票、不含解出來的名稱地址。選店票欄位不是 null 就一定要驗，不准退回去信 convenienceStoreCode。
+★ 快取鍵用票的 SHA-256；票格式一個共用函式驗；時間經 IClock。
+★ CompleteCheckoutRequest／CheckoutCompleted 只加 init 屬性，EventType 維持 v1；Cart.ReplayCompletedEvent 要帶新欄位。
+★ migration 照 0018：SET ROLE greygray_owner → ALTER → RESET ROLE → owner 斷言（checkout、ordering）。表名是 ordering.orders。M1aCoreMigrationTests 第 106 行保持 0019。
+★ Logistics:ECPay:MerchantId 空白＝沒有設定：開機照常、端點回 503／303 not-configured。有值時其餘設定開機就驗、壞了就炸。
+★ 模擬器假地圖的 HTML 用可測純函式產生、全部 HtmlEncode、要有注入反例測試。start-dev-hosts 四個 Logistics__ECPay__* 全有／全無／部分就炸。
+★ allow 在 Checkout／Ordering／Admin 縮到檔案層級；需要動清單外的檔就停下來問。
+★ 後端樹 dev Host 與模擬器有在跑，不要起停；build 被 bin 鎖住就停下來回報。check-openapi.ps1 自己起停的短命 Host 允許。
+★ 同一波前端樹有 FE-33 平行，不在你這棵樹，不用管它。
+★ 派工書 §5 列了可能寫錯的地方：撞到就停下來寫進報告問，不要自己換做法。
+
+★ 質疑被鼓勵，但不准自己改方向：派工書寫錯了就停下來寫進報告問，
+  不要一邊照做一邊在報告裡抱怨，也不要自己換一個做法。
+
+檔案所有權：見派工書 §3（ACTIVE.md 的 allow 是機械執行的那份）。
+docs/、management/、STATE.md、CLAUDE.md、AGENTS.md 每一包都寫得了——但契約 YAML 與 docs/05 不准動。
+
+不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
+git checkout -- .、以及 git commit。
+
+你不可以自己宣告通過。交付完就停。
+```
+
+---
+
+## FE-33 的啟動 prompt（在前端樹）
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe
+GreyGray Platform 前端（Next.js ＋ pnpm workspace）。這一包把結帳頁的超商門市從手動輸入代號改成 7-ELEVEN 電子地圖，並在前台與後台訂單詳情顯示門市名稱與地址。不動契約、不動 packages/ui。
+
+GG_PACKAGE=FE-33
+
+開工前務必先讀：
+  CLAUDE.md                                前端四條 ＋ 派工規則
+  frontend/README.md                       前端四條原文
+  docs/45-開發工作流與設計準則.md            §5 自驗＝必要不充分、§6 邊界測試
+  docs/00-decisions.md                     ADR-038（7-ELEVEN 電子地圖）
+  docs/35-前端第二十一波派工書.md            ★ 整份讀完：§0 事實 ＋ §1 必做 ＋ §2 不要做 ＋ §3 所有權 ＋ §5 可能寫錯的地方
+  docs/api/openapi.storefront.yaml         logistics 三條 operation、CheckoutRequest、Order（Leader 從後端樹複製來的，不准改）
+  docs/api/openapi.admin.yaml              AdminOrder 三個門市欄位（不准改）
+  .dispatch/reports/README.md              ★ 自驗報告格式
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/FE-33.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 不准把驗證丟背景、不准排程 wakeup。pnpm 指令都在 frontend/ 目錄裡跑：
+     開工第一件事：pnpm api:generate（types.admin.ts 預期只多三個門市欄位，多了別的就停下來回報）
+     交付前：pnpm --recursive typecheck、pnpm --recursive test（基準 558 ＋ 你新增的，逐專案條數貼進報告）
+     在 repo 根：& 'C:\Program Files\Git\bin\bash.exe' .dispatch/audit-dispatch.sh
+     輸出原樣貼進報告。build 由 Leader 跑，你不跑 next build，也不起、不停任何 dev server。
+
+★ 進頁初始化照派工書必做 D 第 3 點的固定順序：讀草稿 → 解析回程參數 → 純函式合併 → 一次設定 state → 存回完整草稿 → 清網址 → 讀票。不要靠 effect 的執行順序。
+★ 回程錯誤一律清掉選店票（就算草稿裡有舊門市）；404／422 清票用「只清選店票」的函式，不准 clearCheckoutDraft（會連留言一起刪）。
+★ ConvenienceStoreField：頁面給 onStart(): Promise<CvsMapSession>（存草稿＋開票），元件只管同步 pendingRef 鎖、隱藏表單自動送出、失敗訊息、pageshow persisted 時放鎖。
+★ 可否送出看「讀到了門市」，不是「有選店票 id」。送出只送 convenienceStoreSelectionId，不送 convenienceStoreCode。
+★ useSearchParams 要 Suspense；PageTopBar 在外層，fallback 用同一組 Skeleton，不准 null。pageShell.test.ts 不改。
+★ 不准手改生成檔；map session 的 body 型別從 paths 推導。mock 的既有超商訂單 fixture（前台與後台）要補門市欄位。
+★ 錯誤訊息照派工書 §0.1 那張表一字不差。門市名稱地址不准放網址或 localStorage。
+★ 同一波後端 BE-53 在另一棵樹實作，你的測試用 mock，不要打真後端。
+
+★ 質疑被鼓勵，但不准自己改方向：派工書寫錯了就停下來寫進報告問。
+
+檔案所有權：見派工書 §3（ACTIVE.md 的 allow 是機械執行的那份）。
+docs/、management/、STATE.md、CLAUDE.md、AGENTS.md 每一包都寫得了——但契約 YAML 與 docs/05 不准動。
+
+不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
+git checkout -- .、以及 git commit。
+
+你不可以自己宣告通過。交付完就停。
+```
+
+---
+
+## 上一波（第三十八波，已撤包）
+
+第三十八波三包都已驗收撤包：後端 **BE-52**（`46ec1c5`：最愛清單後端，測試 332 → **340**）＋ 前端 **FE-31**／**FE-32**（`b7250db`：資訊頁、立即購買與最愛清單前端，測試 500 → **558**）。
 **這一波還沒有部署**；部署時正式機要套 migration `0019`。真瀏覽器的畫面走查待補（Chrome 擴充未連線，這一次只做了 HTTP＋SSR 層的旅程）。
-★ 下一波派需要跑後端測試的包之前，先 `docker info`（Docker Desktop 在 `D:\Program`，沒開時 Testcontainers 全掛）；子代理跑 audit 用 `C:\Program Files\Git\bin\bash.exe` 明確路徑（Docker Desktop 起來後裸 `bash` 會命中 WSL stub）。
 
 以下保留派工時的標頭與三份啟動 prompt 供參考。
 

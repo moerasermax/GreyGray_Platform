@@ -51,6 +51,43 @@ Leader 要明講。
 
 ---
 
+## 生效中：BE-53　7-ELEVEN 超商取貨門市——選店票 ＋ 綠界回傳驗證 ＋ 門市名稱地址凍結進訂單 ＋ 後台門市欄位 ＋ 模擬器假地圖（ADR-038）
+
+使用者 2026-09-15 以 `/goal` 問「可以新增 7-11 收貨嗎」。Leader 查證：契約從 M1a 起就有超商取貨與 `convenienceStoreCode`，但**從來沒接電子地圖**——前台手動輸入代號、
+`M1aEndpoints.cs` 第 1491 行把代號塞進「門市名稱」、後台訂單回應沒有任何門市欄位。契約（三條 `/v1/logistics/*` 與四個新欄位）、ADR-038 Leader 已寫好並複製進前端樹。
+同一波前端 FE-33 平行（前端樹 `docs/35`）。派工書經 Codex 逐行覆驗 13 條與 Gemini 情境覆驗 10 條。
+
+★★ 最容易做錯的：① 綠界回傳是**跨站 POST、沒有檢查碼**——回傳端點不讀不發 cookie、只信自己發的票，一律 **303**；② 結帳**解票放在冪等 `work` 裡**、指紋含選店票；
+③ 選店票欄位不是 null 就要驗，**不准退回信 `convenienceStoreCode`**；④ `CompleteCheckoutRequest`／`CheckoutCompleted` **只加 init 屬性**、`EventType` 維持 v1、`Cart.ReplayCompletedEvent` 要帶；
+⑤ migration **`SET ROLE greygray_owner`**、表名 `ordering.orders`、`M1aCoreMigrationTests` 第 106 行保持 `0019`；⑥ 沒有物流設定不擋開機、有設定但壞掉開機就炸；
+⑦ 模擬器 HTML 全部 HtmlEncode 並有注入反例；⑧ Checkout／Ordering／Admin 的 allow 是**檔案層級**，清單外的檔要先問。
+
+package: BE-53
+doc: docs/52-後端第三十七波派工書.md
+allow: db/migrations/0020
+allow: src/Modules/Checkout/GreyGray.Modules.Checkout.Contracts/CheckoutContracts.cs
+allow: src/Modules/Checkout/GreyGray.Modules.Checkout.Core/CheckoutApplicationService.cs
+allow: src/Modules/Checkout/GreyGray.Modules.Checkout.Core/Cart.cs
+allow: src/Modules/Checkout/GreyGray.Modules.Checkout.Infra/CheckoutDbContext.cs
+allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Core/Order.cs
+allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Contracts/OrderingContracts.cs
+allow: src/Modules/Ordering/GreyGray.Modules.Ordering.Infra/OrderingDbContext.cs
+allow: src/Hosts/GreyGray.Api.Storefront/
+allow: src/Hosts/GreyGray.Api.Admin/M1aEndpoints.cs
+allow: src/Tools/GreyGray.Tools.EcpaySimulator/
+allow: src/Tools/GreyGray.Tools.EcpaySimulator.Core/
+allow: ops/start-dev-hosts.ps1
+allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
+allow: tests/GreyGray.M1a.Migrations.Tests/
+allow: tests/GreyGray.M1a.PaymentLedger.Tests/
+allow: tests/GreyGray.EndToEnd.Tests/
+allow: tests/GreyGray.Contracts.Tests/
+
+> `db/migrations/` 只准新增 `0020_convenience_store_snapshot.sql`；`src/Hosts/GreyGray.Api.Storefront/Logistics/` 是新目錄；Admin 只准加三個門市欄位；`ops/start-dev-hosts.ps1` 只准加 `Logistics__ECPay__*` 那一段。
+> 後兩個 tests 專案只在既有測試因建構式／回應形狀變了才動。`docs/` 全域放行，但契約 YAML 與 `docs/05` 不准動。
+
+---
+
 <!--
 ★ 2026-09-15 已通過整合驗收並提交（後端 `46ec1c5`），撤包。原文保留供追溯。
 

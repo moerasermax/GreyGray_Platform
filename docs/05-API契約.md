@@ -272,6 +272,9 @@ GET /v1/orders?cursor=0198c3d4e5f607189abc0123456789ab&limit=20
 | `GET` | `/v1/orders/{orderId}` | M1a | |
 | `POST` | `/v1/orders/{orderId}/cancel` | M1a | 只有 `AwaitingPayment` 可自助取消 |
 | `POST` | `/v1/orders/{orderId}/payment` | M1a | 取得綠界導轉參數 |
+| `POST` | `/v1/logistics/cvs-map-sessions` | M1a | 開啟 7-ELEVEN 電子地圖、產生一次性選店票（ADR-038） |
+| `POST` | `/v1/logistics/cvs-map/reply` | M1a | 綠界地圖回傳。**不是給前端的**，一律 303 導回結帳頁 |
+| `GET` | `/v1/logistics/cvs-selections/{selectionId}` | M1a | 讀取選好的門市（同一台購物車才讀得到） |
 | `GET` | `/v1/orders/{orderId}/shipments` | M1b | 物流狀態 |
 | `POST` | `/v1/inquiries/{inquiryId}/reply` | M1b | LINE postback 打進來的漲價回覆 |
 | `POST` | `/v1/webhooks/ecpay` | M1a | 綠界回呼。**不是給前端的**，驗簽 ＋ 時戳窗 ＋ event id 去重 |
