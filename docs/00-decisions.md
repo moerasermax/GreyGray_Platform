@@ -818,6 +818,45 @@ ADR-019 與 `CLAUDE.md` 都寫著「租約到期前要處理、**先把到期日
     「購物車裡還有其他商品，或這件商品原本就在購物車裡，請確認品項與數量後再結帳」。
     這也涵蓋「按了立即購買、沒結帳就回來再按一次」——同一件商品的數量會疊加，帶去購物車讓客人看得到（Gemini 覆驗指出）。
   - 兩顆按鈕共用一把**同步鎖**（在任何 `await` 之前鎖住），連點或搶按只送一次，**第一次點擊的意圖勝出**。
+
+---
+
+## ADR-038　超商取貨門市用綠界「7-ELEVEN 電子地圖」選；後端發一次性選店票、驗回傳、把門市名稱與地址凍結進訂單
+**狀態**：已採納（2026-09-15，使用者以 `/goal` 問「可以新增 7-11 收貨嗎」；規格由 Codex `gpt-5.6-sol` 與 Gemini `3.1-pro-high` 交叉查證，細節由 Leader 定案。**正式物流開通要老闆向綠界申請**）
+
+**問題**：契約從 M1a 起就有 `DeliveryMethod.ConvenienceStore`、`CheckoutRequest.convenienceStoreCode`（說明寫「綠界電子地圖回傳的門市代號」）與 `Order.convenienceStoreName`，
+但**從來沒有接電子地圖**：前台 `ConvenienceStoreField.tsx` 是手動輸入代號（檔頭自己寫「假設，未接真正的綠界電子地圖」），
+後端 `OrderResponse` 的「門市名稱」位置塞的是**門市代號**，後台契約完全沒有門市欄位——出貨的人看不到要寄到哪一家。
+
+**查證過的外部事實**（官方文件 developers.ecpay.com.tw 8795／10087／10092、support.ecpay.com.tw 21685）：
+- 地圖 `POST https://logistics(-stage).ecpay.com.tw/Express/map`，form-urlencoded：`MerchantID`、`LogisticsType=CVS`、`LogisticsSubType`、`IsCollection`、`ServerReplyURL`，選填 `MerchantTradeNo`、`ExtraData`（≤20）、`Device`。
+- **地圖請求不需要 CheckMacValue，回傳也沒有** → 回傳內容可被偽造。
+- 客人選完門市後，綠界**經客人的瀏覽器**把 `CVSStoreID`、`CVSStoreName`、`CVSAddress`、`CVSOutSide`、`ExtraData` 等 POST 到 `ServerReplyURL`（那一頁就是客人看到的頁）；`ServerReplyURL` 只接受 80／443。
+- 手機不可放 iframe、iOS 不要 `target=_blank`，同頁頂層導向最穩。
+- 小量、自己拿去門市寄 → 綠界建議 **C2C（`UNIMARTC2C`）**；B2C 要測標。金流開通不等於物流開通。
+- 建物流單（`Express/Create`，要 CheckMacValue）**不是**選門市的前提。
+
+**決定**：
+1. **C2C `UNIMARTC2C`、`IsCollection=N`**（付款仍走 AIO）。物流設定與金流**分開管**：`Logistics:ECPay:MerchantId`、`Logistics:ECPay:LogisticsSubType`、`Logistics:ECPay:MapUrl`；
+   網址守衛比照 ADR-029（`*.ecpay.com.tw` 以外要明確開 `Logistics:ECPay:AllowNonEcpayEndpoints`）。**缺設定不擋開機**，選門市端點回明確的 `logistics.not-configured`——正式機目前沒有物流帳號，不能因為這一波讓整站開不了機。
+2. **流程**（契約純新增）：
+   - 結帳頁按「選擇門市」→ `POST /v1/logistics/cvs-map-sessions` → 後端產生**一次性選店票**（密碼學亂數、≤20 字、存 Garnet、綁購物車 cookie、15 分鐘過期）→ 回 `{ action, method, fields }`；
+   - 前端照 `/payment/[orderId]` 的做法用隱藏表單**頂層自動送出**到綠界地圖；
+   - 綠界經瀏覽器 POST 到 `{Storefront:PublicApiOrigin}/v1/logistics/cvs-map/reply`（**不是給前端呼叫的**）→ 後端驗：票存在、未過期、未用過、`MerchantID` 與 `LogisticsSubType` 相符、門市代號與名稱地址的格式與長度 → 把門市存回票上 → **303** 導回固定的 `{Storefront:PublicOrigin}/checkout?cvsSelection=<票>`（名稱地址不放網址）；驗不過也 303 回結帳頁並帶錯誤代碼，**不給客人看 500**；
+   - 結帳頁 `GET /v1/logistics/cvs-selections/{票}`（同一台購物車才看得到）顯示門市名稱、地址；
+   - 送出訂單帶新的選填欄位 `convenienceStoreSelectionId` → 後端從票取出代號、名稱、地址**凍結進訂單**。舊的 `convenienceStoreCode` 保留向下相容。
+3. **訂單上看得到門市**：前台 `Order.convenienceStoreName` 改成真的名稱（修掉塞代號的錯位）、純新增 `convenienceStoreAddress`；後台訂單契約純新增門市代號、名稱、地址——出貨的人要知道寄到哪。
+4. **dev**：綠界模擬器（ADR-029 那一支）加 `/Express/map` 假地圖，列幾家假門市、以瀏覽器表單 POST 回 `ServerReplyURL`，行為跟真綠界同形。
+5. **不在這一次**：`Express/Create` 建物流單與交貨便代碼（出貨時由營運在綠界後台處理）、門市清單 API 複核、全家／萊爾富。
+   **已知缺口（Gemini 情境覆驗提出，Leader 確認）**：超商取貨寄件要**收件人真實姓名與手機**，但結帳不收、後台訂單只看得到遮罩後的聯絡方式（明文要走 ADR-017 的稽核，而稽核寫入 BE-50 還沒生效）。
+   宅配的收件資訊在後台一樣看不到，是同一個缺口；牽涉個資留存與稽核，**要使用者拍板**後另開一包，不併進這一波。
+   LINE／Facebook 內建瀏覽器若把地圖開到外部瀏覽器，回程 cookie 不共用、會回到空購物車——上線後觀察，必要時在結帳頁提示改用外部瀏覽器。
+
+**否決**：只在前端換成地圖、後端照收客人送來的代號與名稱（回傳沒有檢查碼，名稱地址由客人任意填，進了訂單就成了營運的寄件依據）；
+把門市資料塞在導回網址的 query 裡（會被分享、被竄改、進瀏覽紀錄）；缺物流設定就擋開機（正式機現在沒有物流帳號，會把整站拖垮）；B2C（要測標，不符合現在自己拿去門市寄的出貨方式）。
+
+**附帶**：偽造的門市代號只影響偽造者自己那一張單（寄不出去由營運發現），所以這一次不做門市清單複核，列為後續強化。
+正式上線前 Leader 要在正式機放物流設定；在老闆申請到正式 C2C 物流帳號之前，內測可以先用綠界公開的 C2C 測試帳號。
 - 能不能按的條件與「加入購物車」**完全相同**（同一個 disabled 判斷，不另寫一份）。
 - 未登入：沿用既有流程——`/checkout` 撞 `401` 會帶 `next` 去登入再回來（FE-25／FE-26 已做好）。
 

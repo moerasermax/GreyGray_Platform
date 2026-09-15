@@ -51,6 +51,39 @@ Leader 要明講。
 
 ---
 
+## 生效中：FE-33　結帳頁用 7-ELEVEN 電子地圖選門市 ＋ 前後台訂單詳情顯示門市（ADR-038）
+
+使用者 2026-09-15 以 `/goal` 問「可以新增 7-11 收貨嗎」。現在的 `ConvenienceStoreField.tsx` 是手動輸入門市代號（檔頭自己寫「假設，未接真正的綠界電子地圖」），
+訂單詳情只顯示後端塞進來的代號、後台完全沒有門市。契約（三條 `/v1/logistics/*`、`CheckoutRequest.convenienceStoreSelectionId`、`Order.convenienceStoreAddress`、`AdminOrder` 三個門市欄位）
+與 ADR-038 Leader 已從後端樹逐位元複製進來；後端 BE-53 同一波平行實作。派工書經 Codex 逐行覆驗 13 條與 Gemini 情境覆驗 10 條。
+
+★★ 最容易做錯的：① 整頁離開去地圖再回來，**進頁初始化照固定順序**（讀草稿 → 解析回程 → 純函式合併 → 一次設 state → 存回完整草稿 → 清網址 → 讀票），不靠 effect 順序；
+② 回程錯誤**一律清掉選店票**，404／422 清票**不准刪整份草稿**；③ 同步 `pendingRef` 鎖 ＋ `pageshow` persisted 放鎖；④ 可否送出看「讀到了門市」；
+⑤ `useSearchParams` 要 Suspense、fallback 不准 null、`pageShell.test.ts` 不改；⑥ 不准手改生成檔、mock 既有超商訂單 fixture 要補欄位；⑦ `pnpm` 指令在 `frontend/` 裡跑。
+
+package: FE-33
+doc: docs/35-前端第二十一波派工書.md
+allow: frontend/packages/api-client/src/types.storefront.ts
+allow: frontend/packages/api-client/src/types.admin.ts
+allow: frontend/packages/api-client/src/endpoints/storefront.ts
+allow: frontend/packages/api-client/src/endpoints/README.md
+allow: frontend/packages/api-client/src/mock/
+allow: frontend/apps/storefront/app/(checkout)/checkout/
+allow: frontend/apps/storefront/app/(checkout)/_components/ConvenienceStoreField.tsx
+allow: frontend/apps/storefront/app/(checkout)/_components/__tests__/
+allow: frontend/apps/storefront/app/(checkout)/_lib/cvsSelection.ts
+allow: frontend/apps/storefront/app/(checkout)/_lib/checkoutDraft.ts
+allow: frontend/apps/storefront/app/(checkout)/_lib/cartRules.ts
+allow: frontend/apps/storefront/app/(checkout)/_lib/__tests__/
+allow: frontend/apps/storefront/app/(account)/orders/[orderId]/page.tsx
+allow: frontend/apps/admin/app/(dash)/orders/[orderId]/page.tsx
+allow: frontend/apps/admin/app/(dash)/orders/_lib/
+
+> `(checkout)/_components/__tests__/` 是新目錄、`(checkout)/_lib/cvsSelection.ts` 是新檔。`types.admin.ts` 預期只多三個門市欄位，多了別的就停下來回報。
+> 前台訂單詳情只加地址一行、後台訂單詳情只加「取貨門市」一格。`docs/` 全域放行，但契約 YAML、`docs/05`、`docs/00` 不准動。
+
+---
+
 <!--
 ★ 2026-09-15 已通過整合驗收並提交（前端 `b7250db`），FE-31 與 FE-32 一起撤包。原文保留供追溯。
 
