@@ -51,7 +51,15 @@ Leader 要明講。
 
 ---
 
-## 生效中：BE-52　最愛清單後端——`catalog.favorite` ＋ 三條新端點 ＋ `isFavorited` 填真值（ADR-036）
+<!--
+★ 2026-09-15 已通過整合驗收並提交（後端 `46ec1c5`），撤包。原文保留供追溯。
+
+一輪。migration `0019`（SET ROLE greygray_owner ＋ owner 斷言、無 GRANT）＋ `IStorefrontFavorites`（ON CONFLICT DO NOTHING、商品詳情那一套可見規則在 SQL 分頁前、24-byte 雙欄 cursor、`ProductId` 比較運算子供 EF keyset）＋ 三條端點與 `isFavorited` 真值 ＋ 正式 migration／正式 DB／HTTP 層測試。測試 332 → **340**。
+Leader 驗：Debug／Release 建置 0/0、12 專案逐一前景重跑 340（0 失敗、2 既有 Skip，Architecture 28）、check-openapi Storefront M1a 29/29／Admin 30/30、audit 通過、`git diff` 契約／`ops/`／其他模組零改動；dev 環境補套 0018／0019 後用 HTTP＋SSR 走完最愛旅程（匿名 401、A 收藏後清單／列表／詳情／SSR 愛心為真、B 看不到、刪除冪等、格式錯 404、limit=0 422）。
+留下：正式 DB 整合測試把多個情境塞在同一個 Fact（壞掉時難定位）；收藏清單逐筆查 SKU 與圖片（沿用既有商品列表寫法）；子代理用 `dotnet run` 誤跑一次被 runner 拒絕（已如實寫進報告）。
+提交子代理收工時被 stop gate 以稽核 ② 擋下（0019 已進 HEAD、包仍生效）——預期中，撤包後解除。
+
+## 生效中（已撤包）：BE-52　最愛清單後端——`catalog.favorite` ＋ 三條新端點 ＋ `isFavorited` 填真值（ADR-036）
 
 使用者 2026-09-15 以 `/goal` 下達「不是購物車而是最愛清單——可以加上我的最愛瀏覽」。Leader 查證：契約從 M1a 起就有 `isFavorited`，
 但**沒有任何寫入端點**，後端在 `M1aEndpoints.cs` 第 1390、1441 行寫死 `false`，前台愛心是本地狀態、重新整理就消失。
@@ -73,6 +81,7 @@ allow: tests/GreyGray.M1a.Migrations.Tests/
 allow: tests/GreyGray.Contracts.Tests/
 
 > `db/migrations/` 只准新增 `0019_catalog_favorite.sql`；後兩個 tests 專案只在既有測試因新 migration／新 operation 需要調整時才動。`docs/` 全域放行，但契約 YAML 與 `docs/05` 不准動。
+-->
 
 ---
 
@@ -1035,6 +1044,8 @@ allow: tests/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **BE-52** 最愛清單後端（ADR-036）：migration `0019` `catalog.favorite`、`IStorefrontFavorites`、`GET/PUT/DELETE /v1/me/favorites`、商品列表／詳情 `isFavorited` 填真值　·　2026-09-15 通過　·　`46ec1c5`　·
+  測試 332 → 340；第三十八波與前端 FE-31／FE-32 平行；dev 環境 HTTP＋SSR 旅程驗過；尚未部署，見 `.dispatch/reports/BE-52.md`
 - **BE-48** 結帳成功後讓購物車退休（#44：正式機 log 連續 15 次 422「購物車已完成結帳」）＋ 取消已出貨的訂單不再讓事件卡住重試（#46，BE-47 的回歸）　·　2026-09-04 通過　·　`89bb5c5`　·
   測試 308 → 315；第六次部署 release `20260904015905167`；與前端 FE-29 同一輪；見 `.dispatch/reports/BE-48.md`
 - **BE-47** 把「出貨」這個階段接起來（#43、#42）：交運時扣庫存並結轉銷貨成本（`StockCostAllocated`）、運費成本入帳、訂單品項轉 `Shipped`／`Completed`；migration `0018` 給保留單第三個狀態「已出庫」；`LedgerCoverageTests` 釘住「分錄表每個階段都要有人發、有人收」　·　2026-09-04 通過　·　`ac63775`　·
