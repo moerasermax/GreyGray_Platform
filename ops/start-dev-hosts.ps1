@@ -142,7 +142,38 @@ function Wait-HealthOk {
 #
 # 退款跑在 Worker（Payment.Infra/OrderingEventHandlers），所以三個 Host 都要拿到這一組。
 $ecpayEnv = @{}
+$logisticsEnv = @{}
 if ($UseEcpaySimulator) {
+    $logisticsKeys = @(
+        'Logistics__ECPay__MerchantId',
+        'Logistics__ECPay__LogisticsSubType',
+        'Logistics__ECPay__MapUrl',
+        'Logistics__ECPay__AllowNonEcpayEndpoints'
+    )
+    $providedLogisticsKeys = @()
+    foreach ($key in $logisticsKeys) {
+        if (-not [string]::IsNullOrWhiteSpace(
+                [Environment]::GetEnvironmentVariable($key, 'Process'))) {
+            $providedLogisticsKeys += $key
+        }
+    }
+
+    if ($providedLogisticsKeys.Count -eq 0) {
+        $logisticsEnv['Logistics__ECPay__MerchantId'] = 'DEVFAKE0000'
+        $logisticsEnv['Logistics__ECPay__LogisticsSubType'] = 'UNIMARTC2C'
+        $logisticsEnv['Logistics__ECPay__MapUrl'] = "http://127.0.0.1:$EcpaySimulatorPort/Express/map"
+        $logisticsEnv['Logistics__ECPay__AllowNonEcpayEndpoints'] = 'true'
+    }
+    elseif ($providedLogisticsKeys.Count -eq $logisticsKeys.Count) {
+        foreach ($key in $logisticsKeys) {
+            $logisticsEnv[$key] = [Environment]::GetEnvironmentVariable($key, 'Process')
+        }
+    }
+    else {
+        $missingLogisticsKeys = @($logisticsKeys | Where-Object { $providedLogisticsKeys -notcontains $_ })
+        throw "-UseEcpaySimulator 的物流設定必須四個全有或全無。缺少：$($missingLogisticsKeys -join ', ')"
+    }
+
     & (Join-Path $PSScriptRoot 'start-dev-ecpay-simulator.ps1') `
         -InstallRoot $InstallRoot -Configuration $Configuration -Port $EcpaySimulatorPort `
         -StartupTimeoutSeconds $StartupTimeoutSeconds | Out-Null
@@ -180,6 +211,7 @@ if (-not [string]::IsNullOrWhiteSpace($StorefrontPublicApiOrigin)) {
 $storefrontEnv['ASPNETCORE_ENVIRONMENT'] = 'Development'
 $storefrontEnv['ASPNETCORE_URLS'] = "http://127.0.0.1:$StorefrontPort"
 $storefrontEnv = Add-EcpayEnvironment -Environment $storefrontEnv
+foreach ($key in $logisticsEnv.Keys) { $storefrontEnv[$key] = $logisticsEnv[$key] }
 $storefrontPid = Start-DevHost -Name 'storefront' -ProjectName 'GreyGray.Api.Storefront' -Environment $storefrontEnv
 $storefrontHealth = Wait-HealthOk -Port $StorefrontPort -ProcessId $storefrontPid -Name 'storefront'
 Write-Host "PASS storefront /health（PID $storefrontPid）：$storefrontHealth"

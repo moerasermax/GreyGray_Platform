@@ -21,6 +21,7 @@
     <ProjectReference Include="..\..\src\Modules\Ordering\GreyGray.Modules.Ordering.Infra\GreyGray.Modules.Ordering.Infra.csproj" />
     <ProjectReference Include="..\..\src\Hosts\GreyGray.Api.Admin\GreyGray.Api.Admin.csproj" />
     <ProjectReference Include="..\..\src\Hosts\GreyGray.Api.Storefront\GreyGray.Api.Storefront.csproj" />
+    <ProjectReference Include="..\..\src\Tools\GreyGray.Tools.EcpaySimulator.Core\GreyGray.Tools.EcpaySimulator.Core.csproj" />
   </ItemGroup>
 
 </Project>

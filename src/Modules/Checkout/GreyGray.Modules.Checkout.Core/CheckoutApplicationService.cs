@@ -292,6 +292,8 @@ internal sealed class CheckoutApplicationService(
             idempotencyKey)
         {
             ConvenienceStoreCode = NormalizeOptional(request.ConvenienceStoreCode),
+            ConvenienceStoreName = NormalizeOptional(request.ConvenienceStoreName),
+            ConvenienceStoreAddress = NormalizeOptional(request.ConvenienceStoreAddress),
             BuyerNote = NormalizeOptional(request.BuyerNote),
         };
 

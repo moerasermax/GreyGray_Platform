@@ -158,6 +158,10 @@ public sealed record OrderView(
 
     public string? ConvenienceStoreCode { get; init; }
 
+    public string? ConvenienceStoreName { get; init; }
+
+    public string? ConvenienceStoreAddress { get; init; }
+
     public string? BuyerNote { get; init; }
 
     public Money? PaidAmount { get; init; }

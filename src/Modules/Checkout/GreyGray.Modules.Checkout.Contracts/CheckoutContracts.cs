@@ -127,7 +127,12 @@ public sealed record CompleteCheckoutRequest(
     AddressId? ShippingAddressId,
     string? ConvenienceStoreCode,
     string? BuyerNote,
-    string IdempotencyKey);
+    string IdempotencyKey)
+{
+    public string? ConvenienceStoreName { get; init; }
+
+    public string? ConvenienceStoreAddress { get; init; }
+}
 
 // ── 同步契約 ─────────────────────────────────────────────────────────────
 
@@ -201,6 +206,12 @@ public sealed record CheckoutCompleted(
 
     /// <summary>超商取貨時由綠界電子地圖回傳；其他配送方式為 null。</summary>
     public string? ConvenienceStoreCode { get; init; }
+
+    /// <summary>超商取貨時凍結的門市名稱；舊事件與其他配送方式為 null。</summary>
+    public string? ConvenienceStoreName { get; init; }
+
+    /// <summary>超商取貨時凍結的門市地址；舊事件與其他配送方式為 null。</summary>
+    public string? ConvenienceStoreAddress { get; init; }
 
     public string? BuyerNote { get; init; }
 }

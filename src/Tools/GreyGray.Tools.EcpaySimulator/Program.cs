@@ -103,6 +103,19 @@ app.MapPost("/Cashier/AioCheckOut/V5/decide", async (
     return Html(RenderResult(posted, notification, outcome, statusLine, body));
 });
 
+app.MapPost("/Express/map", async (HttpContext context) =>
+{
+    var fields = await ReadFormAsync(context);
+    var validation = EcpaySimulatorCore.ValidateCvsMapForm(fields);
+    if (!validation.IsValid)
+    {
+        log.LogWarning("電子地圖表單被拒：{ErrorMessage}", validation.ErrorMessage);
+        return Html(RenderError("MAP-FORM", validation.ErrorMessage), StatusCodes.Status400BadRequest);
+    }
+
+    return Html(EcpaySimulatorCore.RenderCvsMapPage(fields));
+});
+
 app.MapPost("/CreditDetail/DoAction", async (HttpContext context) =>
 {
     var fields = await ReadFormAsync(context);

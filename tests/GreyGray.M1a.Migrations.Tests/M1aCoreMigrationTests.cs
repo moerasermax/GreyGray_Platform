@@ -18,15 +18,15 @@ public sealed class M1aCoreMigrationTests : IAsyncLifetime
 
     public ValueTask DisposeAsync() => _postgres.DisposeAsync();
 
-    [Fact(DisplayName = "0001→0019 可重跑，favorite owner／約束／Catalog role 實際讀寫完整")]
+    [Fact(DisplayName = "0001→0020 可重跑，favorite 與超商快照 owner／欄位／role 實際讀寫完整")]
     public async Task Catalog_favorite_migration_is_idempotent_owned_and_usable_by_catalog_role()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
         var migrations = Path.Combine(FindRepositoryRoot(), "db", "migrations");
         var connectionString = _postgres.GetConnectionString();
 
-        await ExecuteMigrationChainAsync(connectionString, migrations, 19, cancellationToken);
-        await ExecuteMigrationChainAsync(connectionString, migrations, 19, cancellationToken);
+        await ExecuteMigrationChainAsync(connectionString, migrations, 20, cancellationToken);
+        await ExecuteMigrationChainAsync(connectionString, migrations, 20, cancellationToken);
 
         (await ScalarAsync<string>(connectionString, """
             SELECT tableowner
@@ -97,6 +97,43 @@ public sealed class M1aCoreMigrationTests : IAsyncLifetime
         (await ScalarAsync<int>(connectionString, "SELECT count(*)::int FROM catalog.favorite;", cancellationToken))
             .ShouldBe(0);
 
+        (await ScalarAsync<string>(connectionString, """
+            SELECT string_agg(
+                table_schema || '.' || table_name || '.' || column_name || ':' ||
+                data_type || ':' || character_maximum_length::text,
+                ',' ORDER BY table_schema, table_name, column_name)
+            FROM information_schema.columns
+            WHERE (table_schema, table_name) IN (('checkout', 'cart'), ('ordering', 'orders'))
+              AND column_name IN ('convenience_store_name', 'convenience_store_address');
+            """, cancellationToken)).ShouldBe(
+                "checkout.cart.convenience_store_address:character varying:200," +
+                "checkout.cart.convenience_store_name:character varying:50," +
+                "ordering.orders.convenience_store_address:character varying:200," +
+                "ordering.orders.convenience_store_name:character varying:50");
+
+        (await ScalarAsync<bool>(connectionString, """
+            SELECT bool_and(tableowner = 'greygray_owner')
+            FROM pg_tables
+            WHERE (schemaname, tablename) IN (('checkout', 'cart'), ('ordering', 'orders'));
+            """, cancellationToken)).ShouldBeTrue();
+
+        await ExecuteSqlAsync(connectionString, """
+            SET ROLE greygray_checkout;
+            UPDATE checkout.cart
+            SET convenience_store_name = convenience_store_name,
+                convenience_store_address = convenience_store_address
+            WHERE false;
+            SELECT convenience_store_name, convenience_store_address FROM checkout.cart LIMIT 0;
+            RESET ROLE;
+            SET ROLE greygray_ordering;
+            UPDATE ordering.orders
+            SET convenience_store_name = convenience_store_name,
+                convenience_store_address = convenience_store_address
+            WHERE false;
+            SELECT convenience_store_name, convenience_store_address FROM ordering.orders LIMIT 0;
+            RESET ROLE;
+            """, cancellationToken);
+
         await ExecuteSqlAsync(
             connectionString,
             "CREATE TABLE catalog.owner_assertion_probe (id integer);",
@@ -110,6 +147,21 @@ public sealed class M1aCoreMigrationTests : IAsyncLifetime
         await ExecuteSqlAsync(
             connectionString,
             "DROP TABLE catalog.owner_assertion_probe;",
+            cancellationToken);
+
+        await ExecuteSqlAsync(
+            connectionString,
+            "CREATE TABLE checkout.owner_assertion_probe (id integer);",
+            cancellationToken);
+        var snapshotOwnerFailure = await Should.ThrowAsync<PostgresException>(() => ExecuteScriptAsync(
+            connectionString,
+            Path.Combine(migrations, "0020_convenience_store_snapshot.sql"),
+            cancellationToken));
+        snapshotOwnerFailure.SqlState.ShouldBe("P0001");
+        snapshotOwnerFailure.MessageText.ShouldContain("owner");
+        await ExecuteSqlAsync(
+            connectionString,
+            "DROP TABLE checkout.owner_assertion_probe;",
             cancellationToken);
     }
 

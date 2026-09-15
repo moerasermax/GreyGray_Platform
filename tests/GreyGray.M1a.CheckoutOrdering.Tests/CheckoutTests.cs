@@ -91,7 +91,11 @@ public sealed class CheckoutTests
             null,
             null,
             "請小心包裝",
-            "checkout-key-1");
+            "checkout-key-1")
+        {
+            ConvenienceStoreName = "模擬門市（dev）",
+            ConvenienceStoreAddress = "台北市模擬路 1 號",
+        };
         var first = await fixture.Service.CompleteAsync(
             request,
             TestContext.Current.CancellationToken);
@@ -103,6 +107,8 @@ public sealed class CheckoutTests
         replay.IsSuccess.ShouldBeTrue();
         replay.Value.EventId.ShouldBe(first.Value.EventId);
         first.Value.BuyerNote.ShouldBe("請小心包裝");
+        replay.Value.ConvenienceStoreName.ShouldBe("模擬門市（dev）");
+        replay.Value.ConvenienceStoreAddress.ShouldBe("台北市模擬路 1 號");
         fixture.Pricing.FreezeCalls.ShouldBe(1);
         fixture.UnitOfWork.Saves.ShouldBe(1);
         fixture.Publisher.Published.ShouldHaveSingleItem()

@@ -1112,6 +1112,9 @@ internal static class M1aEndpoints
             order.ShippingFee,
             order.DeliveryMethod,
             order.ShippingPolicy,
+            order.ConvenienceStoreCode,
+            order.ConvenienceStoreName,
+            order.ConvenienceStoreAddress,
             order.Lines.Select(line =>
             {
                 string name;
@@ -1334,6 +1337,9 @@ internal static class M1aEndpoints
         Money ShippingFee,
         DeliveryMethod DeliveryMethod,
         ShippingPolicy ShippingPolicy,
+        string? ConvenienceStoreCode,
+        string? ConvenienceStoreName,
+        string? ConvenienceStoreAddress,
         IReadOnlyList<AdminOrderLineResponse> Lines,
         IReadOnlyList<AdminPaymentSummaryResponse> Payments,
         IReadOnlyList<string> QuoteExplain,

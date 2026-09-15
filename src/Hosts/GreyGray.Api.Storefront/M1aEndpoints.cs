@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
+using GreyGray.Api.Storefront.Logistics;
 using GreyGray.Modules.Campaign.Contracts;
 using GreyGray.Modules.Catalog.Contracts;
 using GreyGray.Modules.Checkout.Contracts;
@@ -15,6 +16,7 @@ using GreyGray.Platform.Abstractions.Idempotency;
 using GreyGray.Platform.Abstractions.Sessions;
 using GreyGray.Platform.Http;
 using GreyGray.Shared.Kernel;
+using Microsoft.Extensions.Caching.Distributed;
 
 // BE-34：讓 CompleteCheckoutAsync 能被 CheckoutOrdering.Tests 直接呼叫。
 // Admin Host 把同一條寫在 AssemblyInfo.cs，Storefront Host 沒有那個檔案。
@@ -40,6 +42,7 @@ internal static class M1aEndpoints
         MapCatalog(api);
         MapCampaign(api);
         MapCart(api);
+        CvsLogisticsEndpoints.Map(api);
         MapOrders(api);
         MapPayment(api);
         return endpoints;
@@ -680,6 +683,8 @@ internal static class M1aEndpoints
             ICatalogQuery catalog,
             ICustomerDirectory customers,
             IIdempotencyStore idempotency,
+            IDistributedCache cache,
+            IClock clock,
             CancellationToken cancellationToken) =>
             await CompleteCheckoutAsync(
                 input,
@@ -690,6 +695,8 @@ internal static class M1aEndpoints
                 catalog,
                 customers,
                 idempotency,
+                cache,
+                clock,
                 logger,
                 cancellationToken));
     }
@@ -714,6 +721,8 @@ internal static class M1aEndpoints
         ICatalogQuery catalog,
         ICustomerDirectory customers,
         IIdempotencyStore idempotency,
+        IDistributedCache cache,
+        IClock clock,
         ILogger logger,
         CancellationToken cancellationToken)
     {
@@ -730,8 +739,9 @@ internal static class M1aEndpoints
                 StatusCodes.Status400BadRequest);
         }
 
+        var cartId = GetOrCreateCartId(context);
         var request = new CompleteCheckoutRequest(
-            GetOrCreateCartId(context),
+            cartId,
             customer.Value,
             input.DeliveryMethod,
             input.ShippingPolicy,
@@ -739,14 +749,46 @@ internal static class M1aEndpoints
             input.ConvenienceStoreCode,
             input.BuyerNote,
             key.ToString().Trim());
+        var fingerprint = new CompleteCheckoutFingerprint(
+            cartId,
+            customer.Value,
+            input.DeliveryMethod,
+            input.ShippingPolicy,
+            input.ShippingAddressId,
+            input.ConvenienceStoreSelectionId,
+            input.ConvenienceStoreCode,
+            input.BuyerNote);
         var result = await BffHttp.ExecuteIdempotentAsync(
             context,
             idempotency,
             "storefront:cart:checkout",
-            request,
+            fingerprint,
             async token =>
             {
-                var completed = await checkout.CompleteAsync(request, token);
+                var effectiveRequest = request;
+                if (input.DeliveryMethod == DeliveryMethod.ConvenienceStore
+                    && input.ConvenienceStoreSelectionId is not null)
+                {
+                    var selected = await CvsLogisticsEndpoints.ResolveForCheckoutAsync(
+                        input.ConvenienceStoreSelectionId,
+                        cartId,
+                        cache,
+                        clock,
+                        token);
+                    if (selected.IsFailure)
+                    {
+                        return Result<OrderView>.Failure(selected.Error);
+                    }
+
+                    effectiveRequest = request with
+                    {
+                        ConvenienceStoreCode = selected.Value.StoreCode,
+                        ConvenienceStoreName = selected.Value.StoreName,
+                        ConvenienceStoreAddress = selected.Value.StoreAddress,
+                    };
+                }
+
+                var completed = await checkout.CompleteAsync(effectiveRequest, token);
                 if (completed.IsFailure)
                 {
                     // #44 必做 B：cookie 指到的車已經下過單了。錯誤碼不動（前端與既有測試都認它），
@@ -1089,17 +1131,29 @@ internal static class M1aEndpoints
             : null;
     }
 
-    private static CartId GetOrCreateCartId(HttpContext context)
+    internal static CartId GetOrCreateCartId(HttpContext context)
     {
-        if (context.Request.Cookies.TryGetValue(CartCookie, out var raw) &&
-            Guid.TryParseExact(raw, "N", out var parsed))
+        if (TryGetCartId(context, out var cartId))
         {
-            return new CartId(parsed);
+            return cartId;
         }
 
-        var cartId = CartId.New();
+        cartId = CartId.New();
         SetCartCookie(context.Response, cartId);
         return cartId;
+    }
+
+    internal static bool TryGetCartId(HttpContext context, out CartId cartId)
+    {
+        if (context.Request.Cookies.TryGetValue(CartCookie, out var raw)
+            && Guid.TryParseExact(raw, "N", out var parsed))
+        {
+            cartId = new CartId(parsed);
+            return true;
+        }
+
+        cartId = default;
+        return false;
     }
 
     /// <summary>
@@ -1277,21 +1331,11 @@ internal static class M1aEndpoints
     /// 啟動時強制驗會讓它們全部起不來。
     /// </remarks>
     private static Uri BuildPaymentResultUrl(IConfiguration configuration, Guid orderId)
-    {
-        var origin = configuration["Storefront:PublicOrigin"];
-        if (string.IsNullOrWhiteSpace(origin) ||
-            !Uri.TryCreate(origin.TrimEnd('/'), UriKind.Absolute, out var publicOrigin))
-        {
-            throw new InvalidOperationException(
-                "缺少設定 'Storefront:PublicOrigin'（前台對外的絕對網址，不含結尾斜線）。" +
-                "綠界完成頁的「返回商店」按鈕要用它組出 /payment/result?orderId=…，" +
-                "沒有它客人付完款就回不了商店。dev 請設成前台實際的 http://127.0.0.1:<port>。");
-        }
-
-        return new Uri(
-            $"{publicOrigin.GetLeftPart(UriPartial.Path).TrimEnd('/')}" +
-            $"/payment/result?orderId={orderId:N}");
-    }
+        => StorefrontUrls.BuildPublicUrl(
+            configuration,
+            $"/payment/result?orderId={orderId:N}",
+            "綠界完成頁的「返回商店」按鈕要用它組出 /payment/result?orderId=…，"
+            + "沒有它客人付完款就回不了商店。dev 請設成前台實際的 http://127.0.0.1:<port>。");
 
     /// <summary>
     /// 組出綠界 <c>ReturnURL</c>（綠界伺服器對伺服器打回來的付款結果回呼）：
@@ -1313,25 +1357,11 @@ internal static class M1aEndpoints
     /// </para>
     /// </remarks>
     internal static Uri BuildEcpayReturnUrl(IConfiguration configuration, HttpRequest request)
-    {
-        var origin = configuration["Storefront:PublicApiOrigin"];
-        if (string.IsNullOrWhiteSpace(origin))
-        {
-            return new Uri($"{request.Scheme}://{request.Host}/v1/webhooks/ecpay");
-        }
-
-        if (!Uri.TryCreate(origin.Trim().TrimEnd('/'), UriKind.Absolute, out var publicApiOrigin) ||
-            (publicApiOrigin.Scheme != Uri.UriSchemeHttp && publicApiOrigin.Scheme != Uri.UriSchemeHttps))
-        {
-            throw new InvalidOperationException(
-                $"設定 'Storefront:PublicApiOrigin' 的值 '{origin}' 不是合法的對外 API 網址。" +
-                "它必須是絕對網址、scheme 為 http 或 https（例如 https://greygray.shop），" +
-                "綠界的 ReturnURL 要用它組出 /v1/webhooks/ecpay。留空則退回使用這一次請求的 scheme/host。");
-        }
-
-        return new Uri(
-            $"{publicApiOrigin.GetLeftPart(UriPartial.Path).TrimEnd('/')}/v1/webhooks/ecpay");
-    }
+        => StorefrontUrls.BuildPublicApiUrl(
+            configuration,
+            request,
+            "/v1/webhooks/ecpay",
+            "綠界的 ReturnURL 要用它組出 /v1/webhooks/ecpay。留空則退回使用這一次請求的 scheme/host。");
 
     private static bool TryId(string raw, out Guid id) => Guid.TryParseExact(raw, "N", out id);
 
@@ -1488,7 +1518,8 @@ internal static class M1aEndpoints
             order.PaidAmount,
             lines,
             address,
-            order.ConvenienceStoreCode,
+            order.ConvenienceStoreName ?? order.ConvenienceStoreCode,
+            order.ConvenienceStoreAddress,
             order.PlacedAt,
             order.PaymentDueAt,
             order.QuoteExplain);
@@ -1666,6 +1697,17 @@ internal static class M1aEndpoints
         DeliveryMethod DeliveryMethod,
         ShippingPolicy? ShippingPolicy,
         AddressId? ShippingAddressId,
+        string? ConvenienceStoreSelectionId,
+        string? ConvenienceStoreCode,
+        string? BuyerNote);
+
+    private sealed record CompleteCheckoutFingerprint(
+        CartId CartId,
+        CustomerId CustomerId,
+        DeliveryMethod DeliveryMethod,
+        ShippingPolicy? ShippingPolicy,
+        AddressId? ShippingAddressId,
+        string? ConvenienceStoreSelectionId,
         string? ConvenienceStoreCode,
         string? BuyerNote);
 
@@ -1760,6 +1802,7 @@ internal static class M1aEndpoints
         IReadOnlyList<OrderLineResponse> Lines,
         ShippingAddressResponse? ShippingAddress,
         string? ConvenienceStoreName,
+        string? ConvenienceStoreAddress,
         DateTimeOffset PlacedAt,
         DateTimeOffset? PaymentDueAt,
         IReadOnlyList<string> QuoteExplain);

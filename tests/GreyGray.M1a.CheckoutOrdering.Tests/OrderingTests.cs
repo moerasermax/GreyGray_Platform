@@ -5,8 +5,12 @@ using GreyGray.Modules.Fulfillment.Contracts;
 using GreyGray.Modules.Identity.Contracts;
 using GreyGray.Modules.Ordering.Contracts;
 using GreyGray.Modules.Ordering.Core;
+using GreyGray.Modules.Ordering.Infra;
 using GreyGray.Modules.Pricing.Contracts;
 using GreyGray.Platform.Abstractions.Saga;
+using GreyGray.Platform.Messaging;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using GreyGray.Shared.Kernel;
 using Shouldly;
 using Xunit;
@@ -35,10 +39,50 @@ public sealed class OrderingTests
         replay.Value.Id.ShouldBe(first.Value.Id);
         first.Value.Status.ShouldBe(OrderStatus.AwaitingPayment);
         first.Value.OrderNumber.ShouldStartWith("GG260828");
+        first.Value.ConvenienceStoreCode.ShouldBe("991234");
+        first.Value.ConvenienceStoreName.ShouldBe("模擬門市（dev）");
+        first.Value.ConvenienceStoreAddress.ShouldBe("台北市模擬路 1 號");
         fixture.UnitOfWork.Saves.ShouldBe(1);
         fixture.Publisher.Published.Count.ShouldBe(2);
         fixture.Publisher.Published[0].ShouldBeOfType<OrderPlaced>();
         fixture.Publisher.Published[1].ShouldBeOfType<PaymentRequested>();
+    }
+
+    [Fact(DisplayName = "舊 CheckoutCompleted.v1 JSON 經事件登錄與真的 handler 建單，新門市欄位為 null")]
+    public async Task Old_checkout_event_json_replays_through_the_real_worker_handler()
+    {
+        var fixture = new OrderingFixture();
+        var oldEvent = fixture.Checkout with
+        {
+            ConvenienceStoreName = null,
+            ConvenienceStoreAddress = null,
+        };
+        var registry = EventTypeRegistry.FromAssemblies([typeof(CheckoutCompleted).Assembly]);
+        var currentJson = JsonSerializer.Serialize(
+            oldEvent,
+            registry.JsonTypeInfoOf(typeof(CheckoutCompleted)));
+        var oldPayload = JsonNode.Parse(currentJson)!.AsObject();
+        oldPayload.Remove("convenienceStoreName");
+        oldPayload.Remove("convenienceStoreAddress");
+        var json = oldPayload.ToJsonString();
+        json.ShouldNotContain("convenienceStoreName");
+        json.ShouldNotContain("convenienceStoreAddress");
+        var deserialized = (CheckoutCompleted?)JsonSerializer.Deserialize(
+            json,
+            registry.JsonTypeInfoOf(typeof(CheckoutCompleted)));
+        deserialized.ShouldNotBeNull();
+
+        var handler = new CheckoutCompletedHandler(fixture.Service);
+        await handler.HandleAsync(deserialized!, TestContext.Current.CancellationToken);
+
+        var order = (await fixture.Service.GetAdminAsync(
+            (await fixture.Service.ListAdminAsync(
+                new AdminOrderListRequest(null, null, null, null),
+                TestContext.Current.CancellationToken)).Value.Items.ShouldHaveSingleItem().Id,
+            TestContext.Current.CancellationToken)).Value;
+        order.ConvenienceStoreCode.ShouldBe("991234");
+        order.ConvenienceStoreName.ShouldBeNull();
+        order.ConvenienceStoreAddress.ShouldBeNull();
     }
 
     [Fact(DisplayName = "現在卡在哪 #21：同一視窗內連續建兩張訂單，OrderNumber 不能撞號")]
@@ -563,6 +607,8 @@ public sealed class OrderingTests
                 "checkout-idempotency-1")
             {
                 ConvenienceStoreCode = "991234",
+                ConvenienceStoreName = "模擬門市（dev）",
+                ConvenienceStoreAddress = "台北市模擬路 1 號",
             };
             UnitOfWork = new FakeUnitOfWork();
             Publisher = new FakeEventPublisher();

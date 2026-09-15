@@ -12,8 +12,77 @@ using GreyGray.Platform.Abstractions.Idempotency;
 using GreyGray.Platform.Abstractions.Messaging;
 using GreyGray.Shared.Kernel;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Caching.Distributed;
 
 namespace GreyGray.M1a.CheckoutOrdering.Tests;
+
+internal sealed class InspectableDistributedCache : IDistributedCache
+{
+    private readonly Dictionary<string, byte[]> _entries = new(StringComparer.Ordinal);
+
+    public int GetCalls { get; private set; }
+
+    public bool ThrowOnGet { get; set; }
+
+    public bool ThrowOnSet { get; set; }
+
+    public byte[]? Get(string key)
+    {
+        GetCalls++;
+        if (ThrowOnGet)
+        {
+            throw new InvalidOperationException("cache get failed");
+        }
+
+        return _entries.TryGetValue(key, out var value) ? value.ToArray() : null;
+    }
+
+    public Task<byte[]?> GetAsync(string key, CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+        return Task.FromResult(Get(key));
+    }
+
+    public void Set(string key, byte[] value, DistributedCacheEntryOptions options)
+    {
+        if (ThrowOnSet)
+        {
+            throw new InvalidOperationException("cache set failed");
+        }
+
+        _entries[key] = value.ToArray();
+    }
+
+    public Task SetAsync(
+        string key,
+        byte[] value,
+        DistributedCacheEntryOptions options,
+        CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+        Set(key, value, options);
+        return Task.CompletedTask;
+    }
+
+    public void Refresh(string key)
+    {
+    }
+
+    public Task RefreshAsync(string key, CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+        return Task.CompletedTask;
+    }
+
+    public void Remove(string key) => _entries.Remove(key);
+
+    public Task RemoveAsync(string key, CancellationToken token = default)
+    {
+        token.ThrowIfCancellationRequested();
+        Remove(key);
+        return Task.CompletedTask;
+    }
+}
 
 /// <summary>
 /// 把寫出去的 log 留下來。BE-35 用它斷言「退化不准靜默」——

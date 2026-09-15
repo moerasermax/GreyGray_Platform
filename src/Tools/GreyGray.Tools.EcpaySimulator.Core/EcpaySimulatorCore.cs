@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Net;
+using System.Text;
 using GreyGray.Modules.Payment.Infra;
 
 namespace GreyGray.Tools.EcpaySimulator.Core;
@@ -19,6 +21,21 @@ public sealed record CheckoutValidation(bool IsValid, string RtnCode, string Rtn
     /// <summary>通過。</summary>
     public static CheckoutValidation Ok { get; } = new(true, "1", "OK");
 }
+
+/// <summary>電子地圖表單的檢查結果。</summary>
+public sealed record CvsMapValidation(bool IsValid, string ErrorMessage)
+{
+    /// <summary>通過。</summary>
+    public static CvsMapValidation Ok { get; } = new(true, string.Empty);
+}
+
+/// <summary>dev 假地圖上的一間門市。</summary>
+public sealed record CvsMapStore(
+    string Code,
+    string Name,
+    string Address,
+    string Telephone,
+    bool IsOutlying);
 
 /// <summary>
 /// 綠界模擬器的純函式層（ADR-029）：驗結帳表單、組付款結果通知、組退刷回應。
@@ -46,6 +63,14 @@ public static class EcpaySimulatorCore
     private static readonly string[] RequiredCheckoutFields =
     [
         "MerchantID", "MerchantTradeNo", "MerchantTradeDate", "TotalAmount", "ReturnURL",
+    ];
+
+    /// <summary>固定的假門市；名稱明確標示 dev，避免被誤認成正式門市。</summary>
+    public static IReadOnlyList<CvsMapStore> FakeStores { get; } =
+    [
+        new("991001", "台北模擬門市（dev）", "台北市中正區模擬路 1 號", "02-20000001", false),
+        new("991002", "台中模擬門市（dev）", "台中市西區模擬路 2 號", "04-20000002", false),
+        new("991003", "澎湖模擬門市（dev）", "澎湖縣馬公市模擬路 3 號", "06-90000003", true),
     ];
 
     /// <summary>
@@ -114,6 +139,119 @@ public static class EcpaySimulatorCore
         }
 
         return CheckoutValidation.Ok;
+    }
+
+    /// <summary>驗證送往 7-ELEVEN 電子地圖的表單。</summary>
+    public static CvsMapValidation ValidateCvsMapForm(IReadOnlyDictionary<string, string> fields)
+    {
+        var merchantId = fields.GetValueOrDefault("MerchantID", string.Empty);
+        if (!merchantId.StartsWith(FakePrefix, StringComparison.Ordinal))
+        {
+            return new(false, $"MerchantID 必須以 {FakePrefix} 開頭。");
+        }
+
+        if (!StringComparer.Ordinal.Equals(
+                fields.GetValueOrDefault("LogisticsType", string.Empty),
+                "CVS"))
+        {
+            return new(false, "LogisticsType 必須是 CVS。");
+        }
+
+        if (!StringComparer.Ordinal.Equals(
+                fields.GetValueOrDefault("LogisticsSubType", string.Empty),
+                "UNIMARTC2C"))
+        {
+            return new(false, "LogisticsSubType 必須是 UNIMARTC2C。");
+        }
+
+        var replyUrlText = fields.GetValueOrDefault("ServerReplyURL", string.Empty);
+        if (!Uri.TryCreate(replyUrlText, UriKind.Absolute, out var replyUrl)
+            || (replyUrl.Scheme != Uri.UriSchemeHttp && replyUrl.Scheme != Uri.UriSchemeHttps))
+        {
+            return new(false, "ServerReplyURL 必須是絕對的 http 或 https 網址。");
+        }
+
+        var extraData = fields.GetValueOrDefault("ExtraData", string.Empty);
+        if (string.IsNullOrEmpty(extraData) || extraData.Length > 20)
+        {
+            return new(false, "ExtraData 必須有值且不得超過 20 個字元。");
+        }
+
+        return CvsMapValidation.Ok;
+    }
+
+    /// <summary>依地圖請求與假門市組出綠界同形的九個回傳欄位。</summary>
+    public static IReadOnlyDictionary<string, string> BuildCvsMapReplyFields(
+        IReadOnlyDictionary<string, string> mapForm,
+        CvsMapStore store,
+        string? merchantIdOverride = null) =>
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["MerchantID"] = merchantIdOverride
+                ?? mapForm.GetValueOrDefault("MerchantID", string.Empty),
+            ["MerchantTradeNo"] = mapForm.GetValueOrDefault("MerchantTradeNo", string.Empty),
+            ["LogisticsSubType"] = mapForm.GetValueOrDefault("LogisticsSubType", string.Empty),
+            ["CVSStoreID"] = store.Code,
+            ["CVSStoreName"] = store.Name,
+            ["CVSAddress"] = store.Address,
+            ["CVSTelephone"] = store.Telephone,
+            ["CVSOutSide"] = store.IsOutlying ? "1" : "0",
+            ["ExtraData"] = mapForm.GetValueOrDefault("ExtraData", string.Empty),
+        };
+
+    /// <summary>
+    /// 畫出可操作的 dev 假地圖。所有來自表單與門市清單的值都在這個純函式裡 HtmlEncode，
+    /// Web 端點只負責接線，避免漏包一個值就形成 HTML 注入。
+    /// </summary>
+    public static string RenderCvsMapPage(
+        IReadOnlyDictionary<string, string> mapForm,
+        IReadOnlyList<CvsMapStore>? stores = null)
+    {
+        stores ??= FakeStores;
+        var replyUrl = mapForm.GetValueOrDefault("ServerReplyURL", string.Empty);
+        var cards = new StringBuilder();
+        foreach (var store in stores)
+        {
+            cards.Append("<form method=\"post\" action=\"")
+                .Append(E(replyUrl))
+                .Append("\" class=\"card\">")
+                .Append(RenderHiddenFields(BuildCvsMapReplyFields(mapForm, store)))
+                .Append("<h2>").Append(E(store.Name)).Append("</h2>")
+                .Append("<p>").Append(E(store.Code)).Append("｜")
+                .Append(E(store.Address)).Append("</p>")
+                .Append("<button type=\"submit\">選擇這家門市</button></form>");
+        }
+
+        if (stores.Count > 0)
+        {
+            cards.Append("<form method=\"post\" action=\"")
+                .Append(E(replyUrl))
+                .Append("\" class=\"card forged\">")
+                .Append(RenderHiddenFields(BuildCvsMapReplyFields(
+                    mapForm,
+                    stores[0],
+                    "FORGED-MERCHANT")))
+                .Append("<button type=\"submit\">偽造回傳：MerchantID 錯</button></form>");
+        }
+
+        return $$"""
+            <!DOCTYPE html>
+            <html lang="zh-Hant">
+            <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>7-ELEVEN 假地圖｜綠界模擬器（dev）</title>
+            <style>
+            body{font-family:system-ui,"Noto Sans TC",sans-serif;margin:0;background:#f4f4f5;color:#18181b}
+            main{max-width:40rem;margin:0 auto;padding:1.5rem}.banner{background:#7f1d1d;color:#fff;padding:.75rem 1.5rem;font-weight:700}
+            .card{background:#fff;border-radius:.75rem;padding:1.25rem;margin-bottom:1rem;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+            button{font-size:1rem;padding:.7rem 1.2rem;border-radius:.5rem;border:0;cursor:pointer;width:100%;background:#15803d;color:#fff}
+            .forged button{background:#b91c1c}</style>
+            </head>
+            <body><div class="banner">綠界 7-ELEVEN 電子地圖模擬器（dev）</div>
+            <main><h1>請選擇假門市</h1>{{cards}}</main></body>
+            </html>
+            """;
     }
 
     /// <summary>
@@ -214,4 +352,21 @@ public static class EcpaySimulatorCore
            $"&TradeNo={Uri.EscapeDataString(tradeNo)}" +
            $"&RtnCode={Uri.EscapeDataString(rtnCode)}" +
            $"&RtnMsg={Uri.EscapeDataString(rtnMsg)}";
+
+    private static string RenderHiddenFields(IReadOnlyDictionary<string, string> fields)
+    {
+        var html = new StringBuilder();
+        foreach (var pair in fields)
+        {
+            html.Append("<input type=\"hidden\" name=\"")
+                .Append(E(pair.Key))
+                .Append("\" value=\"")
+                .Append(E(pair.Value))
+                .Append("\">");
+        }
+
+        return html.ToString();
+    }
+
+    private static string E(string value) => WebUtility.HtmlEncode(value);
 }

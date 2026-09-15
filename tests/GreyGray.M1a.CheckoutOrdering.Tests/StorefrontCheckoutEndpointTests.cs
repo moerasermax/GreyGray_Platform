@@ -1,4 +1,5 @@
 using GreyGray.Api.Storefront;
+using GreyGray.Api.Storefront.Logistics;
 using GreyGray.Modules.Campaign.Contracts;
 using GreyGray.Modules.Catalog.Contracts;
 using GreyGray.Modules.Checkout.Contracts;
@@ -12,6 +13,7 @@ using GreyGray.Platform.Abstractions.Sessions;
 using GreyGray.Shared.Kernel;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
 using Shouldly;
 using Xunit;
@@ -83,6 +85,150 @@ public sealed class StorefrontCheckoutEndpointTests
         fixture.Logger.Entries.ShouldContain(
             entry => entry.Level == LogLevel.Error && entry.Message.Contains("讀不到 SKU"),
             "退化不留痕就是把故障藏起來。");
+    }
+
+    [Fact(DisplayName = "BE-53：選店票蓋過客戶代號並凍結名稱地址；票過期後同鍵重送仍回原訂單")]
+    public async Task Selected_store_is_frozen_and_idempotent_replay_does_not_reopen_the_ticket()
+    {
+        var fixture = new CheckoutEndpointFixture();
+        await fixture.SeedCartLineAsync();
+        const string selectionId = "AbCdEf0123456789GhIj";
+        await fixture.SeedSelectedTicketAsync(selectionId);
+
+        var first = await fixture.CheckoutAsync("store-ticket-key", selectionId, "CLIENT-CODE");
+
+        first.Status.ShouldBe(StatusCodes.Status201Created);
+        first.Body.ShouldContain("\"convenienceStoreName\":\"模擬門市（dev）\"");
+        first.Body.ShouldContain("\"convenienceStoreAddress\":\"台北市模擬路 1 號\"");
+        var order = (await fixture.ListOrdersAsync()).ShouldHaveSingleItem();
+        order.ConvenienceStoreCode.ShouldBe("991001");
+        order.ConvenienceStoreName.ShouldBe("模擬門市（dev）");
+        order.ConvenienceStoreAddress.ShouldBe("台北市模擬路 1 號");
+
+        fixture.Clock.UtcNow = fixture.Clock.UtcNow.AddMinutes(60);
+        fixture.Cache.ThrowOnGet = true;
+        var replay = await fixture.CheckoutAsync("store-ticket-key", selectionId, "CLIENT-CODE");
+
+        replay.Status.ShouldBe(StatusCodes.Status201Created);
+        (await fixture.ListOrdersAsync()).Count.ShouldBe(1);
+    }
+
+    [Fact(DisplayName = "BE-53：解票快取失敗不建單且會 abandon，同一把 key 修復後可重試")]
+    public async Task Cache_failure_before_checkout_has_no_order_and_the_same_key_can_retry()
+    {
+        var fixture = new CheckoutEndpointFixture();
+        await fixture.SeedCartLineAsync();
+        const string selectionId = "ZyXwVu9876543210TsRq";
+        await fixture.SeedSelectedTicketAsync(selectionId);
+        fixture.Cache.ThrowOnGet = true;
+
+        await Should.ThrowAsync<InvalidOperationException>(() =>
+            fixture.CheckoutAsync("cache-retry-key", selectionId));
+
+        (await fixture.ListOrdersAsync()).ShouldBeEmpty();
+        fixture.Idempotency.StatusOf("cache-retry-key", CheckoutScope)
+            .ShouldBe(InspectableIdempotencyStore.EntryStatus.Abandoned);
+
+        fixture.Cache.ThrowOnGet = false;
+        var retry = await fixture.CheckoutAsync("cache-retry-key", selectionId);
+        retry.Status.ShouldBe(StatusCodes.Status201Created);
+        (await fixture.ListOrdersAsync()).Count.ShouldBe(1);
+    }
+
+    [Fact(DisplayName = "BE-53：非超商配送忽略選店票，即使票格式壞掉也照常結帳")]
+    public async Task Non_cvs_checkout_ignores_the_selection_ticket()
+    {
+        var fixture = new CheckoutEndpointFixture();
+        await fixture.SeedCartLineAsync();
+
+        var result = await fixture.CheckoutAsync(
+            "home-key",
+            "bad-ticket",
+            null,
+            DeliveryMethod.HomeDelivery,
+            AddressId.New());
+
+        result.Status.ShouldBe(StatusCodes.Status201Created);
+        var order = (await fixture.ListOrdersAsync()).ShouldHaveSingleItem();
+        order.ConvenienceStoreCode.ShouldBeNull();
+        order.ConvenienceStoreName.ShouldBeNull();
+        order.ConvenienceStoreAddress.ShouldBeNull();
+    }
+
+    [Theory(DisplayName = "BE-53：超商結帳只要帶票就一定驗證格式，不退回信任舊 code")]
+    [InlineData("")]
+    [InlineData("                   ")]
+    [InlineData("AbCdEf0123456789GhI")]
+    [InlineData("AbCdEf0123456789GhIjK")]
+    [InlineData("AbCdEf0123456789Gh-j")]
+    public async Task Cvs_checkout_rejects_every_invalid_selection_ticket(string selectionId)
+    {
+        var fixture = new CheckoutEndpointFixture();
+        await fixture.SeedCartLineAsync();
+
+        var result = await fixture.CheckoutAsync("bad-selection-key", selectionId, "CLIENT-CODE");
+
+        result.Status.ShouldBe(StatusCodes.Status422UnprocessableEntity);
+        result.Body.ShouldContain("checkout.store-selection-expired");
+        (await fixture.ListOrdersAsync()).ShouldBeEmpty();
+    }
+
+    [Fact(DisplayName = "BE-53：Pending 票與別台購物車的票都不能拿來結帳")]
+    public async Task Pending_or_other_cart_selection_cannot_checkout()
+    {
+        var pending = new CheckoutEndpointFixture();
+        await pending.SeedCartLineAsync();
+        const string pendingId = "Pending0123456789AbC";
+        await pending.SeedPendingTicketAsync(pendingId);
+
+        var pendingResult = await pending.CheckoutAsync("pending-key", pendingId);
+        pendingResult.Status.ShouldBe(StatusCodes.Status422UnprocessableEntity);
+        (await pending.ListOrdersAsync()).ShouldBeEmpty();
+
+        var otherCart = new CheckoutEndpointFixture();
+        await otherCart.SeedCartLineAsync();
+        const string otherCartId = "OtherCar0123456789Ab";
+        await otherCart.SeedSelectedTicketAsync(otherCartId, CartId.New());
+
+        var otherResult = await otherCart.CheckoutAsync("other-cart-key", otherCartId);
+        otherResult.Status.ShouldBe(StatusCodes.Status422UnprocessableEntity);
+        (await otherCart.ListOrdersAsync()).ShouldBeEmpty();
+    }
+
+    [Fact(DisplayName = "BE-53：只帶舊門市 code 仍可結帳，回應名稱退化為 code 且地址為 null")]
+    public async Task Legacy_store_code_still_checks_out_with_response_fallback()
+    {
+        var fixture = new CheckoutEndpointFixture();
+        await fixture.SeedCartLineAsync();
+
+        var result = await fixture.CheckoutAsync("legacy-store-key", null, "991234");
+
+        result.Status.ShouldBe(StatusCodes.Status201Created);
+        result.Body.ShouldContain("\"convenienceStoreName\":\"991234\"");
+        result.Body.ShouldContain("\"convenienceStoreAddress\":null");
+        var order = (await fixture.ListOrdersAsync()).ShouldHaveSingleItem();
+        order.ConvenienceStoreCode.ShouldBe("991234");
+        order.ConvenienceStoreName.ShouldBeNull();
+        order.ConvenienceStoreAddress.ShouldBeNull();
+    }
+
+    [Fact(DisplayName = "BE-53：同一冪等鍵換選店票會被指紋守衛拒絕")]
+    public async Task Same_idempotency_key_with_a_different_selection_is_rejected()
+    {
+        var fixture = new CheckoutEndpointFixture();
+        await fixture.SeedCartLineAsync();
+        const string firstSelection = "FirstSel0123456789Ab";
+        const string secondSelection = "SecondSe0123456789Ab";
+        await fixture.SeedSelectedTicketAsync(firstSelection);
+        await fixture.SeedSelectedTicketAsync(secondSelection);
+
+        var first = await fixture.CheckoutAsync("selection-fingerprint-key", firstSelection);
+        var second = await fixture.CheckoutAsync("selection-fingerprint-key", secondSelection);
+
+        first.Status.ShouldBe(StatusCodes.Status201Created);
+        second.Status.ShouldBe(StatusCodes.Status422UnprocessableEntity);
+        second.Body.ShouldContain("platform.idempotency-key-reused");
+        (await fixture.ListOrdersAsync()).Count.ShouldBe(1);
     }
 
     [Fact(DisplayName = "BE-34 情境2：同一把 key 重試不會建出第二張訂單，回的是原本那一張")]
@@ -402,6 +548,7 @@ public sealed class StorefrontCheckoutEndpointTests
             Sessions = new FakeSessionStore();
             _sessionToken = Sessions.Issue(Customer.Id);
             Idempotency = new InspectableIdempotencyStore();
+            Cache = new InspectableDistributedCache();
             Logger = new CapturingLogger();
         }
 
@@ -434,6 +581,8 @@ public sealed class StorefrontCheckoutEndpointTests
         public FakeSessionStore Sessions { get; }
 
         public InspectableIdempotencyStore Idempotency { get; }
+
+        public InspectableDistributedCache Cache { get; }
 
         /// <summary>BE-35：退化回應必須留痕，這裡收下所有 log 供斷言。</summary>
         public CapturingLogger Logger { get; }
@@ -490,16 +639,52 @@ public sealed class StorefrontCheckoutEndpointTests
         /// <summary>最後一次 checkout 用的 <see cref="HttpContext"/>——#44 要驗的是 <c>Set-Cookie</c>。</summary>
         public DefaultHttpContext? LastContext { get; private set; }
 
-        public async Task<(int Status, string Body)> CheckoutAsync(string idempotencyKey)
+        public async Task SeedSelectedTicketAsync(string selectionId, CartId? cartId = null) =>
+            await CvsLogisticsEndpoints.SetTicketAsync(
+                Cache,
+                selectionId,
+                new CvsSelectionTicket(
+                    (cartId ?? CartId).Value,
+                    CvsSelectionStatus.Selected,
+                    Clock.UtcNow,
+                    Clock.UtcNow.AddMinutes(60),
+                    "991001",
+                    "模擬門市（dev）",
+                    "台北市模擬路 1 號",
+                    false),
+                TestContext.Current.CancellationToken);
+
+        public async Task SeedPendingTicketAsync(string selectionId) =>
+            await CvsLogisticsEndpoints.SetTicketAsync(
+                Cache,
+                selectionId,
+                new CvsSelectionTicket(
+                    CartId.Value,
+                    CvsSelectionStatus.Pending,
+                    Clock.UtcNow,
+                    Clock.UtcNow.AddMinutes(15),
+                    null,
+                    null,
+                    null,
+                    false),
+                TestContext.Current.CancellationToken);
+
+        public async Task<(int Status, string Body)> CheckoutAsync(
+            string idempotencyKey,
+            string? selectionId = null,
+            string? convenienceStoreCode = "991234",
+            DeliveryMethod deliveryMethod = DeliveryMethod.ConvenienceStore,
+            AddressId? shippingAddressId = null)
         {
             var context = BuildContext(idempotencyKey);
             LastContext = context;
             var result = await StorefrontEndpoints.CompleteCheckoutAsync(
                 new StorefrontEndpoints.CompleteCheckoutInput(
-                    DeliveryMethod.ConvenienceStore,
+                    deliveryMethod,
                     ShippingPolicy.HoldUntilComplete,
-                    null,
-                    "991234",
+                    shippingAddressId,
+                    selectionId,
+                    convenienceStoreCode,
                     null),
                 context,
                 Sessions,
@@ -508,6 +693,8 @@ public sealed class StorefrontCheckoutEndpointTests
                 Catalog,
                 Customers,
                 Idempotency,
+                Cache,
+                Clock,
                 Logger,
                 TestContext.Current.CancellationToken);
             await result.ExecuteAsync(context);

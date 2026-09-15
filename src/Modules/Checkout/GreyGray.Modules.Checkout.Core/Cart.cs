@@ -52,6 +52,10 @@ internal sealed class Cart
 
     public string? CompletedConvenienceStoreCode { get; private set; }
 
+    public string? CompletedConvenienceStoreName { get; private set; }
+
+    public string? CompletedConvenienceStoreAddress { get; private set; }
+
     public string? CompletedBuyerNote { get; private set; }
 
     public IReadOnlyList<CartLineEntity> Lines => _lines;
@@ -150,6 +154,8 @@ internal sealed class Cart
         CompletedDeliveryMethod = completed.DeliveryMethod;
         CompletedShippingAddressId = completed.ShippingAddressId;
         CompletedConvenienceStoreCode = convenienceStoreCode;
+        CompletedConvenienceStoreName = completed.ConvenienceStoreName;
+        CompletedConvenienceStoreAddress = completed.ConvenienceStoreAddress;
         CompletedBuyerNote = buyerNote;
         UpdatedAt = completed.OccurredAt;
     }
@@ -180,6 +186,8 @@ internal sealed class Cart
             CheckoutIdempotencyKey)
         {
             ConvenienceStoreCode = CompletedConvenienceStoreCode,
+            ConvenienceStoreName = CompletedConvenienceStoreName,
+            ConvenienceStoreAddress = CompletedConvenienceStoreAddress,
             BuyerNote = CompletedBuyerNote,
         };
     }

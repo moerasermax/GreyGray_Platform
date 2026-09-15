@@ -222,6 +222,66 @@ public sealed class EcpaySimulatorTests
         }));
     }
 
+    [Fact(DisplayName = "電子地圖表單通過後會組出九個同形回傳欄位，包含離島旗標")]
+    public void Cvs_map_builds_the_ecpay_reply_shape()
+    {
+        var form = ValidCvsMapForm();
+        EcpaySimulatorCore.ValidateCvsMapForm(form).IsValid.ShouldBeTrue();
+
+        var islandStore = EcpaySimulatorCore.FakeStores.Single(store => store.IsOutlying);
+        var reply = EcpaySimulatorCore.BuildCvsMapReplyFields(form, islandStore);
+
+        reply.Count.ShouldBe(9);
+        reply["MerchantID"].ShouldBe(FakeMerchantId);
+        reply["LogisticsSubType"].ShouldBe("UNIMARTC2C");
+        reply["CVSStoreID"].ShouldBe(islandStore.Code);
+        reply["CVSOutSide"].ShouldBe("1");
+        reply["ExtraData"].ShouldBe(form["ExtraData"]);
+    }
+
+    [Theory(DisplayName = "電子地圖表單缺欄、錯物流型別、壞網址或 ExtraData 超長都會被明確拒絕")]
+    [InlineData("MerchantID", "REAL1234", "MerchantID")]
+    [InlineData("LogisticsType", "HOME", "LogisticsType")]
+    [InlineData("LogisticsSubType", "FAMIC2C", "LogisticsSubType")]
+    [InlineData("ServerReplyURL", "/reply", "ServerReplyURL")]
+    [InlineData("ServerReplyURL", "ftp://example.test/reply", "ServerReplyURL")]
+    [InlineData("ExtraData", "", "ExtraData")]
+    [InlineData("ExtraData", "123456789012345678901", "ExtraData")]
+    public void Invalid_cvs_map_fields_are_rejected(
+        string key,
+        string value,
+        string expectedMessage)
+    {
+        var form = ValidCvsMapForm();
+        form[key] = value;
+
+        var validation = EcpaySimulatorCore.ValidateCvsMapForm(form);
+
+        validation.IsValid.ShouldBeFalse();
+        validation.ErrorMessage.ShouldContain(expectedMessage);
+    }
+
+    [Fact(DisplayName = "假地圖 HTML 對網址、票與門市欄位全部跳脫，注入字串不會原樣出現")]
+    public void Cvs_map_html_encodes_every_external_value()
+    {
+        const string injection = "\"><script>alert('x')</script><input onfocus='x'";
+        var form = ValidCvsMapForm();
+        form["ServerReplyURL"] = $"https://example.test/{injection}";
+        form["ExtraData"] = injection;
+        var stores = new[]
+        {
+            new CvsMapStore(injection, injection, injection, injection, false),
+        };
+
+        var html = EcpaySimulatorCore.RenderCvsMapPage(form, stores);
+
+        html.ShouldNotContain(injection);
+        html.ShouldNotContain("<script>alert('x')</script>");
+        html.ShouldNotContain("onfocus='x'");
+        html.ShouldContain("&quot;&gt;&lt;script&gt;");
+        html.ShouldContain("偽造回傳：MerchantID 錯");
+    }
+
     // ── 樁與工具 ─────────────────────────────────────────────────────────
 
     private static EcpaySettings Settings() => new(
@@ -231,6 +291,17 @@ public sealed class EcpaySimulatorTests
         TimeSpan.FromMinutes(30),
         TimeSpan.FromMinutes(20),
         AllowSimulatedPaid: false);
+
+    private static Dictionary<string, string> ValidCvsMapForm() =>
+        new(StringComparer.Ordinal)
+        {
+            ["MerchantID"] = FakeMerchantId,
+            ["LogisticsType"] = "CVS",
+            ["LogisticsSubType"] = "UNIMARTC2C",
+            ["IsCollection"] = "N",
+            ["ServerReplyURL"] = "http://127.0.0.1:5000/v1/logistics/cvs-map/reply",
+            ["ExtraData"] = "AbCdEf0123456789GhIj",
+        };
 
     private static (
         PaymentApplicationService Service,

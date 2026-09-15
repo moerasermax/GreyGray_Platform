@@ -38,6 +38,8 @@ internal sealed class Order
         DeliveryMethod = checkout.DeliveryMethod;
         ShippingAddressId = checkout.ShippingAddressId;
         ConvenienceStoreCode = checkout.ConvenienceStoreCode;
+        ConvenienceStoreName = checkout.ConvenienceStoreName;
+        ConvenienceStoreAddress = checkout.ConvenienceStoreAddress;
         BuyerNote = checkout.BuyerNote;
         PricingSnapshotId = checkout.PricingSnapshotId;
         ShippingFeeAmountMinor = pricing.ShippingFee.AmountMinor;
@@ -83,6 +85,10 @@ internal sealed class Order
     public AddressId? ShippingAddressId { get; private set; }
 
     public string? ConvenienceStoreCode { get; private set; }
+
+    public string? ConvenienceStoreName { get; private set; }
+
+    public string? ConvenienceStoreAddress { get; private set; }
 
     public string? BuyerNote { get; private set; }
 
@@ -556,6 +562,8 @@ internal sealed class Order
             DeliveryMethod = DeliveryMethod,
             ShippingAddressId = ShippingAddressId,
             ConvenienceStoreCode = ConvenienceStoreCode,
+            ConvenienceStoreName = ConvenienceStoreName,
+            ConvenienceStoreAddress = ConvenienceStoreAddress,
             BuyerNote = BuyerNote,
             PaidAmount = PaidAmount,
             PaymentDueAt = PaymentDueAt,
