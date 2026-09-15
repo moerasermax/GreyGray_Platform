@@ -51,6 +51,60 @@ Leader 要明講。
 
 ---
 
+## 生效中：FE-31　資訊頁——常見問題／購買流程／關於我們，以及它們的入口與出口
+
+使用者 2026-09-15 以 `/goal` 下達「常見問題 Q&A、關於我們、購買流程簡介之類的一些小東西」。前台現在沒有任何資訊頁，首頁沒有頁尾。
+三頁放新 route group `(info)`；**入口**是首頁頁尾（匿名唯一入口）與「我的」頁的「幫助與資訊」區塊，**出口**是每頁底部互連 ＋ 分頁列（黑名單規則，新頁預設就有）。
+文案 Leader 已依已確認事實比對過（派工書 §1.4）。同一波 FE-32（同一棵樹）、後端 BE-52 平行。
+
+★★ 最容易做錯的：① **不准自己補事實**（客服電話／LINE／地址／營業時間／出貨天數都沒確認，不要做空的「聯絡我們」）；
+② 入口與出口要用**掃原始碼的測試**釘住，掃到零個算失敗；③ 不動 `tabs.ts`／`topBar.ts`／`_lib/__tests__/`（FE-32 的範圍）；
+④ 「我的」頁加的「我的最愛」連結指向 FE-32 做的頁，同一波驗收，不要做假頁；⑤ 不跑 `next build`、不起停 dev server。
+
+package: FE-31
+doc: docs/34-前端第二十波派工書.md
+allow: frontend/apps/storefront/app/(info)/
+allow: frontend/apps/storefront/app/(shop)/page.tsx
+allow: frontend/apps/storefront/app/(account)/me/page.tsx
+
+> `(info)/` 是新目錄。`(shop)/page.tsx` 只加頁尾區塊、`me/page.tsx` 只加區塊與一筆連結，不改既有版面與邏輯。
+
+---
+
+## 生效中：FE-32　立即購買 ＋ 最愛清單前端（ADR-036／ADR-037）
+
+使用者 2026-09-15 以 `/goal` 下達「可以新增立即購買」「最愛清單——可以加上我的最愛瀏覽」。現在的愛心是假的（`ProductCardLink.tsx` 第 18 行、`AddToCartPanel.tsx` 第 36 行本地 state）。
+契約三條最愛端點 Leader 已從後端樹逐位元複製進來；後端 BE-52 同一波平行實作。立即購買契約零改動：加進購物車後，車裡只有這一次加的 → `/checkout`，否則 → `/cart?from=buy-now` 並提示。
+
+★★ 最容易做錯的：① **連點與搶按要用同步 `pendingRef` 在任何 `await` 之前鎖住**——`setState('loading')` 不是鎖，`usePayloadIdempotency` 也不防同時送兩個；
+② 最愛切換抽成**一份**共用邏輯（樂觀更新、失敗還原、`401` 先還原再導去登入）；③ `ProductCardLink` 的 **`priceFrom: null` 分支也要有愛心**（收藏清單裡會有未定價商品）；
+④ 型別一律 `pnpm api:generate`，**不准手寫**，`types.admin.ts` 預期零 diff；⑤ cart 頁讀 `from=buy-now` 不准用 `useSearchParams()`；
+⑥ 不動 `packages/ui`、`InfiniteProductGrid`、`me/page.tsx`、契約；不加快取設定（SSR 快取已查證不外洩，派工書 §2.1）。
+★ 兩包同一棵樹：開發中只跑自己的測試檔，交付前跑一次完整 recursive、失敗在別包的檔就原樣記下不重跑；權威驗證由 Leader 兩包都交付後序列跑（派工書 §0.3）。
+
+package: FE-32
+doc: docs/34-前端第二十波派工書.md
+allow: frontend/packages/api-client/src/types.storefront.ts
+allow: frontend/packages/api-client/src/types.admin.ts
+allow: frontend/packages/api-client/src/endpoints/storefront.ts
+allow: frontend/packages/api-client/src/endpoints/README.md
+allow: frontend/packages/api-client/src/mock/
+allow: frontend/apps/storefront/app/(shop)/products/[productId]/
+allow: frontend/apps/storefront/app/(shop)/_components/ProductCardLink.tsx
+allow: frontend/apps/storefront/app/(shop)/_components/__tests__/
+allow: frontend/apps/storefront/app/(account)/favorites/
+allow: frontend/apps/storefront/app/_lib/favorites.ts
+allow: frontend/apps/storefront/app/_lib/tabs.ts
+allow: frontend/apps/storefront/app/_lib/__tests__/
+allow: frontend/apps/storefront/app/(checkout)/cart/page.tsx
+allow: frontend/apps/storefront/app/(checkout)/_lib/buyNowNotice.ts
+allow: frontend/apps/storefront/app/(checkout)/_lib/__tests__/buyNowNotice.test.ts
+
+> `(account)/favorites/`、`_lib/favorites.ts`、`(checkout)/_lib/buyNowNotice.ts` 與它的測試是新的。`types.admin.ts` 在 allow 裡只因為 codegen 會一起重寫，有 diff 就停下來回報。
+> `products/[productId]/page.tsx` 的 SSR 內容不動；`tabs.ts` 只加 `/favorites` 一個字串；`cart/page.tsx` 只加 `from=buy-now` 提示；`_lib/__tests__/pageShell.test.ts` 不改。
+
+---
+
 <!--
 ★ 2026-09-06 已通過整合驗收並提交（前端 `398f37a`），撤包。原文保留供追溯。
 

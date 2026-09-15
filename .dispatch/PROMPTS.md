@@ -1,6 +1,179 @@
 # 啟動 prompt
 
-**目前沒有生效中的派工（2026-09-06 下午）。** 第三十七波兩包都已驗收撤包：後端 **BE-49**（`2ad080a`：綠界五個值缺一個就開不了機，測試 315 → **332**）＋ 前端 **FE-30**（`398f37a`：出貨單與訂單在列表上互相看得見，測試 481 → **500**）。**這一波還沒有部署。**
+**生效中：第三十八波（2026-09-15）——三包平行、跨兩棵樹、`allow` 零重疊。**
+後端 **BE-52**（最愛清單後端，`docs/51`）＋ 前端 **FE-31**（資訊頁，前端樹 `docs/34`）＋ 前端 **FE-32**（立即購買 ＋ 最愛前端，前端樹 `docs/34`）。
+使用者以 `/goal` 下達：常見問題／關於我們／購買流程、最愛清單、7-11 取貨、立即購買，並要求「全體 ai-cli 一起處理，但不要把 WorkSpace 弄亂」。
+**7-11 超商電子地圖是下一波**（要先做模擬器與物流憑證；研究結論見 `GreyGray_PM/00-進度總表.md`）。
+契約（三條 `/v1/me/favorites`）、ADR-036／ADR-037 由 Leader 寫好並逐位元複製進前端樹。測試基準：後端 **332**、前端 **500**。
+實作者分派（依 `~/.claude` 的 ai-cli 派工政策）：BE-52、FE-32 給 Codex `gpt-5.6-sol`＋high，FE-31 給 Claude Sonnet＋medium。
+兩棵樹現在都**沒有** dev Host／dev server 在跑，子代理不要自己起。
+
+---
+
+## BE-52 的啟動 prompt（生效中）
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
+GreyGray Platform 後端（.NET 10 modular monolith）。這一包動 Catalog 模組、Storefront Host、一支新 migration（0019）、tests。契約 Leader 已寫好，不准改。沒有前端、沒有 ops/。
+
+GG_PACKAGE=BE-52
+
+開工前務必先讀：
+  CLAUDE.md                                六條鐵則 ＋ 派工規則
+  docs/45-開發工作流與設計準則.md            §4 平行派工、§5 自驗＝必要不充分、§6 邊界測試六類
+  docs/00-decisions.md                     ADR-036（最愛清單）、ADR-014（Contracts 之間要是 DAG）
+  docs/51-後端第三十六波派工書.md            ★ 整份讀完：§0 事實（所有行號）＋ §1 必做 ＋ §2 不要做 ＋ §5 可能寫錯的地方
+  docs/api/openapi.storefront.yaml         /v1/me/favorites 三條 operation（Leader 寫好的，不准改）
+  .dispatch/reports/README.md              ★ 自驗報告格式，以及「測試要分專案前景跑」
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/BE-52.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 不准把驗證丟背景、不准排程 wakeup。要跑的是：
+     dotnet build .\GreyGray.slnx -c Debug --nologo（0 警告 0 錯誤；不要跑 ops\build.ps1，它會無條件跑整支測試）
+     測試分專案前景跑，基準 332（含 2 個既有 Skip）＋ 你新增的；GreyGray.Architecture.Tests 必須在裡面、Total: 單獨貼出
+     ops\check-openapi.ps1 -Configuration Debug
+     bash .dispatch/audit-dispatch.sh
+     輸出貼進報告。
+
+★ migration 照 0018 的結構：BEGIN → SET ROLE greygray_owner → 建表 → RESET ROLE → owner 斷言 → COMMIT。
+  不 SET ROLE 的話 greygray_catalog 拿不到預設權限（0001 第 14-25 行的硬規則）。不准在 migration 裡 GRANT。
+★ cursor 要同時帶 created_at 與 product_id——現有 Catalog 的 Slice／DecodeCursor 只放商品 id，不能沿用（#17／#21 同型）。
+★ 重複／併發加入用 ON CONFLICT DO NOTHING，不准「先查有沒有、沒有再寫」。重複加入不改 created_at。
+★ 可見規則＝商品詳情那一套（商品上架且至少一個上架 SKU），在 SQL 分頁之前過濾，不是撈出來再藏。
+★ 匿名看商品時不准查最愛，測試要斷言「沒查」。
+★ 資料庫層的測試一律用正式 migrations 建庫（M1aCoreMigrationTests 那一套），不准往 IdentityCatalog 手寫的 SchemaSql 加表。
+★ check-openapi 的 M1a 模式只比 method＋path；參數、回應碼、204 要靠你自己的 HTTP 層測試。
+★ 不准建指向其他 schema 的外鍵。
+★ 同一波前端樹有 FE-31／FE-32 平行，不在你這棵樹，不用管它們。
+★ 這台機器沒有 dev Host 在跑，不要手動起；check-openapi.ps1 自己起停的短命 Host 是允許的。
+★ 派工書 §5 列了可能寫錯的地方：撞到就停下來寫進報告問，不要自己換做法。
+
+★ 質疑被鼓勵，但不准自己改方向：派工書寫錯了就停下來寫進報告問，
+  不要一邊照做一邊在報告裡抱怨，也不要自己換一個做法。
+
+檔案所有權：見派工書 §3（ACTIVE.md 的 allow 是機械執行的那份）。
+docs/、management/、STATE.md、CLAUDE.md、AGENTS.md 每一包都寫得了——但契約 YAML 與 docs/05 不准動。
+
+不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
+git checkout -- .、以及 git commit。
+
+你不可以自己宣告通過。交付完就停。
+```
+
+---
+
+## FE-31 的啟動 prompt（生效中；在前端樹）
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe
+GreyGray Platform 前端（Next.js ＋ pnpm workspace）。這一包只做前台三個資訊頁（常見問題／購買流程／關於我們）與它們的入口。不動契約、不動 packages/*。
+
+GG_PACKAGE=FE-31
+
+開工前務必先讀：
+  CLAUDE.md                                前端四條 ＋ 派工規則
+  frontend/README.md                       前端四條原文（顏色尺寸只從 token、不做金額運算、不猜業務規則、不直接 fetch）
+  docs/45-開發工作流與設計準則.md            §5 自驗＝必要不充分、§6 邊界測試
+  docs/34-前端第二十波派工書.md              ★ 讀 §0（兩包共用）＋ §1（你的包）＋ §3 所有權 ＋ §5 可能寫錯的地方。§2 是 FE-32 的，只需知道它存在
+  frontend/apps/storefront/app/_lib/__tests__/pageShell.test.ts   掃原始碼的測試寫法，你的入口／出口測試照這個精神
+  .dispatch/reports/README.md              ★ 自驗報告格式
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/FE-31.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 不准把驗證丟背景、不准排程 wakeup。照派工書 §0.3：
+     開發中只跑自己的測試檔：pnpm --filter storefront exec vitest run <你的測試路徑>
+     交付前跑一次：pnpm --recursive typecheck、pnpm --recursive test（基準 500 ＋ 你新增的，逐專案條數貼進報告）
+     bash .dispatch/audit-dispatch.sh
+     輸出原樣貼進報告。build 由 Leader 跑，你不跑 next build，也不起、不停任何 dev server。
+
+★ 不准自己補事實：客服電話、LINE、Email、地址、營業時間、出貨天數、付款期限的時數、退換貨規則、退貨運費、發票，全部沒有確認。
+  「七天鑑賞期」也不准寫（ADR-025：代購適不適用由老闆判斷）。文案照派工書 §1.4；不要做放假資料或空欄位的「聯絡我們」。
+★ 每一頁都要有入口與出口，用「掃原始碼」的測試釘住，掃到零個算失敗（#30／#32 兩次都是頁面存在但走不到）。
+★ 「不准出現承諾」的測試是不存在型斷言：逐類注入一個反例確認它會紅，再還原，紅的輸出貼進報告。
+★ metadata.title 只寫短標題（根 layout 的 template 會補「｜GreyGray」）；不要建 (info)/layout.tsx；寬度用 max-w-[var(--gg-container-max)]。
+★ 不要改 tabs.ts／topBar.ts／_lib/__tests__/——新頁面不加規則就會有分頁列，那是對的；那幾個檔是 FE-32 的範圍。
+★ 「我的」頁加的「我的最愛」連結指向 FE-32 同一波做的頁，現在點會 404 是預期的，不要做假頁。
+★ 同一棵樹上 FE-32 平行在改 api-client 與商品頁。交付前那一次完整驗證若失敗在不屬於你 allow 的檔案：
+  不重跑、不等待、不修，原樣寫進報告「我發現但沒做的事」。權威驗證由 Leader 在兩包都交付後序列跑。
+
+★ 質疑被鼓勵，但不准自己改方向：派工書寫錯了就停下來寫進報告問。
+
+檔案所有權：見派工書 §3（ACTIVE.md 的 allow 是機械執行的那份）。
+docs/、management/、STATE.md、CLAUDE.md、AGENTS.md 每一包都寫得了——但契約 YAML 與 docs/05 不准動。
+
+不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
+git checkout -- .、以及 git commit。
+
+你不可以自己宣告通過。交付完就停。
+```
+
+---
+
+## FE-32 的啟動 prompt（生效中；在前端樹）
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe
+GreyGray Platform 前端（Next.js ＋ pnpm workspace）。這一包做「立即購買」與「最愛清單」前端：api-client 重生型別與三支端點、商品頁兩顆按鈕、共用的最愛切換、/favorites 頁。不動契約、不動 packages/ui。
+
+GG_PACKAGE=FE-32
+
+開工前務必先讀：
+  CLAUDE.md                                前端四條 ＋ 派工規則
+  frontend/README.md                       前端四條原文
+  docs/45-開發工作流與設計準則.md            §5 自驗＝必要不充分、§6 邊界測試
+  docs/00-decisions.md                     ADR-036（最愛清單）、ADR-037（立即購買）
+  docs/34-前端第二十波派工書.md              ★ 讀 §0（兩包共用）＋ §2（你的包）＋ §3 所有權 ＋ §5 可能寫錯的地方。§1 是 FE-31 的
+  docs/api/openapi.storefront.yaml         /v1/me/favorites 三條 operation（Leader 從後端樹複製來的，不准改）
+  .dispatch/reports/README.md              ★ 自驗報告格式
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/FE-32.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 不准把驗證丟背景、不准排程 wakeup。照派工書 §0.3：
+     開工第一件事：pnpm api:generate（types.admin.ts 預期零 diff，有 diff 就停下來回報）
+     開發中只跑自己的測試檔：pnpm --filter storefront exec vitest run <路徑>、pnpm --filter @greygray/api-client test
+     交付前跑一次：pnpm --recursive typecheck、pnpm --recursive test（基準 500 ＋ 你新增的，逐專案條數貼進報告）
+     bash .dispatch/audit-dispatch.sh
+     輸出原樣貼進報告。build 由 Leader 跑，你不跑 next build，也不起、不停任何 dev server。
+
+★ 連點與搶按：用同步 pendingRef 在任何 await 之前鎖住。setState('loading') 不是鎖，usePayloadIdempotency 也不防同時送兩個請求。
+  「加入購物車」與「立即購買」共用一把鎖，第一次點擊的意圖勝出。
+★ 最愛切換抽成一份共用邏輯：樂觀更新、失敗還原、同一件商品進行中不重送、401 先還原成未收藏再導去登入。不准卡片與商品頁各寫一份。
+  卡片上不要求顯示「處理中」（ProductCard 傳不進去，不准改 packages/ui）。
+★ ProductCardLink 的 priceFrom: null 分支也要有愛心、按了不導頁——收藏清單裡會出現未定價商品。
+★ /favorites 自己做「載入更多」，不要改 InfiniteProductGrid；只有列表請求回 401 才導去登入，不要加 middleware。
+★ SSR 快取已查證不會跨使用者外洩（派工書 §2.1），不准加任何快取設定。
+★ 型別一律 pnpm api:generate，不准手寫請求型別。mock 沒有登入概念，mock 的 401 案例註明不適用即可。
+★ cart 頁讀 from=buy-now：判斷寫成純函式（(checkout)/_lib/buyNowNotice.ts），頁面掛載後讀 window.location.search 交給它，不准用 useSearchParams()。
+★ 不動 packages/ui、me/page.tsx（FE-31 的）、pageShell.test.ts、卡片的 <Link> 結構（FE-22 的裁決）。
+★ 同一棵樹上 FE-31 平行在加資訊頁。交付前那一次完整驗證若失敗在不屬於你 allow 的檔案：
+  不重跑、不等待、不修，原樣寫進報告「我發現但沒做的事」。權威驗證由 Leader 在兩包都交付後序列跑。
+  後端 BE-52 在另一棵樹同時實作最愛端點；你的測試用 mock，不要打真後端。
+
+★ 質疑被鼓勵，但不准自己改方向：派工書寫錯了就停下來寫進報告問。
+
+檔案所有權：見派工書 §3（ACTIVE.md 的 allow 是機械執行的那份）。
+docs/、management/、STATE.md、CLAUDE.md、AGENTS.md 每一包都寫得了——但契約 YAML 與 docs/05 不准動。
+
+不要碰整個工作區的 git 指令：git stash、git reset --hard、git clean、
+git checkout -- .、以及 git commit。
+
+你不可以自己宣告通過。交付完就停。
+```
+
+---
+
+## 上一波（第三十七波）
+
+**（2026-09-06 下午）已撤包。** 第三十七波兩包都已驗收撤包：後端 **BE-49**（`2ad080a`：綠界五個值缺一個就開不了機，測試 315 → **332**）＋ 前端 **FE-30**（`398f37a`：出貨單與訂單在列表上互相看得見，測試 481 → **500**）。**這一波還沒有部署。**
 
 ★★ **部署這一波之前一定要先做**：正式機 `C:\Source\yc-deploy.ps1` 與 YC 上的 `secrets\ecpay.json` 改成五個值（`MerchantId`／`HashKey`／`HashIV`／`CheckoutUrl`／`CreditDetailUrl`），**否則部署後三個 .NET 服務會拒絕開機**——那是 BE-49 刻意造成的行為。
 

@@ -239,6 +239,69 @@ paths:
                   balance: { $ref: '#/components/schemas/Money' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /v1/me/favorites:
+    get:
+      tags: [me]
+      summary: 我的最愛
+      description: |
+        最新收藏的在前（ADR-036）。**只列出目前看得到的商品**——判定與 `GET /v1/products/{productId}` 相同
+        （商品上架，而且至少有一個上架中的規格），在分頁之前過濾。
+        收藏之後不再符合的商品不會刪掉收藏紀錄，只是不出現在這裡；恢復之後就會回來。
+        清單裡的商品可能還沒定價（`priceFrom` 為 `null`）。每一筆的 `isFavorited` 恆為 `true`。
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProductListItem' }
+                  nextCursor: { type: [string, 'null'] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422':
+          description: '`catalog.invalid-cursor`（cursor 無效，或 limit 不在 1 到 100 之間）'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
+
+  /v1/me/favorites/{productId}:
+    parameters:
+      - name: productId
+        in: path
+        required: true
+        schema: { $ref: '#/components/schemas/Id' }
+    put:
+      tags: [me]
+      summary: 加入最愛
+      description: |
+        **冪等**：已經在最愛裡再加一次也回 `204`。
+        可收藏的判定與 `GET /v1/products/{productId}` 相同——那支回 `404` 的（不存在或已下架），這裡也回 `404`。
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204': { description: 已在最愛裡 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [me]
+      summary: 移出最愛
+      description: |
+        **冪等**：本來就不在最愛裡也回 `204`，也不因商品已下架而失敗。
+        只有 `productId` 格式不合法時回 `404`（與其他路由參數一致）。
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '204': { description: 已不在最愛裡 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   # ── catalog ─────────────────────────────────────────────────────────────
   /v1/categories:
     get:
@@ -1028,7 +1091,7 @@ components:
           type: array
           description: '前台卡片上的標籤。已知值：`New` · `Popular` · `LastCall`。前端要容忍未知值。'
           items: { type: string }
-        isFavorited: { type: boolean, description: 未登入時恆為 false。 }
+        isFavorited: { type: boolean, description: '登入時反映這位客戶的最愛（ADR-036）；未登入時恆為 false。' }
         mode: { $ref: '#/components/schemas/FulfillmentMode' }
         campaignId:
           description: '`mode = Preorder` 時指向所屬的團。'
@@ -1095,7 +1158,7 @@ components:
         skus:
           type: array
           items: { $ref: '#/components/schemas/Sku' }
-        isFavorited: { type: boolean }
+        isFavorited: { type: boolean, description: '登入時反映這位客戶的最愛（ADR-036）；未登入時恆為 false。' }
 
     # ── 開團 ────────────────────────────────────────────────────────────
     CampaignListItem:
