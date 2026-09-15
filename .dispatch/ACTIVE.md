@@ -51,7 +51,15 @@ Leader 要明講。
 
 ---
 
-## 生效中：FE-33　結帳頁用 7-ELEVEN 電子地圖選門市 ＋ 前後台訂單詳情顯示門市（ADR-038）
+<!--
+★ 2026-09-15 已通過整合驗收並提交（前端 `ff132af`），撤包。原文保留供追溯。
+
+FE-33（Claude opus＋medium）一輪：api-client 重生（admin 只多三欄）＋ 兩支端點（body 型別從 `paths` 推導）＋ mock／既有超商 fixture 補欄位；`(checkout)/_lib/cvsSelection.ts`（回程四選一、進頁合併、只清選店票、錯誤訊息表、同步鎖與 `pageshow` 放鎖、讀票與送出失敗分支，全部可注入測試）；`ConvenienceStoreField` 改電子地圖；結帳頁 Suspense（fallback 同一組 Skeleton）＋ 固定七步初始化 ＋ 只送 `convenienceStoreSelectionId`；前台訂單詳情加地址、後台加「取貨門市」。測試 558 → **643**。
+Leader 驗：`pnpm --recursive typecheck` EXIT=0、643 全過（api-client 46／admin 142／storefront 455）、storefront 與 admin build EXIT=0、audit 通過、diff 範圍在 allow 內、checkout 頁與 `cvsSelection.ts` 原文讀過；與 BE-53 合起來以 HTTP 走完選門市到付款 32 項全過（前台 `/checkout?cvsSelection=…` 與訂單詳情頁 200）。
+⚠ 真瀏覽器畫面走查**尚未做**（Chrome 擴充仍未連線）：「選好門市後重新整理門市還在」「按上一頁回來鎖放開」「360px」只有純函式測試與推理，待補。
+留下：`createCvsMapSession` 仍會被 `http.ts` 自動帶冪等鍵 header（後端忽略，無害）；mock 模式沒有假地圖可走；沒有草稿但網址帶票時配送方式不自動選超商取貨。
+
+## 生效中（已撤包）：FE-33　結帳頁用 7-ELEVEN 電子地圖選門市 ＋ 前後台訂單詳情顯示門市（ADR-038）
 
 使用者 2026-09-15 以 `/goal` 問「可以新增 7-11 收貨嗎」。現在的 `ConvenienceStoreField.tsx` 是手動輸入門市代號（檔頭自己寫「假設，未接真正的綠界電子地圖」），
 訂單詳情只顯示後端塞進來的代號、後台完全沒有門市。契約（三條 `/v1/logistics/*`、`CheckoutRequest.convenienceStoreSelectionId`、`Order.convenienceStoreAddress`、`AdminOrder` 三個門市欄位）
@@ -81,6 +89,7 @@ allow: frontend/apps/admin/app/(dash)/orders/_lib/
 
 > `(checkout)/_components/__tests__/` 是新目錄、`(checkout)/_lib/cvsSelection.ts` 是新檔。`types.admin.ts` 預期只多三個門市欄位，多了別的就停下來回報。
 > 前台訂單詳情只加地址一行、後台訂單詳情只加「取貨門市」一格。`docs/` 全域放行，但契約 YAML、`docs/05`、`docs/00` 不准動。
+-->
 
 ---
 
@@ -688,6 +697,8 @@ allow: frontend/apps/storefront/app/(checkout)/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **FE-33** 結帳頁用 7-ELEVEN 電子地圖選門市（ADR-038）：`cvsSelection.ts` 回程合併與錯誤分支、`ConvenienceStoreField` 隱藏表單自動送出、結帳只送選店票、前台訂單詳情地址、後台「取貨門市」　·　2026-09-15 通過　·　`ff132af`　·
+  測試 558 → 643；與 BE-53 合起來 HTTP 旅程 32 項驗過；真瀏覽器畫面走查待補，見 `.dispatch/reports/FE-33.md`
 - **FE-32** 立即購買 ＋ 最愛清單前端（ADR-036／ADR-037）：三支最愛端點與共用樂觀切換、商品頁「立即購買」同步鎖與去處判斷、`/favorites` 頁、cart 頁提示、未定價卡片補愛心　·　2026-09-15 通過　·　`b7250db`　·
   與 FE-31 同一個 commit；測試兩包合計 500 → 558；真瀏覽器畫面走查待補，見 `.dispatch/reports/FE-32.md`
 - **FE-31** 資訊頁：常見問題／購買流程／關於我們（`(info)/`）＋ 首頁頁尾與「我的」頁的入口、每頁互連出口　·　2026-09-15 通過　·　`b7250db`　·
