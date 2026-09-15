@@ -51,7 +51,15 @@ Leader 要明講。
 
 ---
 
-## 生效中：BE-53　7-ELEVEN 超商取貨門市——選店票 ＋ 綠界回傳驗證 ＋ 門市名稱地址凍結進訂單 ＋ 後台門市欄位 ＋ 模擬器假地圖（ADR-038）
+<!--
+★ 2026-09-15 已通過整合驗收並提交（後端 `a4138a4`），撤包。原文保留供追溯。
+
+一輪。Storefront Host `Logistics/CvsLogisticsEndpoints`（開票存 Garnet、鍵為票的 SHA-256、Pending 15 分／Selected 60 分；回傳一律 303、不讀不發 cookie、手動讀 form 並接住解析例外、偽造回傳不燒票；同車讀票 `private, no-store`）＋ 結帳在冪等 `work` 內解票、Host 內指紋含選店票 ＋ `StorefrontUrls` 抽共用 ＋ Checkout／Ordering 門市名稱地址（init 屬性、事件維持 v1）＋ migration `0020` ＋ Admin 三欄 ＋ 模擬器 `/Express/map`（HTML 純函式、注入反例）＋ `start-dev-hosts.ps1` 四鍵全有／全無。測試 340 → **382**。
+Leader 驗：Debug／Release 建置 0/0、12 專案測試執行檔逐一前景重跑 382（0 失敗、2 既有 Skip）、check-openapi Storefront 32／Admin 30、audit 通過、diff 範圍（契約、Payment、Platform、deploy、OpenApiContractGate 零改動）；dev 資料庫套 `0020`、`start-dev-hosts.ps1 -Configuration Release -UseEcpaySimulator` 起環境，HTTP 旅程 **32 項全過**（開票欄位、假地圖三家含離島、偽造 303 invalid-reply 後真回傳仍成功、already-used、expired、同車讀票／無 cookie 404／別台車 404、壞票結帳 422、好票結帳 201 且名稱地址取自票而非客人送的代號、模擬付款到 ReadyToShip），資料庫 `ordering.orders`／`checkout.cart` 三欄正確。
+留下：既有「結帳成功換購物車 cookie ＋ 指紋含 CartId」讓收到新 cookie 後的斷線重送拿到 `idempotency-key-reused`（不在這包修）；真綠界回傳編碼未實測；`logistics-stage` 真地圖未走（`ServerReplyURL` 要對外 443）。
+Leader 驗收時自己的量法錯了三次（`dotnet test` 在 .NET 10 走 VSTest 全失敗、`--project` 未知參數、PowerShell `H` 撞 `Get-History` 別名），都沒有當成結果，改用測試執行檔與 HttpClient 重量。
+
+## 生效中（已撤包）：BE-53　7-ELEVEN 超商取貨門市——選店票 ＋ 綠界回傳驗證 ＋ 門市名稱地址凍結進訂單 ＋ 後台門市欄位 ＋ 模擬器假地圖（ADR-038）
 
 使用者 2026-09-15 以 `/goal` 問「可以新增 7-11 收貨嗎」。Leader 查證：契約從 M1a 起就有超商取貨與 `convenienceStoreCode`，但**從來沒接電子地圖**——前台手動輸入代號、
 `M1aEndpoints.cs` 第 1491 行把代號塞進「門市名稱」、後台訂單回應沒有任何門市欄位。契約（三條 `/v1/logistics/*` 與四個新欄位）、ADR-038 Leader 已寫好並複製進前端樹。
@@ -85,6 +93,7 @@ allow: tests/GreyGray.Contracts.Tests/
 
 > `db/migrations/` 只准新增 `0020_convenience_store_snapshot.sql`；`src/Hosts/GreyGray.Api.Storefront/Logistics/` 是新目錄；Admin 只准加三個門市欄位；`ops/start-dev-hosts.ps1` 只准加 `Logistics__ECPay__*` 那一段。
 > 後兩個 tests 專案只在既有測試因建構式／回應形狀變了才動。`docs/` 全域放行，但契約 YAML 與 `docs/05` 不准動。
+-->
 
 ---
 
@@ -1081,6 +1090,8 @@ allow: tests/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **BE-53** 7-ELEVEN 超商取貨門市（ADR-038）：電子地圖選店票（Garnet、回傳一律 303、偽造不燒票）、結帳在冪等 work 內解票、migration `0020` 門市名稱地址快照、Admin 三個門市欄位、綠界模擬器 `/Express/map` 假地圖　·　2026-09-15 通過　·　`a4138a4`　·
+  測試 340 → 382；第三十九波與前端 FE-33 平行；dev 環境 HTTP 旅程 32 項驗過；尚未部署（正式機要放 `Logistics:ECPay:*`），見 `.dispatch/reports/BE-53.md`
 - **BE-52** 最愛清單後端（ADR-036）：migration `0019` `catalog.favorite`、`IStorefrontFavorites`、`GET/PUT/DELETE /v1/me/favorites`、商品列表／詳情 `isFavorited` 填真值　·　2026-09-15 通過　·　`46ec1c5`　·
   測試 332 → 340；第三十八波與前端 FE-31／FE-32 平行；dev 環境 HTTP＋SSR 旅程驗過；尚未部署，見 `.dispatch/reports/BE-52.md`
 - **BE-48** 結帳成功後讓購物車退休（#44：正式機 log 連續 15 次 422「購物車已完成結帳」）＋ 取消已出貨的訂單不再讓事件卡住重試（#46，BE-47 的回歸）　·　2026-09-04 通過　·　`89bb5c5`　·

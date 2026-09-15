@@ -1,6 +1,13 @@
 # 啟動 prompt
 
-**第三十九波（2026-09-15）——兩包平行、跨兩棵樹、`allow` 零重疊。**
+**目前沒有生效中的派工（2026-09-15）。** 第三十九波兩包都已驗收撤包：後端 **BE-53**（`a4138a4`：7-ELEVEN 選店票、門市凍結進訂單、模擬器假地圖，測試 340 → **382**、migration `0020`）＋ 前端 **FE-33**（`ff132af`：結帳頁電子地圖選門市、前後台訂單詳情顯示門市，測試 558 → **643**）。
+**這一波還沒有部署**；部署時正式機要套 migration `0019`、`0020`，並在 Storefront 放 `Logistics:ECPay:*` 物流設定（沒放＝超商取貨選門市回 503，不擋開機）。真瀏覽器畫面走查仍待補（Chrome 擴充未連線，這一次用 HTTP 走完 32 項）。
+★ 下一波派需要跑後端測試的包之前，先 `docker info`；子代理跑 audit 用 `C:\Program Files\Git\bin\bash.exe` 明確路徑。
+★ Leader 自己重跑後端測試：**直接跑 `tests\<專案>\bin\Debug\net10.0\<專案>.exe`**（`.dispatch/reports/README.md` 第 35 行）；`dotnet test` 在 .NET 10 會走 VSTest 全數報錯、`--project` 是未知參數——兩次都 exit 0 但一條測試都沒跑。
+
+以下保留派工時的標頭與兩份啟動 prompt 供參考。
+
+**（派工時）第三十九波（2026-09-15）——兩包平行、跨兩棵樹、`allow` 零重疊。**
 後端 **BE-53**（7-ELEVEN 選店票、綠界回傳驗證、門市凍結進訂單、後台門市欄位、模擬器假地圖，`docs/52`）＋ 前端 **FE-33**（結帳頁電子地圖選門市、前後台訂單詳情顯示門市，前端樹 `docs/35`）。
 使用者以 `/goal` 問「可以新增 7-11 收貨嗎」。契約（三條 `/v1/logistics/*`、`CheckoutRequest.convenienceStoreSelectionId`、`Order.convenienceStoreAddress`、`AdminOrder` 三個門市欄位）與 ADR-038 由 Leader 寫好並逐位元複製進前端樹。
 兩份派工書經 Codex `gpt-5.6-sol` 逐行覆驗（後端 13 條、前端 13 條）與 Gemini `3.1-pro-high` 情境覆驗（10 條），採納的已改進派工書。
@@ -10,7 +17,7 @@
 
 ---
 
-## BE-53 的啟動 prompt
+## BE-53 的啟動 prompt（已撤包，保留供參考）
 
 ```
 專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
@@ -67,7 +74,7 @@ git checkout -- .、以及 git commit。
 
 ---
 
-## FE-33 的啟動 prompt（在前端樹）
+## FE-33 的啟動 prompt（已撤包，保留供參考；在前端樹）
 
 ```
 專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe
