@@ -1,5 +1,7 @@
+using System.Buffers.Binary;
 using System.Text;
 using GreyGray.Modules.Catalog.Contracts;
+using GreyGray.Modules.Identity.Contracts;
 using GreyGray.Platform.Abstractions.Messaging;
 using GreyGray.Shared.Kernel;
 
@@ -10,7 +12,7 @@ internal sealed class CatalogService(
     IEventPublisher eventPublisher,
     IClock clock,
     ICorrelationContext correlationContext)
-    : ICatalogQuery, IStorefrontCatalogQuery, ICatalogAdministration
+    : ICatalogQuery, IStorefrontCatalogQuery, IStorefrontFavorites, ICatalogAdministration
 {
     public async Task<Result<SkuSnapshot>> GetSkuAsync(
         SkuId id,
@@ -68,29 +70,13 @@ internal sealed class CatalogService(
         var visible = new List<StorefrontProductListItem>();
         foreach (var product in products)
         {
-            var activeSkus = (await repository.ListSkusAsync(product.Id, cancellationToken))
-                .Where(value => value.IsActive)
-                .ToArray();
-            var listedSkus = product.Mode == FulfillmentMode.Stock
-                ? activeSkus.Where(value => value.ListPrice is not null).ToArray()
-                : activeSkus;
-            if (listedSkus.Length == 0)
+            var item = await ToStorefrontListItemAsync(product, false, cancellationToken);
+            if (item is null)
             {
                 continue;
             }
 
-            var images = await repository.ListImagesAsync(product.Id, cancellationToken);
-            var representative = listedSkus
-                .OrderBy(value => value.ListPrice?.AmountMinor ?? long.MaxValue)
-                .First();
-            visible.Add(new StorefrontProductListItem(
-                product.Id,
-                product.Name,
-                product.ShortDescription,
-                images.FirstOrDefault()?.Url,
-                representative.ListPrice,
-                BuildUnitPriceLabel(representative),
-                product.Mode));
+            visible.Add(item);
         }
 
         return Slice(visible, search);
@@ -128,6 +114,91 @@ internal sealed class CatalogService(
             images.Select(value => value.Url).ToArray(),
             product.Mode,
             skus);
+    }
+
+    public async Task<Result> AddAsync(
+        CustomerId customerId,
+        ProductId productId,
+        CancellationToken cancellationToken)
+    {
+        var tenantId = correlationContext.TenantId;
+        if (!await repository.IsStorefrontVisibleAsync(productId, tenantId, cancellationToken))
+        {
+            return Result.Failure("catalog.product-not-found", "找不到商品。");
+        }
+
+        await repository.InsertFavoriteAsync(
+            Favorite.Create(tenantId, customerId, productId, clock.UtcNow),
+            cancellationToken);
+        return Result.Success();
+    }
+
+    public async Task<Result> RemoveAsync(
+        CustomerId customerId,
+        ProductId productId,
+        CancellationToken cancellationToken)
+    {
+        await repository.DeleteFavoriteAsync(
+            correlationContext.TenantId,
+            customerId,
+            productId,
+            cancellationToken);
+        return Result.Success();
+    }
+
+    public async Task<Result<CursorPage<StorefrontProductListItem>>> ListAsync(
+        CustomerId customerId,
+        string? cursor,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        if (limit is < 1 or > 100)
+        {
+            return InvalidFavoriteCursor<CursorPage<StorefrontProductListItem>>();
+        }
+
+        var decoded = DecodeFavoriteCursor(cursor);
+        if (decoded.IsFailure)
+        {
+            return Result<CursorPage<StorefrontProductListItem>>.Failure(decoded.Error);
+        }
+
+        var rows = await repository.ListFavoritesAsync(
+            correlationContext.TenantId,
+            customerId,
+            decoded.Value,
+            limit + 1,
+            cancellationToken);
+        var selected = rows.Take(limit).ToArray();
+        var items = new List<StorefrontProductListItem>(selected.Length);
+        foreach (var row in selected)
+        {
+            var item = await ToStorefrontListItemAsync(row.Product, true, cancellationToken);
+            if (item is not null)
+            {
+                items.Add(item);
+            }
+        }
+
+        var nextCursor = rows.Count > limit && selected.Length > 0
+            ? EncodeFavoriteCursor(new FavoriteCursor(selected[^1].CreatedAt, selected[^1].Product.Id))
+            : null;
+        return new CursorPage<StorefrontProductListItem>(items, nextCursor);
+    }
+
+    public Task<IReadOnlySet<ProductId>> FindAsync(
+        CustomerId customerId,
+        IReadOnlyCollection<ProductId> productIds,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(productIds);
+        return productIds.Count == 0
+            ? Task.FromResult<IReadOnlySet<ProductId>>(new HashSet<ProductId>())
+            : repository.FindFavoriteProductIdsAsync(
+                correlationContext.TenantId,
+                customerId,
+                productIds,
+                cancellationToken);
     }
 
     public async Task<Result<CategoryView>> CreateCategoryAsync(
@@ -398,6 +469,41 @@ internal sealed class CatalogService(
             (await repository.ListImagesAsync(product.Id, cancellationToken)).Select(value => value.Url).ToArray(),
             await repository.ListSkusAsync(product.Id, cancellationToken));
 
+    private async Task<StorefrontProductListItem?> ToStorefrontListItemAsync(
+        Product product,
+        bool allowUnpricedStock,
+        CancellationToken cancellationToken)
+    {
+        var activeSkus = (await repository.ListSkusAsync(product.Id, cancellationToken))
+            .Where(value => value.IsActive)
+            .ToArray();
+        var candidates = product.Mode == FulfillmentMode.Stock
+            ? activeSkus.Where(value => value.ListPrice is not null).ToArray()
+            : activeSkus;
+        if (candidates.Length == 0 && allowUnpricedStock && product.Mode == FulfillmentMode.Stock)
+        {
+            candidates = activeSkus;
+        }
+
+        if (candidates.Length == 0)
+        {
+            return null;
+        }
+
+        var images = await repository.ListImagesAsync(product.Id, cancellationToken);
+        var representative = candidates
+            .OrderBy(value => value.ListPrice?.AmountMinor ?? long.MaxValue)
+            .First();
+        return new StorefrontProductListItem(
+            product.Id,
+            product.Name,
+            product.ShortDescription,
+            images.FirstOrDefault()?.Url,
+            representative.ListPrice,
+            BuildUnitPriceLabel(representative),
+            product.Mode);
+    }
+
     private static AdminProductView ToAdminView(
         Product product,
         IReadOnlyList<string> images,
@@ -545,6 +651,47 @@ internal sealed class CatalogService(
         sku.UnitCount is { } count && sku.UnitOfMeasure is { } unit
             ? $"{count} {unit}"
             : null;
+
+    private static Result<FavoriteCursor?> DecodeFavoriteCursor(string? cursor)
+    {
+        if (string.IsNullOrWhiteSpace(cursor))
+        {
+            return Result<FavoriteCursor?>.Success(null);
+        }
+
+        try
+        {
+            var bytes = Convert.FromBase64String(cursor);
+            if (bytes.Length != 24)
+            {
+                return InvalidFavoriteCursor<FavoriteCursor?>();
+            }
+
+            var ticks = BinaryPrimitives.ReadInt64BigEndian(bytes.AsSpan(0, 8));
+            return new FavoriteCursor(
+                new DateTimeOffset(ticks, TimeSpan.Zero),
+                new ProductId(new Guid(bytes.AsSpan(8, 16))));
+        }
+        catch (FormatException)
+        {
+            return InvalidFavoriteCursor<FavoriteCursor?>();
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return InvalidFavoriteCursor<FavoriteCursor?>();
+        }
+    }
+
+    private static string EncodeFavoriteCursor(FavoriteCursor cursor)
+    {
+        Span<byte> bytes = stackalloc byte[24];
+        BinaryPrimitives.WriteInt64BigEndian(bytes[..8], cursor.CreatedAt.UtcDateTime.Ticks);
+        cursor.ProductId.Value.TryWriteBytes(bytes[8..]);
+        return Convert.ToBase64String(bytes);
+    }
+
+    private static Result<T> InvalidFavoriteCursor<T>() =>
+        Result<T>.Failure("catalog.invalid-cursor", "cursor 無效或 limit 不在 1 到 100 之間。");
 
     private sealed record ValidatedProduct(ProductData Data, IReadOnlyList<string> Images);
     private sealed class InvalidCursor

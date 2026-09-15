@@ -1,6 +1,7 @@
 using GreyGray.Api.Storefront;
 using GreyGray.Modules.Campaign.Contracts;
 using GreyGray.Modules.Catalog.Contracts;
+using GreyGray.Modules.Identity.Contracts;
 using GreyGray.Modules.Inventory.Contracts;
 using GreyGray.Shared.Kernel;
 using Shouldly;
@@ -37,7 +38,9 @@ public sealed class StorefrontProductEndpointTests
 
         var page = (await M1aEndpoints.ListProductsAsync(
             Search(),
+            null,
             scenario.Catalog,
+            scenario.Favorites,
             scenario.Campaigns,
             TestContext.Current.CancellationToken)).Value;
 
@@ -54,7 +57,9 @@ public sealed class StorefrontProductEndpointTests
 
         var detail = (await M1aEndpoints.GetProductDetailAsync(
             scenario.ProductId,
+            null,
             scenario.Catalog,
+            scenario.Favorites,
             scenario.Inventory,
             scenario.Campaigns,
             TestContext.Current.CancellationToken)).Value;
@@ -78,7 +83,9 @@ public sealed class StorefrontProductEndpointTests
 
         var detail = (await M1aEndpoints.GetProductDetailAsync(
             scenario.ProductId,
+            null,
             scenario.Catalog,
+            scenario.Favorites,
             scenario.Inventory,
             scenario.Campaigns,
             TestContext.Current.CancellationToken)).Value;
@@ -96,12 +103,16 @@ public sealed class StorefrontProductEndpointTests
 
         var page = (await M1aEndpoints.ListProductsAsync(
             Search(),
+            null,
             scenario.Catalog,
+            scenario.Favorites,
             scenario.Campaigns,
             TestContext.Current.CancellationToken)).Value;
         var detail = (await M1aEndpoints.GetProductDetailAsync(
             scenario.ProductId,
+            null,
             scenario.Catalog,
+            scenario.Favorites,
             scenario.Inventory,
             scenario.Campaigns,
             TestContext.Current.CancellationToken)).Value;
@@ -120,12 +131,16 @@ public sealed class StorefrontProductEndpointTests
 
         var page = (await M1aEndpoints.ListProductsAsync(
             Search(),
+            null,
             scenario.Catalog,
+            scenario.Favorites,
             scenario.Campaigns,
             TestContext.Current.CancellationToken)).Value;
         var detail = (await M1aEndpoints.GetProductDetailAsync(
             scenario.ProductId,
+            null,
             scenario.Catalog,
+            scenario.Favorites,
             scenario.Inventory,
             scenario.Campaigns,
             TestContext.Current.CancellationToken)).Value;
@@ -162,7 +177,9 @@ public sealed class StorefrontProductEndpointTests
 
         var detail = (await M1aEndpoints.GetProductDetailAsync(
             scenario.ProductId,
+            null,
             scenario.Catalog,
+            scenario.Favorites,
             scenario.Inventory,
             scenario.Campaigns,
             TestContext.Current.CancellationToken)).Value;
@@ -183,12 +200,16 @@ public sealed class StorefrontProductEndpointTests
 
         var page = await M1aEndpoints.ListProductsAsync(
             Search(),
+            null,
             scenario.Catalog,
+            scenario.Favorites,
             scenario.Campaigns,
             TestContext.Current.CancellationToken);
         var detail = await M1aEndpoints.GetProductDetailAsync(
             scenario.ProductId,
+            null,
             scenario.Catalog,
+            scenario.Favorites,
             scenario.Inventory,
             scenario.Campaigns,
             TestContext.Current.CancellationToken);
@@ -197,6 +218,42 @@ public sealed class StorefrontProductEndpointTests
         page.Error.Code.ShouldBe("catalog.sku-not-found");
         detail.IsFailure.ShouldBeTrue();
         detail.Error.Code.ShouldBe("catalog.sku-not-found");
+    }
+
+    [Fact(DisplayName = "匿名看商品：isFavorited 為 false，而且完全不查最愛")]
+    public async Task Anonymous_products_do_not_query_favorites()
+    {
+        var scenario = StockScenario();
+
+        var page = (await M1aEndpoints.ListProductsAsync(
+            Search(), null, scenario.Catalog, scenario.Favorites, scenario.Campaigns,
+            TestContext.Current.CancellationToken)).Value;
+        var detail = (await M1aEndpoints.GetProductDetailAsync(
+            scenario.ProductId, null, scenario.Catalog, scenario.Favorites,
+            scenario.Inventory, scenario.Campaigns, TestContext.Current.CancellationToken)).Value;
+
+        page.Items.Single().IsFavorited.ShouldBeFalse();
+        detail.IsFavorited.ShouldBeFalse();
+        scenario.Favorites.FindCalls.ShouldBe(0);
+    }
+
+    [Fact(DisplayName = "登入看商品：列表與詳情各批次查一次最愛並填入 true")]
+    public async Task Signed_in_products_query_favorites_once_per_response()
+    {
+        var scenario = StockScenario();
+        var customerId = CustomerId.New();
+        scenario.Favorites.With(scenario.ProductId);
+
+        var page = (await M1aEndpoints.ListProductsAsync(
+            Search(), customerId, scenario.Catalog, scenario.Favorites, scenario.Campaigns,
+            TestContext.Current.CancellationToken)).Value;
+        var detail = (await M1aEndpoints.GetProductDetailAsync(
+            scenario.ProductId, customerId, scenario.Catalog, scenario.Favorites,
+            scenario.Inventory, scenario.Campaigns, TestContext.Current.CancellationToken)).Value;
+
+        page.Items.Single().IsFavorited.ShouldBeTrue();
+        detail.IsFavorited.ShouldBeTrue();
+        scenario.Favorites.FindCalls.ShouldBe(2);
     }
 
     private static ProductSearch Search() => new(null, null, null, false, null, 20);
@@ -267,7 +324,8 @@ public sealed class StorefrontProductEndpointTests
             offerId,
             catalog,
             campaigns,
-            new FakeInventoryQuery(skuId, 7));
+            new FakeInventoryQuery(skuId, 7),
+            new FakeStorefrontFavorites());
     }
 
     private static ProductScenario StockScenario()
@@ -312,7 +370,8 @@ public sealed class StorefrontProductEndpointTests
             CampaignOfferId.New(),
             catalog,
             new FakeCampaignStorefront(),
-            new FakeInventoryQuery(skuId, 7));
+            new FakeInventoryQuery(skuId, 7),
+            new FakeStorefrontFavorites());
     }
 
     private sealed record ProductScenario(
@@ -321,7 +380,43 @@ public sealed class StorefrontProductEndpointTests
         CampaignOfferId OfferId,
         FakeStorefrontCatalogQuery Catalog,
         FakeCampaignStorefront Campaigns,
-        FakeInventoryQuery Inventory);
+        FakeInventoryQuery Inventory,
+        FakeStorefrontFavorites Favorites);
+}
+
+internal sealed class FakeStorefrontFavorites : IStorefrontFavorites
+{
+    private readonly HashSet<ProductId> _productIds = [];
+
+    public int FindCalls { get; private set; }
+
+    public void With(ProductId productId) => _productIds.Add(productId);
+
+    public Task<Result> AddAsync(
+        CustomerId customerId,
+        ProductId productId,
+        CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    public Task<Result> RemoveAsync(
+        CustomerId customerId,
+        ProductId productId,
+        CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    public Task<Result<CursorPage<StorefrontProductListItem>>> ListAsync(
+        CustomerId customerId,
+        string? cursor,
+        int limit,
+        CancellationToken cancellationToken) => throw new NotSupportedException();
+
+    public Task<IReadOnlySet<ProductId>> FindAsync(
+        CustomerId customerId,
+        IReadOnlyCollection<ProductId> productIds,
+        CancellationToken cancellationToken)
+    {
+        FindCalls++;
+        return Task.FromResult<IReadOnlySet<ProductId>>(
+            productIds.Where(_productIds.Contains).ToHashSet());
+    }
 }
 
 internal sealed class FakeStorefrontCatalogQuery(

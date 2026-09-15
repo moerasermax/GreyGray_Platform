@@ -1,5 +1,6 @@
 using GreyGray.Modules.Catalog.Contracts;
 using GreyGray.Modules.Catalog.Core;
+using GreyGray.Modules.Identity.Contracts;
 using GreyGray.Shared.Kernel;
 using Microsoft.EntityFrameworkCore;
 
@@ -82,6 +83,94 @@ internal sealed class CatalogRepository(CatalogDbContext dbContext) : ICatalogRe
             .Where(value => value.ProductId == productId)
             .OrderBy(value => value.Position)
             .ToArrayAsync(cancellationToken);
+
+    public Task<bool> IsStorefrontVisibleAsync(
+        ProductId productId,
+        TenantId tenantId,
+        CancellationToken cancellationToken) =>
+        dbContext.Products.AnyAsync(
+            product => product.Id == productId &&
+                product.TenantId == tenantId &&
+                product.IsActive &&
+                dbContext.Skus.Any(sku =>
+                    sku.TenantId == tenantId &&
+                    sku.ProductId == product.Id &&
+                    sku.IsActive),
+            cancellationToken);
+
+    public async Task InsertFavoriteAsync(Favorite favorite, CancellationToken cancellationToken) =>
+        await dbContext.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO catalog.favorite (tenant_id, customer_id, product_id, created_at)
+            VALUES ({favorite.TenantId.Value}, {favorite.CustomerId.Value},
+                    {favorite.ProductId.Value}, {favorite.CreatedAt})
+            ON CONFLICT DO NOTHING;
+            """, cancellationToken);
+
+    public async Task DeleteFavoriteAsync(
+        TenantId tenantId,
+        CustomerId customerId,
+        ProductId productId,
+        CancellationToken cancellationToken) =>
+        await dbContext.Database.ExecuteSqlInterpolatedAsync($"""
+            DELETE FROM catalog.favorite
+            WHERE tenant_id = {tenantId.Value}
+              AND customer_id = {customerId.Value}
+              AND product_id = {productId.Value};
+            """, cancellationToken);
+
+    public async Task<IReadOnlyList<FavoriteProduct>> ListFavoritesAsync(
+        TenantId tenantId,
+        CustomerId customerId,
+        FavoriteCursor? cursor,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        var favorites = dbContext.Favorites
+            .AsNoTracking()
+            .Where(favorite =>
+                favorite.TenantId == tenantId &&
+                favorite.CustomerId == customerId &&
+                dbContext.Products.Any(product =>
+                    product.Id == favorite.ProductId &&
+                    product.TenantId == tenantId &&
+                    product.IsActive &&
+                    dbContext.Skus.Any(sku =>
+                        sku.TenantId == tenantId &&
+                        sku.ProductId == product.Id &&
+                        sku.IsActive)));
+
+        if (cursor is not null)
+        {
+            favorites = favorites.Where(favorite =>
+                favorite.CreatedAt < cursor.CreatedAt ||
+                favorite.CreatedAt == cursor.CreatedAt && favorite.ProductId < cursor.ProductId);
+        }
+
+        return await (
+            from favorite in favorites
+            join product in dbContext.Products.AsNoTracking()
+                on new { favorite.TenantId, favorite.ProductId }
+                equals new { product.TenantId, ProductId = product.Id }
+            orderby favorite.CreatedAt descending, favorite.ProductId descending
+            select new FavoriteProduct(product, favorite.CreatedAt))
+            .Take(take)
+            .ToArrayAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlySet<ProductId>> FindFavoriteProductIdsAsync(
+        TenantId tenantId,
+        CustomerId customerId,
+        IReadOnlyCollection<ProductId> productIds,
+        CancellationToken cancellationToken) =>
+        (await dbContext.Favorites
+            .AsNoTracking()
+            .Where(favorite =>
+                favorite.TenantId == tenantId &&
+                favorite.CustomerId == customerId &&
+                productIds.Contains(favorite.ProductId))
+            .Select(favorite => favorite.ProductId)
+            .ToArrayAsync(cancellationToken))
+        .ToHashSet();
 
     public void AddCategory(Category category) => dbContext.Categories.Add(category);
     public void AddProduct(Product product) => dbContext.Products.Add(product);

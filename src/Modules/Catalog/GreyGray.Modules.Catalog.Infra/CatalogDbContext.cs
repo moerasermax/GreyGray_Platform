@@ -2,6 +2,7 @@ using GreyGray.Platform;
 using GreyGray.Platform.Abstractions.Messaging;
 using GreyGray.Modules.Catalog.Contracts;
 using GreyGray.Modules.Catalog.Core;
+using GreyGray.Modules.Identity.Contracts;
 using GreyGray.Shared.Kernel;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,6 +16,7 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ProductImage> ProductImages => Set<ProductImage>();
     public DbSet<Sku> Skus => Set<Sku>();
+    public DbSet<Favorite> Favorites => Set<Favorite>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -24,6 +26,7 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
         ConfigureProduct(modelBuilder);
         ConfigureProductImage(modelBuilder);
         ConfigureSku(modelBuilder);
+        ConfigureFavorite(modelBuilder);
         modelBuilder.AddPlatformTables();
     }
 
@@ -107,5 +110,24 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
             .HasColumnType("timestamp with time zone").IsRequired();
         entity.HasIndex(value => new { value.TenantId, value.ProductId, value.IsActive })
             .HasDatabaseName("ix_sku_tenant_product_active");
+    }
+
+    private static void ConfigureFavorite(ModelBuilder modelBuilder)
+    {
+        var entity = modelBuilder.Entity<Favorite>();
+        entity.ToTable("favorite", "catalog");
+        entity.HasKey(value => new { value.TenantId, value.CustomerId, value.ProductId });
+        entity.Property(value => value.TenantId).HasColumnName("tenant_id")
+            .HasConversion(id => id.Value, value => new TenantId(value)).ValueGeneratedNever();
+        entity.Property(value => value.CustomerId).HasColumnName("customer_id")
+            .HasConversion(id => id.Value, value => new CustomerId(value)).ValueGeneratedNever();
+        entity.Property(value => value.ProductId).HasColumnName("product_id")
+            .HasConversion(id => id.Value, value => new ProductId(value)).ValueGeneratedNever();
+        entity.Property(value => value.CreatedAt).HasColumnName("created_at")
+            .HasColumnType("timestamp with time zone").IsRequired();
+        entity.HasIndex(value => new
+            { value.TenantId, value.CustomerId, value.CreatedAt, value.ProductId })
+            .IsDescending(false, false, true, true)
+            .HasDatabaseName("ix_favorite_tenant_customer_created_product");
     }
 }

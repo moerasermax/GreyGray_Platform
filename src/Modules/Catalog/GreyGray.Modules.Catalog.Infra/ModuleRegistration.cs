@@ -73,6 +73,8 @@ internal sealed class CatalogModule : IModuleRegistration
             serviceProvider.GetRequiredService<CatalogService>());
         services.AddScoped<IStorefrontCatalogQuery>(serviceProvider =>
             serviceProvider.GetRequiredService<CatalogService>());
+        services.AddScoped<IStorefrontFavorites>(serviceProvider =>
+            serviceProvider.GetRequiredService<CatalogService>());
         services.AddScoped<ICatalogAdministration>(serviceProvider =>
             serviceProvider.GetRequiredService<CatalogService>());
 

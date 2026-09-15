@@ -33,6 +33,8 @@ internal sealed class M1aOpenApiComponents : IOpenApiDocumentTransformer
         (HttpMethod.Post, "/v1/me/addresses"),
         (HttpMethod.Put, "/v1/me/addresses/{addressId}"),
         (HttpMethod.Delete, "/v1/me/addresses/{addressId}"),
+        (HttpMethod.Put, "/v1/me/favorites/{productId}"),
+        (HttpMethod.Delete, "/v1/me/favorites/{productId}"),
         (HttpMethod.Post, "/v1/cart/lines"),
         (HttpMethod.Patch, "/v1/cart/lines/{lineId}"),
         (HttpMethod.Delete, "/v1/cart/lines/{lineId}"),
@@ -48,6 +50,7 @@ internal sealed class M1aOpenApiComponents : IOpenApiDocumentTransformer
         (HttpMethod.Get, "/v1/products"),
         (HttpMethod.Get, "/v1/campaigns"),
         (HttpMethod.Get, "/v1/orders"),
+        (HttpMethod.Get, "/v1/me/favorites"),
     ];
 
     /// <summary>登入成功會回 <c>Set-Cookie</c> 的端點與對應成功狀態碼。</summary>

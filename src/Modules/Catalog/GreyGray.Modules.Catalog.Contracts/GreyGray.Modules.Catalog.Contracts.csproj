@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\Shared.Kernel\GreyGray.Shared.Kernel.csproj" />
     <ProjectReference Include="..\..\..\Platform.Abstractions\GreyGray.Platform.Abstractions.csproj" />
+    <ProjectReference Include="..\..\Identity\GreyGray.Modules.Identity.Contracts\GreyGray.Modules.Identity.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

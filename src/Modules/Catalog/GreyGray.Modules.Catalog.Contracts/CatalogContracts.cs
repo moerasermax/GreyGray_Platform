@@ -1,4 +1,5 @@
 using GreyGray.Platform.Abstractions.Messaging;
+using GreyGray.Modules.Identity.Contracts;
 using GreyGray.Shared.Kernel;
 
 namespace GreyGray.Modules.Catalog.Contracts;
@@ -10,6 +11,11 @@ namespace GreyGray.Modules.Catalog.Contracts;
 public readonly record struct ProductId(Guid Value)
 {
     public static ProductId New() => new(Guid.CreateVersion7());
+
+    public static bool operator <(ProductId left, ProductId right) => left.Value.CompareTo(right.Value) < 0;
+    public static bool operator >(ProductId left, ProductId right) => left.Value.CompareTo(right.Value) > 0;
+    public static bool operator <=(ProductId left, ProductId right) => left.Value.CompareTo(right.Value) <= 0;
+    public static bool operator >=(ProductId left, ProductId right) => left.Value.CompareTo(right.Value) >= 0;
 
     public override string ToString() => Value.ToString("N");
 }
@@ -167,6 +173,31 @@ public interface IStorefrontCatalogQuery
 
     Task<Result<StorefrontProductDetail>> GetProductAsync(
         ProductId productId,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>登入客戶的商品最愛清單（ADR-036）。</summary>
+public interface IStorefrontFavorites
+{
+    Task<Result> AddAsync(
+        CustomerId customerId,
+        ProductId productId,
+        CancellationToken cancellationToken);
+
+    Task<Result> RemoveAsync(
+        CustomerId customerId,
+        ProductId productId,
+        CancellationToken cancellationToken);
+
+    Task<Result<CursorPage<StorefrontProductListItem>>> ListAsync(
+        CustomerId customerId,
+        string? cursor,
+        int limit,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlySet<ProductId>> FindAsync(
+        CustomerId customerId,
+        IReadOnlyCollection<ProductId> productIds,
         CancellationToken cancellationToken);
 }
 

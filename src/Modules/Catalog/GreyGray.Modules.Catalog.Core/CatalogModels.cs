@@ -1,4 +1,5 @@
 using GreyGray.Modules.Catalog.Contracts;
+using GreyGray.Modules.Identity.Contracts;
 using GreyGray.Shared.Kernel;
 
 namespace GreyGray.Modules.Catalog.Core;
@@ -213,6 +214,36 @@ internal sealed record SkuData(
     Money? ListPrice,
     bool IsActive);
 
+internal sealed class Favorite
+{
+    private Favorite()
+    {
+    }
+
+    private Favorite(TenantId tenantId, CustomerId customerId, ProductId productId, DateTimeOffset createdAt)
+    {
+        TenantId = tenantId;
+        CustomerId = customerId;
+        ProductId = productId;
+        CreatedAt = createdAt;
+    }
+
+    public TenantId TenantId { get; private set; }
+    public CustomerId CustomerId { get; private set; }
+    public ProductId ProductId { get; private set; }
+    public DateTimeOffset CreatedAt { get; private set; }
+
+    public static Favorite Create(
+        TenantId tenantId,
+        CustomerId customerId,
+        ProductId productId,
+        DateTimeOffset createdAt) => new(tenantId, customerId, productId, createdAt);
+}
+
+internal sealed record FavoriteCursor(DateTimeOffset CreatedAt, ProductId ProductId);
+
+internal sealed record FavoriteProduct(Product Product, DateTimeOffset CreatedAt);
+
 internal interface ICatalogRepository
 {
     Task<Category?> FindCategoryAsync(CategoryId id, TenantId tenantId, CancellationToken cancellationToken);
@@ -223,6 +254,24 @@ internal interface ICatalogRepository
     Task<IReadOnlyList<Product>> ListProductsAsync(TenantId tenantId, CancellationToken cancellationToken);
     Task<IReadOnlyList<Sku>> ListSkusAsync(ProductId productId, CancellationToken cancellationToken);
     Task<IReadOnlyList<ProductImage>> ListImagesAsync(ProductId productId, CancellationToken cancellationToken);
+    Task<bool> IsStorefrontVisibleAsync(ProductId productId, TenantId tenantId, CancellationToken cancellationToken);
+    Task InsertFavoriteAsync(Favorite favorite, CancellationToken cancellationToken);
+    Task DeleteFavoriteAsync(
+        TenantId tenantId,
+        CustomerId customerId,
+        ProductId productId,
+        CancellationToken cancellationToken);
+    Task<IReadOnlyList<FavoriteProduct>> ListFavoritesAsync(
+        TenantId tenantId,
+        CustomerId customerId,
+        FavoriteCursor? cursor,
+        int take,
+        CancellationToken cancellationToken);
+    Task<IReadOnlySet<ProductId>> FindFavoriteProductIdsAsync(
+        TenantId tenantId,
+        CustomerId customerId,
+        IReadOnlyCollection<ProductId> productIds,
+        CancellationToken cancellationToken);
     void AddCategory(Category category);
     void AddProduct(Product product);
     void AddSku(Sku sku);

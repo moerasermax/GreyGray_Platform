@@ -18,6 +18,101 @@ public sealed class M1aCoreMigrationTests : IAsyncLifetime
 
     public ValueTask DisposeAsync() => _postgres.DisposeAsync();
 
+    [Fact(DisplayName = "0001→0019 可重跑，favorite owner／約束／Catalog role 實際讀寫完整")]
+    public async Task Catalog_favorite_migration_is_idempotent_owned_and_usable_by_catalog_role()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var migrations = Path.Combine(FindRepositoryRoot(), "db", "migrations");
+        var connectionString = _postgres.GetConnectionString();
+
+        await ExecuteMigrationChainAsync(connectionString, migrations, 19, cancellationToken);
+        await ExecuteMigrationChainAsync(connectionString, migrations, 19, cancellationToken);
+
+        (await ScalarAsync<string>(connectionString, """
+            SELECT tableowner
+            FROM pg_tables
+            WHERE schemaname = 'catalog' AND tablename = 'favorite';
+            """, cancellationToken)).ShouldBe("greygray_owner");
+
+        (await ScalarAsync<int>(connectionString, """
+            SELECT count(*)::int
+            FROM pg_constraint
+            WHERE conrelid = 'catalog.favorite'::regclass
+              AND conname IN (
+                  'favorite_pkey',
+                  'favorite_product_same_tenant_fk',
+                  'favorite_customer_id_not_empty',
+                  'favorite_product_id_not_empty');
+            """, cancellationToken)).ShouldBe(4);
+
+        (await ScalarAsync<int>(connectionString, """
+            SELECT count(*)::int
+            FROM pg_constraint c
+            JOIN pg_class target ON target.oid = c.confrelid
+            JOIN pg_namespace target_schema ON target_schema.oid = target.relnamespace
+            WHERE c.conrelid = 'catalog.favorite'::regclass
+              AND c.contype = 'f'
+              AND target_schema.nspname <> 'catalog';
+            """, cancellationToken)).ShouldBe(0);
+
+        (await ScalarAsync<bool>(connectionString, """
+            SELECT has_table_privilege(
+                'greygray_catalog', 'catalog.favorite', 'SELECT,INSERT,DELETE');
+            """, cancellationToken)).ShouldBeTrue();
+
+        var productId = Guid.CreateVersion7();
+        var skuId = Guid.CreateVersion7();
+        var customerId = Guid.CreateVersion7();
+        await ExecuteSqlAsync(connectionString, $"""
+            SET ROLE greygray_catalog;
+            INSERT INTO catalog.product (
+                id, tenant_id, name, mode, is_active, created_at)
+            VALUES (
+                '{productId}'::uuid, '{TenantA}'::uuid, 'role probe', 0, true, now());
+            INSERT INTO catalog.sku (
+                id, tenant_id, product_id, name, weight_gram,
+                length_cm, width_cm, height_cm, is_active, created_at)
+            VALUES (
+                '{skuId}'::uuid, '{TenantA}'::uuid, '{productId}'::uuid, 'role probe sku',
+                0, 0, 0, 0, true, now());
+            INSERT INTO catalog.favorite (tenant_id, customer_id, product_id, created_at)
+            VALUES ('{TenantA}'::uuid, '{customerId}'::uuid, '{productId}'::uuid, now());
+            DO $$
+            BEGIN
+                IF (SELECT count(*) FROM catalog.favorite
+                    WHERE tenant_id = '{TenantA}'::uuid
+                      AND customer_id = '{customerId}'::uuid
+                      AND product_id = '{productId}'::uuid) <> 1 THEN
+                    RAISE EXCEPTION 'greygray_catalog 無法讀取剛建立的 favorite';
+                END IF;
+            END
+            $$;
+            DELETE FROM catalog.favorite
+            WHERE tenant_id = '{TenantA}'::uuid
+              AND customer_id = '{customerId}'::uuid
+              AND product_id = '{productId}'::uuid;
+            RESET ROLE;
+            """, cancellationToken);
+
+        (await ScalarAsync<int>(connectionString, "SELECT count(*)::int FROM catalog.favorite;", cancellationToken))
+            .ShouldBe(0);
+
+        await ExecuteSqlAsync(
+            connectionString,
+            "CREATE TABLE catalog.owner_assertion_probe (id integer);",
+            cancellationToken);
+        var ownerFailure = await Should.ThrowAsync<PostgresException>(() => ExecuteScriptAsync(
+            connectionString,
+            Path.Combine(migrations, "0019_catalog_favorite.sql"),
+            cancellationToken));
+        ownerFailure.SqlState.ShouldBe("P0001");
+        ownerFailure.MessageText.ShouldContain("owner");
+        await ExecuteSqlAsync(
+            connectionString,
+            "DROP TABLE catalog.owner_assertion_probe;",
+            cancellationToken);
+    }
+
     [Fact(DisplayName = "0001→0006 可重跑，M1a schema/owner/tenant/amount 約束完整")]
     public async Task Full_chain_is_idempotent_owned_and_enforces_m1a_boundaries()
     {

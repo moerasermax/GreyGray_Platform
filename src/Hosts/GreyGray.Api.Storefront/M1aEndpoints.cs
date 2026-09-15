@@ -271,6 +271,94 @@ internal static class M1aEndpoints
                 ? Results.Ok(new StoredValueResponse(result.Value))
                 : BffHttp.Problem(result.Error);
         });
+
+        api.MapGet("/me/favorites", GetFavoritesAsync);
+        api.MapPut("/me/favorites/{productId}", PutFavoriteAsync);
+        api.MapDelete("/me/favorites/{productId}", DeleteFavoriteAsync);
+    }
+
+    internal static async Task<IResult> GetFavoritesAsync(
+        HttpContext context,
+        ISessionStore sessions,
+        IStorefrontFavorites favorites,
+        ICampaignStorefront campaigns,
+        string? cursor,
+        int? limit,
+        CancellationToken cancellationToken)
+    {
+        var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+        if (customer is null)
+        {
+            return BffHttp.Unauthorized();
+        }
+
+        var result = await favorites.ListAsync(customer.Value, cursor, limit ?? 20, cancellationToken);
+        if (result.IsFailure)
+        {
+            return BffHttp.Problem(result.Error);
+        }
+
+        var favorited = result.Value.Items.Select(item => item.Id).ToHashSet();
+        var response = await ProjectProductPageAsync(result.Value, favorited, campaigns, cancellationToken);
+        return response.IsSuccess ? Results.Ok(response.Value) : BffHttp.Problem(response.Error);
+    }
+
+    internal static async Task<IResult> PutFavoriteAsync(
+        string productId,
+        HttpContext context,
+        ISessionStore sessions,
+        IStorefrontFavorites favorites,
+        IIdempotencyStore idempotency,
+        CancellationToken cancellationToken)
+    {
+        var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+        if (customer is null)
+        {
+            return BffHttp.Unauthorized();
+        }
+
+        if (!TryId(productId, out var parsed))
+        {
+            return BffHttp.Problem(new Error("catalog.product-not-found", "找不到商品。"));
+        }
+
+        var id = new ProductId(parsed);
+        return await BffHttp.ExecuteIdempotentAsync(
+            context,
+            idempotency,
+            $"storefront:{customer}:favorites:{productId}:put",
+            id,
+            token => favorites.AddAsync(customer.Value, id, token),
+            cancellationToken);
+    }
+
+    internal static async Task<IResult> DeleteFavoriteAsync(
+        string productId,
+        HttpContext context,
+        ISessionStore sessions,
+        IStorefrontFavorites favorites,
+        IIdempotencyStore idempotency,
+        CancellationToken cancellationToken)
+    {
+        var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+        if (customer is null)
+        {
+            return BffHttp.Unauthorized();
+        }
+
+        if (!TryId(productId, out var parsed))
+        {
+            return BffHttp.Problem(new Error("catalog.product-not-found", "找不到商品。"));
+        }
+
+        var id = new ProductId(parsed);
+        return await BffHttp.ExecuteIdempotentAsync(
+            context,
+            idempotency,
+            $"storefront:{customer}:favorites:{productId}:delete",
+            request: null,
+            token => favorites.RemoveAsync(customer.Value, id, token),
+            cancellationToken);
     }
 
     private static void MapCatalog(RouteGroupBuilder api)
@@ -288,7 +376,10 @@ internal static class M1aEndpoints
             FulfillmentMode? mode,
             string? cursor,
             int? limit,
+            HttpContext context,
+            ISessionStore sessions,
             IStorefrontCatalogQuery catalog,
+            IStorefrontFavorites favorites,
             ICampaignStorefront campaigns,
             CancellationToken cancellationToken) =>
         {
@@ -305,7 +396,9 @@ internal static class M1aEndpoints
 
             var result = await ListProductsAsync(
                 new ProductSearch(q, category, mode, false, cursor, limit ?? 20),
+                await GetCustomerAsync(context, sessions, cancellationToken),
                 catalog,
+                favorites,
                 campaigns,
                 cancellationToken);
             return result.IsSuccess
@@ -315,7 +408,10 @@ internal static class M1aEndpoints
 
         api.MapGet("/products/{productId}", async (
             string productId,
+            HttpContext context,
+            ISessionStore sessions,
             IStorefrontCatalogQuery catalog,
+            IStorefrontFavorites favorites,
             IInventoryQuery inventory,
             ICampaignStorefront campaigns,
             CancellationToken cancellationToken) =>
@@ -327,7 +423,9 @@ internal static class M1aEndpoints
 
             var result = await GetProductDetailAsync(
                 new ProductId(parsed),
+                await GetCustomerAsync(context, sessions, cancellationToken),
                 catalog,
+                favorites,
                 inventory,
                 campaigns,
                 cancellationToken);
@@ -353,7 +451,9 @@ internal static class M1aEndpoints
     /// </remarks>
     internal static async Task<Result<ProductPageResponse>> ListProductsAsync(
         ProductSearch search,
+        CustomerId? customerId,
         IStorefrontCatalogQuery catalog,
+        IStorefrontFavorites favorites,
         ICampaignStorefront campaigns,
         CancellationToken cancellationToken)
     {
@@ -363,9 +463,24 @@ internal static class M1aEndpoints
             return Result<ProductPageResponse>.Failure(result.Error);
         }
 
+        IReadOnlySet<ProductId> favorited = customerId is null
+            ? new HashSet<ProductId>()
+            : await favorites.FindAsync(
+                customerId.Value,
+                result.Value.Items.Select(item => item.Id).ToArray(),
+                cancellationToken);
+        return await ProjectProductPageAsync(result.Value, favorited, campaigns, cancellationToken);
+    }
+
+    private static async Task<Result<ProductPageResponse>> ProjectProductPageAsync(
+        CursorPage<StorefrontProductListItem> page,
+        IReadOnlySet<ProductId> favorited,
+        ICampaignStorefront campaigns,
+        CancellationToken cancellationToken)
+    {
         var pricing = await FindCampaignPricingAsync(
             campaigns,
-            result.Value.Items
+            page.Items
                 .Where(item => item.Mode == FulfillmentMode.Preorder)
                 .Select(item => item.Id)
                 .ToArray(),
@@ -373,10 +488,13 @@ internal static class M1aEndpoints
         return pricing.IsFailure
             ? Result<ProductPageResponse>.Failure(pricing.Error)
             : new ProductPageResponse(
-                result.Value.Items
-                    .Select(item => ToProductListItem(item, pricing.Value.GetValueOrDefault(item.Id)))
+                page.Items
+                    .Select(item => ToProductListItem(
+                        item,
+                        pricing.Value.GetValueOrDefault(item.Id),
+                        favorited.Contains(item.Id)))
                     .ToArray(),
-                result.Value.NextCursor);
+                page.NextCursor);
     }
 
     /// <summary>
@@ -388,7 +506,9 @@ internal static class M1aEndpoints
     /// </remarks>
     internal static async Task<Result<ProductDetailResponse>> GetProductDetailAsync(
         ProductId productId,
+        CustomerId? customerId,
         IStorefrontCatalogQuery catalog,
+        IStorefrontFavorites favorites,
         IInventoryQuery inventory,
         ICampaignStorefront campaigns,
         CancellationToken cancellationToken)
@@ -399,6 +519,8 @@ internal static class M1aEndpoints
             return Result<ProductDetailResponse>.Failure(result.Error);
         }
 
+        var isFavorited = customerId is not null &&
+            (await favorites.FindAsync(customerId.Value, [productId], cancellationToken)).Contains(productId);
         ProductId[] preorder = result.Value.Mode == FulfillmentMode.Preorder
             ? [result.Value.Id]
             : [];
@@ -409,6 +531,7 @@ internal static class M1aEndpoints
                 result.Value,
                 inventory,
                 pricing.Value.GetValueOrDefault(result.Value.Id),
+                isFavorited,
                 cancellationToken);
     }
 
@@ -1378,7 +1501,8 @@ internal static class M1aEndpoints
     /// </param>
     private static ProductListItemResponse ToProductListItem(
         StorefrontProductListItem item,
-        StorefrontProductCampaign? campaign) => new(
+        StorefrontProductCampaign? campaign,
+        bool isFavorited) => new(
         item.Id,
         item.Name,
         item.ShortDescription,
@@ -1387,7 +1511,7 @@ internal static class M1aEndpoints
         campaign?.PriceFrom ?? item.PriceFrom,
         item.UnitPriceLabel,
         [],
-        false,
+        isFavorited,
         item.Mode,
         campaign?.Campaign.Id);
 
@@ -1396,6 +1520,7 @@ internal static class M1aEndpoints
         StorefrontProductDetail product,
         IInventoryQuery inventory,
         StorefrontProductCampaign? campaign,
+        bool isFavorited,
         CancellationToken cancellationToken)
     {
         IReadOnlyDictionary<SkuId, int> availability = new Dictionary<SkuId, int>();
@@ -1438,7 +1563,7 @@ internal static class M1aEndpoints
                     product.Mode == FulfillmentMode.Stock ? sku.ListPrice : offer?.SellingPrice,
                     offer?.OfferId);
             }).ToArray(),
-            false);
+            isFavorited);
     }
 
     private static CampaignDetailResponse ToCampaignDetail(StorefrontCampaignDetail detail) => new(
