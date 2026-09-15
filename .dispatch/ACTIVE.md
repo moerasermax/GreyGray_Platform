@@ -51,7 +51,16 @@ Leader 要明講。
 
 ---
 
-## 生效中：FE-31　資訊頁——常見問題／購買流程／關於我們，以及它們的入口與出口
+<!--
+★ 2026-09-15 已通過整合驗收並提交（前端 `b7250db`），FE-31 與 FE-32 一起撤包。原文保留供追溯。
+
+FE-31（Claude Sonnet）一輪：`(info)/` 三頁 ＋ `InfoLinks`／`InfoPageFooter`、首頁頁尾與「我的」頁的入口、`infoPages.test.ts` 26 條（四類承諾反例注入確認會紅）。
+FE-32（Codex gpt-5.6-sol）一輪：api-client 重生（`types.admin.ts` 零 diff）＋ 三支端點 ＋ mock；`_lib/favorites.ts` 共用狀態機；立即購買 `executeCartIntent` 同步鎖 ＋ 去處純函式；cart 頁提示；`/favorites`；未定價卡片補愛心；四組違規探針確認會紅並還原。
+測試 500 → **558**。Leader 驗（兩包都交付後序列跑）：`pnpm --recursive typecheck` EXIT=0、558 全過（api-client 40／admin 132／storefront 386）、`pnpm --filter storefront build` EXIT=0（路由表含 /faq /guide /about /favorites）、audit 通過；dev 環境 SSR：首頁三個資訊連結、三頁 200 且標題不重複、互連與回首頁、登入客戶 A 的商品頁愛心為「取消收藏」、客戶 B 不是。
+⚠ 真瀏覽器逐一點擊的畫面走查**尚未做**（Chrome 擴充未連線）；client 端互動由純函式測試覆蓋，待補。
+留下：`ProductCardLink` 每張卡各渲染一個 fixed 錯誤 Toast 容器；`/favorites` 的 `<title>` 只有「GreyGray」（client component 沒有 metadata）；客服聯絡方式待使用者提供。
+
+## 生效中（已撤包）：FE-31　資訊頁——常見問題／購買流程／關於我們，以及它們的入口與出口
 
 使用者 2026-09-15 以 `/goal` 下達「常見問題 Q&A、關於我們、購買流程簡介之類的一些小東西」。前台現在沒有任何資訊頁，首頁沒有頁尾。
 三頁放新 route group `(info)`；**入口**是首頁頁尾（匿名唯一入口）與「我的」頁的「幫助與資訊」區塊，**出口**是每頁底部互連 ＋ 分頁列（黑名單規則，新頁預設就有）。
@@ -102,6 +111,7 @@ allow: frontend/apps/storefront/app/(checkout)/_lib/__tests__/buyNowNotice.test.
 
 > `(account)/favorites/`、`_lib/favorites.ts`、`(checkout)/_lib/buyNowNotice.ts` 與它的測試是新的。`types.admin.ts` 在 allow 裡只因為 codegen 會一起重寫，有 diff 就停下來回報。
 > `products/[productId]/page.tsx` 的 SSR 內容不動；`tabs.ts` 只加 `/favorites` 一個字串；`cart/page.tsx` 只加 `from=buy-now` 提示；`_lib/__tests__/pageShell.test.ts` 不改。
+-->
 
 ---
 
@@ -645,6 +655,12 @@ allow: frontend/apps/storefront/app/(checkout)/
 
 ## 已經通過、不再生效的（保留軌跡）
 
+- **FE-32** 立即購買 ＋ 最愛清單前端（ADR-036／ADR-037）：三支最愛端點與共用樂觀切換、商品頁「立即購買」同步鎖與去處判斷、`/favorites` 頁、cart 頁提示、未定價卡片補愛心　·　2026-09-15 通過　·　`b7250db`　·
+  與 FE-31 同一個 commit；測試兩包合計 500 → 558；真瀏覽器畫面走查待補，見 `.dispatch/reports/FE-32.md`
+- **FE-31** 資訊頁：常見問題／購買流程／關於我們（`(info)/`）＋ 首頁頁尾與「我的」頁的入口、每頁互連出口　·　2026-09-15 通過　·　`b7250db`　·
+  文案只用已確認事實（無客服聯絡方式、無鑑賞期、無出貨時限），見 `.dispatch/reports/FE-31.md`
+- **FE-30** 出貨單列表看得出掛哪張訂單（#48）＋ 訂單列表看得出出貨進度（#49）　·　2026-09-06 通過　·　`398f37a`　·
+  測試 481 → 500，見 `.dispatch/reports/FE-30.md`
 - **FE-29** 讓「這張訂單掛了幾張出貨單、還差幾張沒簽收」看得見（#45）：訂單頁加出貨單區塊並講出還差幾張、建立出貨單時濾掉已出貨／已完成／已取消、已有出貨單的標示但仍可勾　·　2026-09-04 通過　·　`b241f48`　·
   測試 461 → 481；規則抽成純函式讓訂單頁與對話框共用；與後端 BE-48 同一輪部署；見 `.dispatch/reports/FE-29.md`
 - **FE-28** 商品詳情頁價格顯示（#40）：底部列「N 件 · 小計」（`subtotalPreview`，ADR-033 唯一前端乘法例外）＋ 資訊區「單價」；沒定價的說明只說一次　·　2026-09-03 通過　·　`5b01314`　·

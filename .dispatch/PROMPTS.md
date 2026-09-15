@@ -1,6 +1,12 @@
 # 啟動 prompt
 
-**生效中：第三十八波（2026-09-15）——三包平行、跨兩棵樹、`allow` 零重疊。**
+**目前沒有生效中的派工（2026-09-15）。** 第三十八波三包都已驗收撤包：後端 **BE-52**（`46ec1c5`：最愛清單後端，測試 332 → **340**）＋ 前端 **FE-31**／**FE-32**（`b7250db`：資訊頁、立即購買與最愛清單前端，測試 500 → **558**）。
+**這一波還沒有部署**；部署時正式機要套 migration `0019`。真瀏覽器的畫面走查待補（Chrome 擴充未連線，這一次只做了 HTTP＋SSR 層的旅程）。
+★ 下一波派需要跑後端測試的包之前，先 `docker info`（Docker Desktop 在 `D:\Program`，沒開時 Testcontainers 全掛）；子代理跑 audit 用 `C:\Program Files\Git\bin\bash.exe` 明確路徑（Docker Desktop 起來後裸 `bash` 會命中 WSL stub）。
+
+以下保留派工時的標頭與三份啟動 prompt 供參考。
+
+**（派工時）第三十八波（2026-09-15）——三包平行、跨兩棵樹、`allow` 零重疊。**
 後端 **BE-52**（最愛清單後端，`docs/51`）＋ 前端 **FE-31**（資訊頁，前端樹 `docs/34`）＋ 前端 **FE-32**（立即購買 ＋ 最愛前端，前端樹 `docs/34`）。
 使用者以 `/goal` 下達：常見問題／關於我們／購買流程、最愛清單、7-11 取貨、立即購買，並要求「全體 ai-cli 一起處理，但不要把 WorkSpace 弄亂」。
 **7-11 超商電子地圖是下一波**（要先做模擬器與物流憑證；研究結論見 `GreyGray_PM/00-進度總表.md`）。
@@ -10,7 +16,7 @@
 
 ---
 
-## BE-52 的啟動 prompt（生效中）
+## BE-52 的啟動 prompt（已撤包，保留供參考）
 
 ```
 專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
@@ -65,7 +71,7 @@ git checkout -- .、以及 git commit。
 
 ---
 
-## FE-31 的啟動 prompt（生效中；在前端樹）
+## FE-31 的啟動 prompt（已撤包，保留供參考；在前端樹）
 
 ```
 專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe
@@ -115,7 +121,7 @@ git checkout -- .、以及 git commit。
 
 ---
 
-## FE-32 的啟動 prompt（生效中；在前端樹）
+## FE-32 的啟動 prompt（已撤包，保留供參考；在前端樹）
 
 ```
 專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe
