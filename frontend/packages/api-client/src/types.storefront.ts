@@ -1081,7 +1081,8 @@ export interface paths {
                 /**
                  * @description `checkout.cart-empty` · `checkout.address-required` ·
                  *     `checkout.store-code-required` · `checkout.store-selection-expired` ·
-                 *     `checkout.recipient-required` ·
+                 *     `checkout.recipient-required` · `checkout.recipient-name-too-long` ·
+                 *     `checkout.recipient-phone-too-long` ·
                  *     `checkout.shipping-policy-required` ·
                  *     `campaign.not-accepting-orders` · `inventory.insufficient-stock` ·
                  *     `payment.provider-does-not-support-delivery-method`

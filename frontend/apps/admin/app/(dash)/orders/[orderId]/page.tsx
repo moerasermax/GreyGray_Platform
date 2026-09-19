@@ -41,6 +41,7 @@ import {
   shippingPolicyLabel,
 } from '../_lib/labels';
 import { convenienceStoreDisplay } from '../_lib/convenienceStore';
+import { recipientAddressOf } from '../_lib/recipientAddress';
 
 type S = components['schemas'];
 type OrderLine = S['AdminOrderLine'];
@@ -323,6 +324,12 @@ export default function OrderDetailPage() {
           <p className="text-xs text-fg-muted">收件人手機</p>
           <p className="gg-numeric mt-1 select-all text-sm font-medium text-fg">{order.recipientPhone ?? '—'}</p>
         </div>
+        {recipientAddressOf(order) ? (
+          <div>
+            <p className="text-xs text-fg-muted">收件地址</p>
+            <p className="mt-1 select-all text-sm font-medium text-fg">{recipientAddressOf(order)}</p>
+          </div>
+        ) : null}
         <div>
           <p className="text-xs text-fg-muted">配送方式</p>
           <p className="mt-1 text-sm font-medium text-fg">{deliveryMethodLabel(order.deliveryMethod)}</p>

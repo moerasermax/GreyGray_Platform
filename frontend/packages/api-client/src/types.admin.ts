@@ -2165,6 +2165,16 @@ export interface components {
             /** @description 收件人手機，明文（ADR-039）。規則同 `recipientName`。 */
             recipientPhone?: string | null;
             /**
+             * @description 宅配收件地址的**完整單行字串**，下單當時凍結（ADR-039）。
+             *     超商取貨的訂單為 null（門市看 `convenienceStore*` 三個欄位）；
+             *     ADR-039 之前的舊訂單也是 null。
+             *
+             *     **出貨要用這個**——後台沒有這個欄位以前，宅配訂單在後台看不到地址，
+             *     等於寄不出去。刻意存成單行字串而不是拆成結構化欄位：
+             *     後台出貨只需要「印出來貼在包裹上」的地址，拆開反而要在前端再拼一次。
+             */
+            recipientAddress?: string | null;
+            /**
              * @description **已由 `recipientName` 與 `recipientPhone` 取代，恆為 `null`；保留欄位只為相容既有用戶端。**
              *
              *     舊描述寫的是「要看明文必須另外呼叫並填寫存取理由，每一次讀取都會寫進 audit」——

@@ -234,6 +234,48 @@ const mixedOrder: S['AdminOrder'] = {
   // ADR-039：後台全員看明文，遮罩欄位恆為 null（保留只為相容舊用戶端）。
   recipientName: '王小美',
   recipientPhone: '0912345678',
+  // 超商取貨沒有收件地址（門市看 convenienceStore* 三個欄位）。
+  recipientAddress: null,
+  customerContactMasked: null,
+};
+
+const homeDeliveryOrderGoodsTotal = 780;
+
+/** 宅配訂單：後台要看得到 `recipientAddress`，不然出貨的人知道寄給誰、不知道寄到哪。 */
+const homeDeliveryOrder: S['AdminOrder'] = {
+  id: hexId('admin-order:宅配'),
+  orderNumber: 'GG26082800040',
+  customerId: hexId('customer:王小美'),
+  customerDisplayName: '王小美',
+  status: 'ReadyToShip',
+  grandTotal: { amountMinor: homeDeliveryOrderGoodsTotal + 6000, currency: 'TWD' },
+  placedAt: daysAgoIso(2),
+  campaignId: null,
+  goodsTotal: { amountMinor: homeDeliveryOrderGoodsTotal, currency: 'TWD' },
+  shippingFee: twd(60),
+  deliveryMethod: 'HomeDelivery',
+  shippingPolicy: 'ShipSeparately',
+  lines: [
+    {
+      id: hexId('admin-orderline:宅配'),
+      skuId: adminSkuOf('若元錠EX').id,
+      name: adminSkuOf('若元錠EX').name,
+      variantName: null,
+      mode: 'Stock',
+      status: 'Reserved',
+      quantity: 1,
+      unitPrice: twd(homeDeliveryOrderGoodsTotal),
+      lineTotal: twd(homeDeliveryOrderGoodsTotal),
+      campaignId: null,
+      consumedLotId: null,
+    },
+  ],
+  payments: [],
+  quoteExplain: ['宅配到府（ADR-010）。'],
+  recipientName: '王小美',
+  recipientPhone: '0912345678',
+  // ADR-039：宅配收件地址，下單當時凍結的完整單行字串。
+  recipientAddress: '110 台北市信義區松仁路 100 號 5 樓',
   customerContactMasked: null,
 };
 
@@ -272,12 +314,15 @@ function buildSimpleAdminOrder(seedKey: string, status: S['OrderStatus'], daysAg
     quoteExplain: ['超商取貨一口價 NT$60（ADR-010）。'],
     recipientName: '王小美',
     recipientPhone: '0912345678',
+    // 超商取貨沒有收件地址（門市看 convenienceStore* 三個欄位）。
+    recipientAddress: null,
     customerContactMasked: null,
   };
 }
 
 export const adminOrders: S['AdminOrder'][] = [
   mixedOrder,
+  homeDeliveryOrder,
   buildSimpleAdminOrder('森田藥粧-玻尿酸保濕面膜', 'AwaitingPayment', 0, 1),
   buildSimpleAdminOrder('若元錠EX', 'Completed', 20, 2),
   buildSimpleAdminOrder('森田藥粧-玻尿酸保濕面膜', 'Cancelled', 5, 3),
