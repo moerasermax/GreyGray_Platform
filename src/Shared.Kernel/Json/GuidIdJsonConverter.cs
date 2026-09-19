@@ -27,6 +27,17 @@ public sealed class GuidIdJsonConverterFactory : JsonConverterFactory
     /// <inheritdoc />
     public override bool CanConvert(Type typeToConvert)
     {
+        // Nullable<Guid>（也就是 Guid?）剛好滿足下面每一個條件：是 value type、非 primitive、
+        // 非 enum、Value 屬性的型別是 Guid、也有吃 Guid 的建構式（Nullable(Guid value)）。
+        // 但 GuidIdJsonConverter<TId> 要求 TId : struct，而 C# 規格明文把 Nullable<T>
+        // 排除在 struct 限制之外，MakeGenericType 會在執行期直接丟 TypeLoadException。
+        // 裸 Guid? 與 XxxId? 都要在這裡排除，交給 System.Text.Json 內建的 NullableConverter
+        // 處理，它會把底層型別（Guid 或 XxxId）交回這個 factory 再判斷一次。
+        if (Nullable.GetUnderlyingType(typeToConvert) is not null)
+        {
+            return false;
+        }
+
         if (!typeToConvert.IsValueType || typeToConvert.IsPrimitive || typeToConvert.IsEnum)
         {
             return false;

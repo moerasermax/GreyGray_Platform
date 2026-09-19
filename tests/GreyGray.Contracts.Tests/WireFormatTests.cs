@@ -66,6 +66,42 @@ public sealed class WireFormatTests
             .ShouldBe(guid);
     }
 
+    [Fact(DisplayName = "裸 Guid? 序列化不丟例外，格式跟裸 Guid 一致（#59 迴歸）")]
+    public void Nullable_raw_guid_does_not_throw()
+    {
+        // Nullable<Guid> 滿足 GuidIdJsonConverterFactory.CanConvert 原本的五個條件
+        // （value type、非 primitive、非 enum、Value 屬性型別是 Guid、有吃 Guid 的建構式），
+        // 但 GuidIdJsonConverter<TId> 要求 TId : struct，Nullable<T> 不滿足這個限制，
+        // 修之前這裡會丟 TypeLoadException。
+        var sample = Guid.Parse("0198c3d4-0000-7000-8000-000000000001");
+
+        JsonSerializer.Serialize((Guid?)sample, Options)
+            .ShouldBe("\"0198c3d4000070008000000000000001\"");
+        JsonSerializer.Serialize((Guid?)null, Options)
+            .ShouldBe("null");
+
+        JsonSerializer.Deserialize<Guid?>("\"0198c3d4000070008000000000000001\"", Options)
+            .ShouldBe(sample);
+        JsonSerializer.Deserialize<Guid?>("null", Options)
+            .ShouldBeNull();
+    }
+
+    [Fact(DisplayName = "可為 null 的強型別 ID：null 寫成 null、有值寫成無連字號 32 碼字串")]
+    public void Nullable_typed_id_serializes_correctly()
+    {
+        var id = new CustomerId(Guid.Parse("0198c3d4-e5f6-7018-9abc-0123456789ab"));
+
+        JsonSerializer.Serialize((CustomerId?)id, Options)
+            .ShouldBe("\"0198c3d4e5f670189abc0123456789ab\"");
+        JsonSerializer.Serialize((CustomerId?)null, Options)
+            .ShouldBe("null");
+
+        JsonSerializer.Deserialize<CustomerId?>("\"0198c3d4e5f670189abc0123456789ab\"", Options)
+            .ShouldBe(id);
+        JsonSerializer.Deserialize<CustomerId?>("null", Options)
+            .ShouldBeNull();
+    }
+
     [Theory(DisplayName = "enum 一律寫字串，不是數字")]
     [InlineData(DeliveryMethod.ConvenienceStore, "\"ConvenienceStore\"")]
     [InlineData(DeliveryMethod.HomeDelivery, "\"HomeDelivery\"")]
