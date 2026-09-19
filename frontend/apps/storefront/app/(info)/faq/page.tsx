@@ -16,6 +16,9 @@ export default function FaqPage() {
   return (
     <main className="mx-auto flex max-w-[var(--gg-container-max)] flex-col gap-[var(--gg-space-6)] px-[var(--gg-space-4)] py-[var(--gg-space-6)]">
       <h1 className="font-display text-[length:var(--gg-text-3xl)] font-extrabold text-fg">常見問題</h1>
+      <p className="text-[length:var(--gg-text-sm)] text-fg-muted">
+        找不到答案？點畫面右下角的客服小幫手留言，我們會儘快回覆。
+      </p>
 
       {FAQ_GROUPS.map((group) => (
         <section key={group.title} className="flex flex-col gap-[var(--gg-space-3)]">

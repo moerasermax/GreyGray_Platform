@@ -186,6 +186,28 @@ describe('鑑賞期規則只在服務條款寫一份，FAQ 只指路', () => {
   });
 });
 
+describe('FAQ 答案不准出現位置指引（FE-35 的客服小幫手直接重用 answer，讀者可能人就在小幫手裡）', () => {
+  const POSITION_HINT_RE = /右下角|點.{0,4}客服小幫手/;
+
+  it('FAQ_GROUPS 的每一則 answer 都沒有「右下角」「點…客服小幫手」這類位置指引', () => {
+    const offenders = FAQ_GROUPS.flatMap((group) => group.items)
+      .filter((item) => POSITION_HINT_RE.test(item.answer))
+      .map((item) => item.question);
+    expect(offenders).toEqual([]);
+  });
+
+  it('位置指引集中在 FAQ 頁面層級（faq/page.tsx），不在 FAQ_GROUPS 裡', () => {
+    const source = readApp('(info)/faq/page.tsx');
+    expect(source).toMatch(/客服小幫手/);
+  });
+
+  it('服務條款第七節「聯絡我們」是條款頁專屬內容，不會被 FAQ_GROUPS 帶到，維持提及客服小幫手位置沒問題', () => {
+    const contactSection = TERMS_SECTIONS.find((section) => section.title === '七、聯絡我們');
+    expect(contactSection).toBeDefined();
+    expect(contactSection?.paragraphs.some((p) => p.text.includes('客服小幫手'))).toBe(true);
+  });
+});
+
 /**
  * ── 不准出現沒確認過的承諾 ──
  *
