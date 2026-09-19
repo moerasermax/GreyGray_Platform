@@ -13,6 +13,7 @@ export const INFO_LINKS: readonly InfoLinkItem[] = [
   { href: '/faq', label: '常見問題' },
   { href: '/guide', label: '購買流程' },
   { href: '/about', label: '關於我們' },
+  { href: '/terms', label: '服務條款' },
 ];
 
 export interface InfoLinksProps {
