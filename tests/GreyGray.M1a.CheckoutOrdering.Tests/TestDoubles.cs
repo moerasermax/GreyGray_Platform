@@ -401,11 +401,38 @@ internal sealed class FakeCustomerDirectory(CustomerSummary customer) : ICustome
         CancellationToken cancellationToken) =>
         Task.FromResult(Result<CustomerContact>.Failure("identity.contact-not-found", "找不到聯絡資料。"));
 
+    /// <summary>地址簿裡的收件人姓名。測試改它＝客人事後編輯了地址（#56 的觸發條件）。</summary>
+    public string AddressRecipientName { get; set; } = "測試";
+
+    /// <summary>地址簿裡的收件人手機。</summary>
+    public string AddressPhoneNumber { get; set; } = "0912345678";
+
+    /// <summary>地址簿裡的郵遞區號／縣市／鄉鎮市區／街道，測試改它＝客人把地址改到別處。</summary>
+    public string AddressPostalCode { get; set; } = "100";
+
+    public string AddressCity { get; set; } = "台北市";
+
+    public string AddressDistrict { get; set; } = "中正區";
+
+    public string AddressStreet { get; set; } = "測試路 1 號";
+
+    /// <summary>設成 false ＝客人把這筆地址刪掉了。</summary>
+    public bool AddressExists { get; set; } = true;
+
     public Task<Result<ShippingAddress>> GetAddressAsync(
         AddressId id,
         CancellationToken cancellationToken) =>
-        Task.FromResult(Result<ShippingAddress>.Success(
-            new ShippingAddress(id, customer.Id, "測試", "0912345678", "100", "台北市", "中正區", "測試路 1 號")));
+        Task.FromResult(AddressExists
+            ? Result<ShippingAddress>.Success(new ShippingAddress(
+                id,
+                customer.Id,
+                AddressRecipientName,
+                AddressPhoneNumber,
+                AddressPostalCode,
+                AddressCity,
+                AddressDistrict,
+                AddressStreet))
+            : Result<ShippingAddress>.Failure("identity.address-not-found", "找不到收件地址。"));
 }
 
 internal sealed class FakeOrderRepository : IOrderRepository

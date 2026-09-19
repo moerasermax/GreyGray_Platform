@@ -24,6 +24,15 @@ internal sealed class CheckoutApplicationService(
     IClock clock,
     ICorrelationContext correlationContext) : ICheckoutApplication, ICheckoutQuery
 {
+    /// <summary>收件人姓名的上限，對齊 <c>checkout.cart</c>／<c>ordering.orders</c> 的 varchar(50)。</summary>
+    private const int RecipientNameMaxLength = 50;
+
+    /// <summary>收件人手機的上限，對齊 varchar(20)。</summary>
+    private const int RecipientPhoneMaxLength = 20;
+
+    /// <summary>宅配地址單行字串的上限，對齊 varchar(200)。</summary>
+    private const int RecipientAddressMaxLength = 200;
+
     public async Task<Result<CartView>> GetCartAsync(
         CartId cartId,
         CustomerId? customerId,
@@ -229,10 +238,10 @@ internal sealed class CheckoutApplicationService(
                 "會員不存在或已停用，無法結帳。");
         }
 
-        var deliveryValidation = await ValidateDeliveryAsync(request, cancellationToken);
-        if (deliveryValidation.IsFailure)
+        var recipient = await ValidateDeliveryAsync(request, cancellationToken);
+        if (recipient.IsFailure)
         {
-            return Result<CheckoutCompleted>.Failure(deliveryValidation.Error);
+            return Result<CheckoutCompleted>.Failure(recipient.Error);
         }
 
         var quote = await QuoteCartAsync(
@@ -294,6 +303,9 @@ internal sealed class CheckoutApplicationService(
             ConvenienceStoreCode = NormalizeOptional(request.ConvenienceStoreCode),
             ConvenienceStoreName = NormalizeOptional(request.ConvenienceStoreName),
             ConvenienceStoreAddress = NormalizeOptional(request.ConvenienceStoreAddress),
+            RecipientName = recipient.Value.Name,
+            RecipientPhone = recipient.Value.Phone,
+            RecipientAddress = recipient.Value.Address,
             BuyerNote = NormalizeOptional(request.BuyerNote),
         };
 
@@ -490,15 +502,22 @@ internal sealed class CheckoutApplicationService(
             offer.Value.SellingPrice);
     }
 
-    private async Task<Result> ValidateDeliveryAsync(
+    /// <summary>
+    /// 驗證配送方式，<b>順便把要凍結的收件人解析出來</b>（ADR-039）——宅配的收件人只有這裡
+    /// 讀得到地址簿，分成兩次讀會多一次跨模組查詢，而且兩次之間客人就能改掉地址。
+    /// </summary>
+    private async Task<Result<ResolvedRecipient>> ValidateDeliveryAsync(
         CompleteCheckoutRequest request,
         CancellationToken cancellationToken)
     {
+        var recipient = ResolvedRecipient.None;
         if (request.DeliveryMethod == DeliveryMethod.HomeDelivery)
         {
             if (request.ShippingAddressId is null)
             {
-                return Result.Failure("checkout.address-required", "宅配必須選擇收件地址。");
+                return Result<ResolvedRecipient>.Failure(
+                    "checkout.address-required",
+                    "宅配必須選擇收件地址。");
             }
 
             var address = await customers.GetAddressAsync(
@@ -506,20 +525,82 @@ internal sealed class CheckoutApplicationService(
                 cancellationToken);
             if (address.IsFailure || address.Value.CustomerId != request.CustomerId)
             {
-                return Result.Failure("checkout.address-not-found", "找不到這個收件地址。");
+                return Result<ResolvedRecipient>.Failure(
+                    "checkout.address-not-found",
+                    "找不到這個收件地址。");
             }
+
+            // ADR-039：宅配的收件人<b>以地址簿為準</b>，在這裡抄一份凍結起來。
+            // 刻意不叫客人在結帳頁再填一次（兩個地方各填一次一定會不一致），
+            // 也刻意不採用請求裡送來的值——契約寫明宅配時那兩個欄位會被忽略。
+            recipient = new ResolvedRecipient(
+                NormalizeOptional(address.Value.RecipientName),
+                NormalizeOptional(address.Value.PhoneNumber),
+                FormatSingleLineAddress(address.Value));
+        }
+        else if (request.DeliveryMethod == DeliveryMethod.ConvenienceStore)
+        {
+            if (string.IsNullOrWhiteSpace(request.ConvenienceStoreCode))
+            {
+                return Result<ResolvedRecipient>.Failure(
+                    "checkout.store-code-required",
+                    "超商取貨必須選擇門市。");
+            }
+
+            // 超商核對證件，姓名不符會拒絕交貨；地址簿的收件人不見得是去超商領貨的人，
+            // 所以這裡只認客人這一次填的值。
+            var name = NormalizeOptional(request.RecipientName);
+            var phone = NormalizeOptional(request.RecipientPhone);
+            if (name is null || phone is null)
+            {
+                return Result<ResolvedRecipient>.Failure(
+                    "checkout.recipient-required",
+                    "超商取貨必須填寫收件人姓名與手機。");
+            }
+
+            // 地址留 null：超商取貨要寄到門市，門市資訊在 ConvenienceStore* 三個欄位。
+            recipient = new ResolvedRecipient(name, phone, null);
+        }
+        else
+        {
+            // 面交／自取：契約沒有要求收件人，客人願意留就留下來，不強制；沒有收件地址。
+            recipient = new ResolvedRecipient(
+                NormalizeOptional(request.RecipientName),
+                NormalizeOptional(request.RecipientPhone),
+                null);
         }
 
-        if (request.DeliveryMethod == DeliveryMethod.ConvenienceStore
-            && string.IsNullOrWhiteSpace(request.ConvenienceStoreCode))
+        // 快照欄位是 varchar(50)／varchar(20)。超長要在這裡回業務失敗，
+        // 不能讓它一路帶到 SaveChanges 才炸 DbUpdateException——那是 500。
+        if (recipient.Name is { Length: > RecipientNameMaxLength })
         {
-            return Result.Failure("checkout.store-code-required", "超商取貨必須選擇門市。");
+            return Result<ResolvedRecipient>.Failure(
+                "checkout.recipient-name-too-long",
+                $"收件人姓名不得超過 {RecipientNameMaxLength} 個字元。");
+        }
+
+        if (recipient.Phone is { Length: > RecipientPhoneMaxLength })
+        {
+            return Result<ResolvedRecipient>.Failure(
+                "checkout.recipient-phone-too-long",
+                $"收件人手機不得超過 {RecipientPhoneMaxLength} 個字元。");
+        }
+
+        // 地址簿的欄位在 Identity 是 text（加密後存），沒有資料庫層的長度上限，
+        // 所以組出來的單行字串理論上可能超過 varchar(200)。真實地址遠短於此，
+        // 但這裡仍要回業務失敗而不是<b>截斷</b>——被截斷的收件地址寄不到，
+        // 而且沒有人會發現；回 422 客人改一下地址就能繼續買。
+        if (recipient.Address is { Length: > RecipientAddressMaxLength })
+        {
+            return Result<ResolvedRecipient>.Failure(
+                "checkout.recipient-address-too-long",
+                $"收件地址不得超過 {RecipientAddressMaxLength} 個字元，請先修改地址簿。");
         }
 
         var enabled = await payments.GetEnabledProvidersAsync(cancellationToken);
         if (enabled.IsFailure)
         {
-            return Result.Failure(enabled.Error);
+            return Result<ResolvedRecipient>.Failure(enabled.Error);
         }
 
         var ecPay = enabled.Value.SingleOrDefault(capability =>
@@ -532,8 +613,8 @@ internal sealed class CheckoutApplicationService(
             _ => false,
         };
         return supported
-            ? Result.Success()
-            : Result.Failure(
+            ? recipient
+            : Result<ResolvedRecipient>.Failure(
                 "payment.provider-does-not-support-delivery-method",
                 "目前啟用的金流不支援這種配送方式。");
     }
@@ -674,6 +755,32 @@ internal sealed class CheckoutApplicationService(
 
     private static string? NormalizeOptional(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>
+    /// 把地址簿的一筆地址組成後台出貨用的<b>單行字串</b>：
+    /// <c>郵遞區號 空格 縣市鄉鎮市區街道</c>，例如 <c>100 臺北市中正區重慶南路一段122號</c>。
+    /// 欄位之間不加多餘標點——後台是把它整行印出來貼在包裹上。
+    /// </summary>
+    private static string? FormatSingleLineAddress(ShippingAddress address)
+    {
+        var region = string.Concat(
+            NormalizeOptional(address.City),
+            NormalizeOptional(address.District),
+            NormalizeOptional(address.StreetAddress));
+        var postalCode = NormalizeOptional(address.PostalCode);
+        if (region.Length == 0)
+        {
+            return postalCode;
+        }
+
+        return postalCode is null ? region : $"{postalCode} {region}";
+    }
+
+    /// <summary>下單當下要凍結進訂單的收件人（ADR-039）。每個值都已經 trim 過。</summary>
+    private sealed record ResolvedRecipient(string? Name, string? Phone, string? Address)
+    {
+        public static ResolvedRecipient None { get; } = new(null, null, null);
+    }
 
     private sealed record MoneyLine(Money UnitPrice, int Quantity);
 

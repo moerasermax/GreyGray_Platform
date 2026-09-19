@@ -25,6 +25,7 @@
     <ProjectReference Include="..\..\Modules\Notification\GreyGray.Modules.Notification.Infra\GreyGray.Modules.Notification.Infra.csproj" />
     <ProjectReference Include="..\..\Modules\Audit\GreyGray.Modules.Audit.Infra\GreyGray.Modules.Audit.Infra.csproj" />
     <ProjectReference Include="..\..\Modules\Reporting\GreyGray.Modules.Reporting.Infra\GreyGray.Modules.Reporting.Infra.csproj" />
+    <ProjectReference Include="..\..\Modules\CustomerService\GreyGray.Modules.CustomerService.Infra\GreyGray.Modules.CustomerService.Infra.csproj" />
   </ItemGroup>
 
   <ItemGroup>

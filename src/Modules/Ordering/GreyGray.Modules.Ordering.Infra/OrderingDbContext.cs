@@ -134,6 +134,15 @@ internal sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> opti
         entity.Property(order => order.ConvenienceStoreAddress)
             .HasColumnName("convenience_store_address")
             .HasMaxLength(200);
+        entity.Property(order => order.RecipientName)
+            .HasColumnName("recipient_name")
+            .HasMaxLength(50);
+        entity.Property(order => order.RecipientPhone)
+            .HasColumnName("recipient_phone")
+            .HasMaxLength(20);
+        entity.Property(order => order.RecipientAddress)
+            .HasColumnName("recipient_address")
+            .HasMaxLength(200);
         entity.Property(order => order.BuyerNote)
             .HasColumnName("buyer_note")
             .HasMaxLength(200);

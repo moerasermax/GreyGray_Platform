@@ -132,6 +132,16 @@ public sealed record CompleteCheckoutRequest(
     public string? ConvenienceStoreName { get; init; }
 
     public string? ConvenienceStoreAddress { get; init; }
+
+    /// <summary>
+    /// 收件人真實姓名（ADR-039）。<b>超商取貨必填</b>，缺了回
+    /// <c>checkout.recipient-required</c>；<b>宅配時這個值會被忽略</b>——
+    /// 宅配的收件人以地址簿為準，由 Checkout 自己從 <see cref="ShippingAddressId"/> 抄。
+    /// </summary>
+    public string? RecipientName { get; init; }
+
+    /// <summary>收件人手機（ADR-039）。必填與忽略的規則同 <see cref="RecipientName"/>。</summary>
+    public string? RecipientPhone { get; init; }
 }
 
 // ── 同步契約 ─────────────────────────────────────────────────────────────
@@ -212,6 +222,21 @@ public sealed record CheckoutCompleted(
 
     /// <summary>超商取貨時凍結的門市地址；舊事件與其他配送方式為 null。</summary>
     public string? ConvenienceStoreAddress { get; init; }
+
+    /// <summary>
+    /// 下單當下凍結的收件人姓名（ADR-039）：超商取貨是客人填的，宅配是 Checkout 從地址簿抄的。
+    /// ADR-039 之前的舊事件為 null。
+    /// </summary>
+    public string? RecipientName { get; init; }
+
+    /// <summary>下單當下凍結的收件人手機（ADR-039）。規則同 <see cref="RecipientName"/>。</summary>
+    public string? RecipientPhone { get; init; }
+
+    /// <summary>
+    /// 下單當下凍結的<b>宅配</b>收件地址，完整單行字串（ADR-039）。
+    /// 由 Checkout 從地址簿組出來，客人不送這個值；超商取貨與舊事件為 null。
+    /// </summary>
+    public string? RecipientAddress { get; init; }
 
     public string? BuyerNote { get; init; }
 }

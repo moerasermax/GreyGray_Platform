@@ -167,10 +167,12 @@ Protect-SecretDirectory -Path $secretsDir
 
 # 0001_schemas_and_roles.sql 建的 role 預設沒有密碼，服務連不進去。
 # 這份清單與 install-dev-environment.ps1／start-dev-hosts.ps1 的同一份刻意一致：
-# 14 個 schema 裡 audit／reporting 沒有任何 *.Infra 讀對應的 ConnectionStrings 鍵。
+# 15 個模組 schema 裡 audit／reporting 沒有任何 *.Infra 讀對應的 ConnectionStrings 鍵
+# （customer_service 是 BE-55／ADR-040 新增的第 15 個模組）。
 $moduleSchemas = @(
     'iam', 'catalog', 'campaign', 'checkout', 'fulfillment', 'inventory',
-    'ledger', 'notify', 'ordering', 'payment', 'pricing', 'procurement', 'platform'
+    'ledger', 'notify', 'ordering', 'payment', 'pricing', 'procurement', 'platform',
+    'customer_service'
 )
 $modulePasswordFile = Join-Path $secretsDir 'module-role.password'
 $modulePasswordIsNew = -not (Test-Path -LiteralPath $modulePasswordFile -PathType Leaf)

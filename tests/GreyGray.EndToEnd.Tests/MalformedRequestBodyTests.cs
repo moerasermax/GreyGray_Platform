@@ -154,6 +154,7 @@ public sealed class MalformedRequestBodyTests
         [
             "iam", "catalog", "campaign", "checkout", "fulfillment", "inventory",
             "ledger", "notify", "ordering", "payment", "pricing", "procurement", "platform",
+            "customer_service",
         ];
         foreach (var schema in schemas)
         {

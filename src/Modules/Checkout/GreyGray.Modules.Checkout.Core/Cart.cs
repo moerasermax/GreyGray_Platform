@@ -56,6 +56,15 @@ internal sealed class Cart
 
     public string? CompletedConvenienceStoreAddress { get; private set; }
 
+    /// <summary>下單當下凍結的收件人姓名（ADR-039）。供 outbox 重送時重放事件用。</summary>
+    public string? CompletedRecipientName { get; private set; }
+
+    /// <summary>下單當下凍結的收件人手機（ADR-039）。</summary>
+    public string? CompletedRecipientPhone { get; private set; }
+
+    /// <summary>下單當下凍結的宅配收件地址單行字串（ADR-039）。超商取貨為 null。</summary>
+    public string? CompletedRecipientAddress { get; private set; }
+
     public string? CompletedBuyerNote { get; private set; }
 
     public IReadOnlyList<CartLineEntity> Lines => _lines;
@@ -156,6 +165,9 @@ internal sealed class Cart
         CompletedConvenienceStoreCode = convenienceStoreCode;
         CompletedConvenienceStoreName = completed.ConvenienceStoreName;
         CompletedConvenienceStoreAddress = completed.ConvenienceStoreAddress;
+        CompletedRecipientName = completed.RecipientName;
+        CompletedRecipientPhone = completed.RecipientPhone;
+        CompletedRecipientAddress = completed.RecipientAddress;
         CompletedBuyerNote = buyerNote;
         UpdatedAt = completed.OccurredAt;
     }
@@ -188,6 +200,9 @@ internal sealed class Cart
             ConvenienceStoreCode = CompletedConvenienceStoreCode,
             ConvenienceStoreName = CompletedConvenienceStoreName,
             ConvenienceStoreAddress = CompletedConvenienceStoreAddress,
+            RecipientName = CompletedRecipientName,
+            RecipientPhone = CompletedRecipientPhone,
+            RecipientAddress = CompletedRecipientAddress,
             BuyerNote = CompletedBuyerNote,
         };
     }

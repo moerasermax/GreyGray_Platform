@@ -40,7 +40,11 @@ public sealed class WorkerCompositionTests
     private const string FakeConnectionString =
         "Host=127.0.0.1;Port=5432;Database=greygray_model_probe;Username=probe;Password=probe";
 
-    /// <summary>Worker 需要的 13 個 schema（跟 ops/start-dev-hosts.ps1、ops/deploy.ps1 同一份清單）。</summary>
+    /// <summary>
+    /// Worker 需要的 13 個 schema（跟 ops/start-dev-hosts.ps1、ops/deploy.ps1 同一份清單）。
+    /// <b>刻意不含 <c>customer_service</c>（ADR-040）</b>——CustomerService 不訂閱任何整合事件，
+    /// Worker 沒有理由掛它；加了反而會在這裡的 fake 設定裡多出一個永遠用不到的連線字串。
+    /// </summary>
     private static readonly string[] ModuleSchemas =
     [
         "iam", "catalog", "campaign", "pricing", "inventory", "checkout", "ordering",

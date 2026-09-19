@@ -674,7 +674,9 @@ public sealed class StorefrontCheckoutEndpointTests
             string? selectionId = null,
             string? convenienceStoreCode = "991234",
             DeliveryMethod deliveryMethod = DeliveryMethod.ConvenienceStore,
-            AddressId? shippingAddressId = null)
+            AddressId? shippingAddressId = null,
+            string? recipientName = "王小明",
+            string? recipientPhone = "0912345678")
         {
             var context = BuildContext(idempotencyKey);
             LastContext = context;
@@ -685,6 +687,8 @@ public sealed class StorefrontCheckoutEndpointTests
                     shippingAddressId,
                     selectionId,
                     convenienceStoreCode,
+                    recipientName,
+                    recipientPhone,
                     null),
                 context,
                 Sessions,

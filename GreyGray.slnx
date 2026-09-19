@@ -91,9 +91,15 @@
     <Project Path="src/Modules/Reporting/GreyGray.Modules.Reporting.Core/GreyGray.Modules.Reporting.Core.csproj" />
     <Project Path="src/Modules/Reporting/GreyGray.Modules.Reporting.Infra/GreyGray.Modules.Reporting.Infra.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/CustomerService/">
+    <Project Path="src/Modules/CustomerService/GreyGray.Modules.CustomerService.Contracts/GreyGray.Modules.CustomerService.Contracts.csproj" />
+    <Project Path="src/Modules/CustomerService/GreyGray.Modules.CustomerService.Core/GreyGray.Modules.CustomerService.Core.csproj" />
+    <Project Path="src/Modules/CustomerService/GreyGray.Modules.CustomerService.Infra/GreyGray.Modules.CustomerService.Infra.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/GreyGray.Architecture.Tests/GreyGray.Architecture.Tests.csproj" />
     <Project Path="tests/GreyGray.Contracts.Tests/GreyGray.Contracts.Tests.csproj" />
+    <Project Path="tests/GreyGray.CustomerService.Tests/GreyGray.CustomerService.Tests.csproj" />
     <Project Path="tests/GreyGray.EndToEnd.Tests/GreyGray.EndToEnd.Tests.csproj" />
     <Project Path="tests/GreyGray.M1a.CampaignPricing.Tests/GreyGray.M1a.CampaignPricing.Tests.csproj" />
     <Project Path="tests/GreyGray.M1a.CheckoutOrdering.Tests/GreyGray.M1a.CheckoutOrdering.Tests.csproj" />

@@ -40,6 +40,9 @@ internal sealed class Order
         ConvenienceStoreCode = checkout.ConvenienceStoreCode;
         ConvenienceStoreName = checkout.ConvenienceStoreName;
         ConvenienceStoreAddress = checkout.ConvenienceStoreAddress;
+        RecipientName = checkout.RecipientName;
+        RecipientPhone = checkout.RecipientPhone;
+        RecipientAddress = checkout.RecipientAddress;
         BuyerNote = checkout.BuyerNote;
         PricingSnapshotId = checkout.PricingSnapshotId;
         ShippingFeeAmountMinor = pricing.ShippingFee.AmountMinor;
@@ -89,6 +92,21 @@ internal sealed class Order
     public string? ConvenienceStoreName { get; private set; }
 
     public string? ConvenienceStoreAddress { get; private set; }
+
+    /// <summary>
+    /// 下單當下凍結的收件人姓名（ADR-039，明文）。<b>不會跟著地址簿變動</b>——
+    /// 客人事後改地址或刪地址都不影響已成立的訂單（#56）。ADR-039 之前的舊訂單為 null。
+    /// </summary>
+    public string? RecipientName { get; private set; }
+
+    /// <summary>下單當下凍結的收件人手機（ADR-039，明文）。規則同 <see cref="RecipientName"/>。</summary>
+    public string? RecipientPhone { get; private set; }
+
+    /// <summary>
+    /// 下單當下凍結的<b>宅配</b>收件地址單行字串（ADR-039，明文）。出貨要用這個——
+    /// 後台沒有它以前，宅配訂單在後台看不到地址，等於寄不出去。超商取貨與舊訂單為 null。
+    /// </summary>
+    public string? RecipientAddress { get; private set; }
 
     public string? BuyerNote { get; private set; }
 
@@ -564,6 +582,9 @@ internal sealed class Order
             ConvenienceStoreCode = ConvenienceStoreCode,
             ConvenienceStoreName = ConvenienceStoreName,
             ConvenienceStoreAddress = ConvenienceStoreAddress,
+            RecipientName = RecipientName,
+            RecipientPhone = RecipientPhone,
+            RecipientAddress = RecipientAddress,
             BuyerNote = BuyerNote,
             PaidAmount = PaidAmount,
             PaymentDueAt = PaymentDueAt,

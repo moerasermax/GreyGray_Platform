@@ -3,6 +3,7 @@ using GreyGray.Api.Storefront;
 using GreyGray.Modules.Campaign.Infra;
 using GreyGray.Modules.Catalog.Infra;
 using GreyGray.Modules.Checkout.Infra;
+using GreyGray.Modules.CustomerService.Infra;
 using GreyGray.Modules.Identity.Infra;
 using GreyGray.Modules.Inventory.Infra;
 using GreyGray.Modules.Ledger.Infra;
@@ -81,7 +82,8 @@ builder.Services
     .AddCheckoutModule(builder.Configuration)
     .AddOrderingModule(builder.Configuration)
     .AddPaymentModule(builder.Configuration)
-    .AddLedgerModule(builder.Configuration);
+    .AddLedgerModule(builder.Configuration)
+    .AddCustomerServiceModule(builder.Configuration);
 
 // TODO(M0-5)：Identity／Catalog 樣板驗收後，逐一複製到其餘模組。
 //             只能呼叫 *.Infra 公開的註冊擴充方法，不得 using 任何 *.Core 命名空間。
@@ -102,6 +104,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapM1aStorefrontEndpoints();
+app.MapSupportEndpoints();
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();

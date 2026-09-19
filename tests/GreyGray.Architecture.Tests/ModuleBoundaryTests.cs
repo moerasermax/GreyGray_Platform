@@ -17,6 +17,7 @@ public sealed class ModuleBoundaryTests
     [
         "Identity", "Catalog", "Campaign", "Pricing", "Inventory", "Checkout", "Ordering",
         "Procurement", "Fulfillment", "Payment", "Ledger", "Notification", "Audit", "Reporting",
+        "CustomerService",
     ];
 
     /// <summary>
@@ -56,7 +57,7 @@ public sealed class ModuleBoundaryTests
 
     private static readonly ProjectGraph Graph = ProjectGraph.Load();
 
-    [Fact(DisplayName = "十四個模組各有 Contracts / Core / Infra 三個專案")]
+    [Fact(DisplayName = "十五個模組各有 Contracts / Core / Infra 三個專案")]
     public void All_modules_have_three_projects()
     {
         foreach (var module in Modules)

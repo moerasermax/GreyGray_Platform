@@ -748,7 +748,13 @@ internal static class M1aEndpoints
             input.ShippingAddressId,
             input.ConvenienceStoreCode,
             input.BuyerNote,
-            key.ToString().Trim());
+            key.ToString().Trim())
+        {
+            // ADR-039：宅配時 Checkout 會忽略這兩個值、改從地址簿抄，所以這裡原樣帶過去就好，
+            // BFF 不做業務判斷。
+            RecipientName = input.RecipientName,
+            RecipientPhone = input.RecipientPhone,
+        };
         var fingerprint = new CompleteCheckoutFingerprint(
             cartId,
             customer.Value,
@@ -757,6 +763,8 @@ internal static class M1aEndpoints
             input.ShippingAddressId,
             input.ConvenienceStoreSelectionId,
             input.ConvenienceStoreCode,
+            input.RecipientName,
+            input.RecipientPhone,
             input.BuyerNote);
         var result = await BffHttp.ExecuteIdempotentAsync(
             context,
@@ -1520,6 +1528,10 @@ internal static class M1aEndpoints
             address,
             order.ConvenienceStoreName ?? order.ConvenienceStoreCode,
             order.ConvenienceStoreAddress,
+            // ★ ADR-039：收件人一律取<b>訂單快照</b>。上面那段即時回查地址簿的 address
+            //   是給 shippingAddress 其他欄位用的，客人改過地址之後它已經不是下單當時的事實（#56）。
+            order.RecipientName,
+            order.RecipientPhone,
             order.PlacedAt,
             order.PaymentDueAt,
             order.QuoteExplain);
@@ -1699,8 +1711,16 @@ internal static class M1aEndpoints
         AddressId? ShippingAddressId,
         string? ConvenienceStoreSelectionId,
         string? ConvenienceStoreCode,
+        string? RecipientName,
+        string? RecipientPhone,
         string? BuyerNote);
 
+    /// <remarks>
+    /// ADR-039：<c>RecipientName</c>／<c>RecipientPhone</c> <b>一定要在指紋裡</b>。
+    /// 它們是會被凍結進訂單的事實，漏掉的話同一把 <c>Idempotency-Key</c> 換掉收件人會直接
+    /// 回快取的舊回應、把新收件人靜靜吞掉。加上去之後那種情況改回
+    /// <c>422 platform.idempotency-key-reused</c>——<b>這個行為改變是要的</b>。
+    /// </remarks>
     private sealed record CompleteCheckoutFingerprint(
         CartId CartId,
         CustomerId CustomerId,
@@ -1709,6 +1729,8 @@ internal static class M1aEndpoints
         AddressId? ShippingAddressId,
         string? ConvenienceStoreSelectionId,
         string? ConvenienceStoreCode,
+        string? RecipientName,
+        string? RecipientPhone,
         string? BuyerNote);
 
     internal sealed record CancelOrderInput(string? Reason);
@@ -1803,6 +1825,8 @@ internal static class M1aEndpoints
         ShippingAddressResponse? ShippingAddress,
         string? ConvenienceStoreName,
         string? ConvenienceStoreAddress,
+        string? RecipientName,
+        string? RecipientPhone,
         DateTimeOffset PlacedAt,
         DateTimeOffset? PaymentDueAt,
         IReadOnlyList<string> QuoteExplain);

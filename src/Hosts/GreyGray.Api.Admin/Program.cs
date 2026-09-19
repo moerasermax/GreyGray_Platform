@@ -3,6 +3,7 @@ using GreyGray.Api.Admin;
 using GreyGray.Modules.Campaign.Infra;
 using GreyGray.Modules.Catalog.Infra;
 using GreyGray.Modules.Checkout.Infra;
+using GreyGray.Modules.CustomerService.Infra;
 using GreyGray.Modules.Fulfillment.Infra;
 using GreyGray.Modules.Identity.Infra;
 using GreyGray.Modules.Inventory.Infra;
@@ -85,7 +86,8 @@ builder.Services
     .AddProcurementModule(builder.Configuration)
     .AddPaymentModule(builder.Configuration)
     .AddFulfillmentModule(builder.Configuration)
-    .AddLedgerModule(builder.Configuration);
+    .AddLedgerModule(builder.Configuration)
+    .AddCustomerServiceModule(builder.Configuration);
 
 // TODO(M0-5)：Identity／Catalog 樣板驗收後，逐一複製到其餘模組。
 // TODO(M1a-2)：Cloudflare Access JWT 驗證 —— 驗 CF 公鑰、比對 aud，
@@ -109,6 +111,7 @@ app.MapM1bCompensationEndpoints();
 app.MapM1bShortfallRefundEndpoints();
 app.MapM1bFulfillmentEndpoints();
 app.MapM2InventoryEndpoints();
+app.MapSupportEndpoints();
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();

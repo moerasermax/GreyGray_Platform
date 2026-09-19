@@ -33,6 +33,7 @@
     <ProjectReference Include="..\..\Modules\Payment\GreyGray.Modules.Payment.Infra\GreyGray.Modules.Payment.Infra.csproj" />
     <ProjectReference Include="..\..\Modules\Ledger\GreyGray.Modules.Ledger.Infra\GreyGray.Modules.Ledger.Infra.csproj" />
     <ProjectReference Include="..\..\Modules\Audit\GreyGray.Modules.Audit.Infra\GreyGray.Modules.Audit.Infra.csproj" />
+    <ProjectReference Include="..\..\Modules\CustomerService\GreyGray.Modules.CustomerService.Infra\GreyGray.Modules.CustomerService.Infra.csproj" />
   </ItemGroup>
 
   <ItemGroup>

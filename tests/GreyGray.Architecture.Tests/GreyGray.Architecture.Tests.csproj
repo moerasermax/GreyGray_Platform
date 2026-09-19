@@ -60,6 +60,9 @@
     <ProjectReference Include="..\..\src\Modules\Reporting\GreyGray.Modules.Reporting.Contracts\GreyGray.Modules.Reporting.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Modules\Reporting\GreyGray.Modules.Reporting.Core\GreyGray.Modules.Reporting.Core.csproj" />
     <ProjectReference Include="..\..\src\Modules\Reporting\GreyGray.Modules.Reporting.Infra\GreyGray.Modules.Reporting.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Modules\CustomerService\GreyGray.Modules.CustomerService.Contracts\GreyGray.Modules.CustomerService.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\CustomerService\GreyGray.Modules.CustomerService.Core\GreyGray.Modules.CustomerService.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\CustomerService\GreyGray.Modules.CustomerService.Infra\GreyGray.Modules.CustomerService.Infra.csproj" />
     <ProjectReference Include="..\..\src\Hosts\GreyGray.Api.Storefront\GreyGray.Api.Storefront.csproj" />
     <ProjectReference Include="..\..\src\Hosts\GreyGray.Api.Admin\GreyGray.Api.Admin.csproj" />
     <ProjectReference Include="..\..\src\Hosts\GreyGray.Worker\GreyGray.Worker.csproj" />

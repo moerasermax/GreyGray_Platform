@@ -162,6 +162,21 @@ public sealed record OrderView(
 
     public string? ConvenienceStoreAddress { get; init; }
 
+    /// <summary>
+    /// 下單當時凍結的收件人姓名（ADR-039，明文）。超商取貨是客人填的、宅配是從地址簿抄的；
+    /// <b>不會跟著地址簿變動</b>。ADR-039 之前的舊訂單為 null。
+    /// </summary>
+    public string? RecipientName { get; init; }
+
+    /// <summary>下單當時凍結的收件人手機（ADR-039，明文）。規則同 <see cref="RecipientName"/>。</summary>
+    public string? RecipientPhone { get; init; }
+
+    /// <summary>
+    /// 下單當時凍結的宅配收件地址單行字串（ADR-039，明文）。**後台出貨用這個**；
+    /// 超商取貨與 ADR-039 之前的舊訂單為 null。前台 <c>Order</c> 契約沒有這個欄位。
+    /// </summary>
+    public string? RecipientAddress { get; init; }
+
     public string? BuyerNote { get; init; }
 
     public Money? PaidAmount { get; init; }

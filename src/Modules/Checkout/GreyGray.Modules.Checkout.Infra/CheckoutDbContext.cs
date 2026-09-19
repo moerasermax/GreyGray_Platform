@@ -88,6 +88,15 @@ internal sealed class CheckoutDbContext(DbContextOptions<CheckoutDbContext> opti
         entity.Property(cart => cart.CompletedConvenienceStoreAddress)
             .HasColumnName("convenience_store_address")
             .HasMaxLength(200);
+        entity.Property(cart => cart.CompletedRecipientName)
+            .HasColumnName("recipient_name")
+            .HasMaxLength(50);
+        entity.Property(cart => cart.CompletedRecipientPhone)
+            .HasColumnName("recipient_phone")
+            .HasMaxLength(20);
+        entity.Property(cart => cart.CompletedRecipientAddress)
+            .HasColumnName("recipient_address")
+            .HasMaxLength(200);
         entity.Property(cart => cart.CompletedBuyerNote)
             .HasColumnName("buyer_note")
             .HasMaxLength(200);

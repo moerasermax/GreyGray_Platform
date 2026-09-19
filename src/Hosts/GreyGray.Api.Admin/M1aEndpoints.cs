@@ -1167,6 +1167,15 @@ internal static class M1aEndpoints
                     payment.SettledAt)).ToArray()
                 : [],
             order.QuoteExplain,
+            // ADR-039：後台全員直接看得到明文，不遮罩、不加解鎖閘門。出貨要用這兩個值——
+            // 姓名與證件不符時超商會拒絕交貨。
+            order.RecipientName,
+            order.RecipientPhone,
+            // 宅配的收件地址：沒有這個欄位以前，後台看得到姓名電話與超商門市，
+            // 唯獨宅配地址看不到——出貨的人還是寄不了宅配。
+            order.RecipientAddress,
+            // 契約保留這個欄位只為相容既有用戶端，恆為 null（舊描述承諾的「填存取理由才看得到
+            // 明文」那個端點從來沒有實作過，而且與 ADR-039 的決定矛盾）。
             CustomerContactMasked: null);
     }
 
@@ -1343,6 +1352,9 @@ internal static class M1aEndpoints
         IReadOnlyList<AdminOrderLineResponse> Lines,
         IReadOnlyList<AdminPaymentSummaryResponse> Payments,
         IReadOnlyList<string> QuoteExplain,
+        string? RecipientName,
+        string? RecipientPhone,
+        string? RecipientAddress,
         string? CustomerContactMasked);
 
     internal sealed class StaffRoleFilter(StaffRole requiredRole) : IEndpointFilter

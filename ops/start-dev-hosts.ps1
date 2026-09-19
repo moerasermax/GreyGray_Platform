@@ -54,12 +54,13 @@ if (-not (Test-Path -LiteralPath (Join-Path $stateDir 'migrations-applied.json')
 }
 $modulePassword = (Get-Content -LiteralPath $modulePasswordFile -Raw).Trim()
 
-# 13 個 module schema（見 install-dev-environment.ps1 同一份清單）＋ valkey（Garnet）。
+# 14 個 module schema（見 install-dev-environment.ps1 同一份清單）＋ valkey（Garnet）。
 # 三個 Host 用到的模組子集不同，但 GetConnectionString 只在真的要開那個 DbContext
 # 時才會查表——多給不用的鍵沒有副作用，比逐一對照三份 Program.cs 的模組清單更不容易漂移。
 $moduleSchemas = @(
     'iam', 'catalog', 'campaign', 'checkout', 'fulfillment', 'inventory',
-    'ledger', 'notify', 'ordering', 'payment', 'pricing', 'procurement', 'platform'
+    'ledger', 'notify', 'ordering', 'payment', 'pricing', 'procurement', 'platform',
+    'customer_service'
 )
 $sharedConnectionStrings = @{}
 foreach ($schema in $moduleSchemas) {

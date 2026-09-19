@@ -51,13 +51,19 @@ $migrationFiles = @(
     '0013_m1b_appraisal_period.sql', '0014_m1b_price_inquiry_timeout.sql',
     '0015_ordering_partial_purchase_shortfall.sql',
     '0016_fulfillment_shipment_idempotency.sql',
-    '0017_inventory_lot_wholesale_idempotency.sql'
+    '0017_inventory_lot_wholesale_idempotency.sql',
+    '0018_inventory_reservation_consumed.sql',
+    '0019_catalog_favorite.sql',
+    '0020_convenience_store_snapshot.sql',
+    '0021_order_recipient_snapshot.sql',
+    '0022_customer_service_ticket.sql'
 ) | ForEach-Object { Join-Path 'db\migrations' $_ }
 # 0001 建的 14 個模組 schema role + platform（共用例外）；audit／reporting 目前沒有
 # 任何 *.Infra 專案讀取對應的 ConnectionStrings 鍵，這一波的三個 Host 用不到，不生密碼。
 $moduleSchemas = @(
     'iam', 'catalog', 'campaign', 'checkout', 'fulfillment', 'inventory',
-    'ledger', 'notify', 'ordering', 'payment', 'pricing', 'procurement', 'platform'
+    'ledger', 'notify', 'ordering', 'payment', 'pricing', 'procurement', 'platform',
+    'customer_service'
 )
 
 function New-RandomPassword {
@@ -433,5 +439,5 @@ Write-Host "PASS Identity 個資保護金鑰：$dataProtectionKeyFile（$(if ($d
     本支整備腳本不讀取或投遞這份檔案。舊版只填三鍵會默默指到測試站，BE-49 已移除網址預設。
 #>
 
-Write-Host "PASS 本機開發環境整備完成：PostgreSQL 17 ($PostgreSqlPort)、Garnet ($GarnetPort)、migrations 0001~0017。"
+Write-Host "PASS 本機開發環境整備完成：PostgreSQL 17 ($PostgreSqlPort)、Garnet ($GarnetPort)、migrations 0001~0022。"
 Write-Host "下一步：ops\start-dev-hosts.ps1 啟動三個 Host；ops\stop-dev-environment.ps1 全部收掉。"

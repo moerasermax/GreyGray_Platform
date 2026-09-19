@@ -1,4 +1,5 @@
 using GreyGray.Modules.Catalog.Infra;
+using GreyGray.Modules.CustomerService.Infra;
 using GreyGray.Modules.Identity.Infra;
 using GreyGray.Modules.Notification.Infra;
 using GreyGray.Modules.Procurement.Infra;
@@ -21,6 +22,7 @@ public sealed class ModuleCompositionRootTests
         AssertOnlyExportedType(typeof(CatalogModuleRegistration));
         AssertOnlyExportedType(typeof(NotificationModuleRegistration));
         AssertOnlyExportedType(typeof(ProcurementModuleRegistration));
+        AssertOnlyExportedType(typeof(CustomerServiceModuleRegistration));
     }
 
     [Fact(DisplayName = "模組連線字串延後到解析 DbContext 才檢查，且 model 含自己的 schema 與 Platform 表")]
@@ -46,6 +48,11 @@ public sealed class ModuleCompositionRootTests
             static (services, configuration) => services.AddProcurementModule(configuration),
             "procurement",
             "GreyGray_procurement");
+        AssertModule(
+            typeof(CustomerServiceModuleRegistration),
+            static (services, configuration) => services.AddCustomerServiceModule(configuration),
+            "customer_service",
+            "GreyGray_customer_service");
     }
 
     private static void AssertOnlyExportedType(Type compositionRoot)

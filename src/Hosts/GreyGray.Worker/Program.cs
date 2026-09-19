@@ -7,6 +7,7 @@ using GreyGray.Platform.Observability;
 using GreyGray.Platform.Outbox;
 using GreyGray.Platform.Saga;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
@@ -44,8 +45,16 @@ builder.Services.AddDbContext<PlatformDbContext>(options =>
 builder.Services.TryAddSingleton<EventTypeRegistry>();
 builder.Services.AddScoped<IOutboxDispatcher, OutboxDispatcher>();
 builder.Services.AddScoped<SagaTimerDispatcher>();
+
+// #57：outbox 投遞成功後原本永遠不刪。ADR-039 把收件人真實姓名與手機放進事件 payload，
+// 所以保存期限是那個決定的前提條件，不是順手加的功能。天數做成組態（比照 ADR-025）。
+builder.Services.AddSingleton(OutboxRetentionPolicy.FromDays(
+    builder.Configuration.GetValue("Platform:Outbox:RetentionDays", OutboxRetentionPolicy.DefaultDays)));
+builder.Services.AddScoped<OutboxRetentionSweeper>();
+
 builder.Services.AddHostedService<OutboxDispatchWorker>();
 builder.Services.AddHostedService<SagaTimerDispatchWorker>();
+builder.Services.AddHostedService<OutboxRetentionWorker>();
 
 // 模組清單只有一份，在 WorkerModules.AddWorkerModules；
 // 架構測試 WorkerCompositionTests 呼叫的是同一個方法，所以它驗到的組合
@@ -72,6 +81,7 @@ await using (var validationScope = host.Services.CreateAsyncScope())
 {
     _ = validationScope.ServiceProvider.GetRequiredService<IOutboxDispatcher>();
     _ = validationScope.ServiceProvider.GetRequiredService<SagaTimerDispatcher>();
+    _ = validationScope.ServiceProvider.GetRequiredService<OutboxRetentionSweeper>();
 
     // 「查了零個對象」跟「查過都沒事」不能長得一樣：Worker 一定有登記 handler，
     // 收到空清單代表這段驗證失去意義（例如上面的篩選條件被改壞）。
