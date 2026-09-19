@@ -184,3 +184,13 @@ export function IconCart(props: IconProps) {
     </BaseIcon>
   );
 }
+
+/** 對話框氣泡。FE-35 客服小幫手用。 */
+export function IconMessageCircle(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M3.5 12c0-4.7 3.8-8.5 8.5-8.5s8.5 3.8 8.5 8.5-3.8 8.5-8.5 8.5c-1.2 0-2.4-.25-3.4-.7L4 21l1.3-4.2A8.4 8.4 0 0 1 3.5 12Z" />
+      <path d="M8 11h8M8 14h5" />
+    </BaseIcon>
+  );
+}

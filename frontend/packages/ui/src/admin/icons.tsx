@@ -170,3 +170,13 @@ export function MaskIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+/** 客服訊息（FE-35）。跟前台 `IconMessageCircle` 同一個圖案，各自維護——兩套元件庫不互相依賴。 */
+export function MessageIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M3.5 12c0-4.7 3.8-8.5 8.5-8.5s8.5 3.8 8.5 8.5-3.8 8.5-8.5 8.5c-1.2 0-2.4-.25-3.4-.7L4 21l1.3-4.2A8.4 8.4 0 0 1 3.5 12Z" />
+      <path d="M8 11h8M8 14h5" />
+    </svg>
+  );
+}

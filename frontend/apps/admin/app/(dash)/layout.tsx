@@ -6,6 +6,7 @@ import {
   DashboardIcon,
   Dialog,
   LedgerIcon,
+  MessageIcon,
   OrderIcon,
   Sidebar,
   Topbar,
@@ -40,6 +41,7 @@ const NAV_DEFINITIONS: readonly NavDefinition[] = [
   { key: 'catalog', label: '商品管理', href: '/catalog', requiredRole: 'ReadOnly', icon: <CatalogIcon /> },
   { key: 'campaigns', label: '開團管理', href: '/campaigns', requiredRole: 'ReadOnly', icon: <CampaignIcon /> },
   { key: 'orders', label: '訂單', href: '/orders', requiredRole: 'ReadOnly', icon: <OrderIcon /> },
+  { key: 'tickets', label: '客服訊息', href: '/tickets', requiredRole: 'ReadOnly', icon: <MessageIcon /> },
   {
     key: 'procurement',
     label: '現場採購',

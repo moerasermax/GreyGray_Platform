@@ -3,6 +3,7 @@ import { Nunito, Noto_Sans_TC } from 'next/font/google';
 import './globals.css';
 import { MockBootstrap } from './_mock/MockBootstrap';
 import { StorefrontTabBar } from './_components/StorefrontTabBar';
+import { SupportWidget } from './_components/SupportWidget';
 
 /*
  * 字體用 next/font 自架，不要用 <link> 拉 Google Fonts——
@@ -63,6 +64,13 @@ export default function RootLayout({
           兩邊逐字相同由 `_lib/__tests__/tabBarReservesBottomSpace.test.ts` 釘住。
         */}
         <StorefrontTabBar />
+
+        {/*
+          右下角客服小幫手（ADR-040，FE-35）。跟 `StorefrontTabBar` 一樣掛在全站的殼，
+          理由相同：前台沒有共同的中介 layout。它自己算好 `bottom` 貼在分頁列／
+          `BottomActionBar` 之上，不需要跟著這裡的留白算式改。
+        */}
+        <SupportWidget />
       </body>
     </html>
   );
