@@ -51,6 +51,30 @@ Leader 要明講。
 
 ---
 
+## 生效中：BE-56　修 #59 的根因——`GuidIdJsonConverterFactory.CanConvert` 把裸 `Guid?` 誤判成 `XxxId`
+
+第四十波 BE-55 做客服工單時第一次在契約型別用到裸 `Guid?`，踩到一個一直存在但從沒被觸發的臭蟲：
+`Nullable<Guid>` 剛好滿足 `CanConvert` 的每一個條件（是 value type、有 `Value` 屬性且型別是 `Guid`、
+有吃 `Guid` 的建構式），於是被誤判成 `XxxId`，而 `where TId : struct` 不接受 `Nullable<T>`，
+執行期丟 `TypeLoadException`。BE-55 用 wrapper 型別繞過並建議另開包修根因。
+
+**單檔小包、無契約變更**，依 `docs/45` 不走外部覆驗鏈。
+
+★★ 最容易做錯的三件事：
+① 只在 `CanConvert` 開頭排除 `Nullable<>`，**不要動其餘四個條件、不要動 `CreateConverter` 與
+`GuidIdJsonConverter<TId>` 本體**——`XxxId?` 走的是內建 `NullableConverter` 再交給我們，那條路本來就對；
+② **先紅後綠**：修之前那條迴歸測試要真的丟 `TypeLoadException`，把實際訊息貼進報告；
+③ **不要拿掉** BE-55 的 `TicketOrderId` wrapper（它已在生產路徑上，拿掉是另一個決定）。
+
+⚠ dev 三個 Host 跑著 Debug、bin 被鎖——用 Release 建置與測試，不要去停 Host。
+
+package: BE-56
+doc: docs/56-後端第三十九波派工書.md
+allow: src/Shared.Kernel/Json/GuidIdJsonConverter.cs
+allow: tests/GreyGray.Contracts.Tests/
+allow: .dispatch/reports/BE-56.md
+
+---
 <!--
 ★ 2026-09-19 兩包已通過整合驗收並提交，撤包。原文保留供追溯。
 
