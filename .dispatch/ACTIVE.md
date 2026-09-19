@@ -51,7 +51,36 @@ Leader 要明講。
 
 ---
 
-## 生效中：BE-54　訂單收件人姓名與手機——宅配從地址簿凍結快照、超商由客人填、後台看得到明文、outbox 補保存期限（ADR-039）
+<!--
+★ 2026-09-19 兩包已通過整合驗收並提交，撤包。原文保留供追溯。
+
+兩包同一個 commit `5637409`（60 檔、+4295 −35）——使用者因額度要求暫停時先做保全性提交，
+之後 Leader 補跑整包總驗收才算通過。
+
+BE-54（opus＋high）：收件人姓名／手機／宅配地址凍結進訂單（migration `0021`）、
+後台輸出明文、冪等指紋納入新欄位、outbox 保存期限（#57）。
+⚠ Leader 驗收時擋下一條並要它補做：**後台完全沒有地址欄位、宅配一樣寄不出去**——
+這是它自己在報告裡挖出來的，踩到使用者這次的目標本身，
+Leader 據此修訂契約（`AdminOrder` 新增 `recipientAddress`）。
+
+BE-55（sonnet＋medium）：新模組 `CustomerService`（migration `0022`）、匿名留言端點、
+後台工單列表與結案。順手補掉 #58（`ops/` 的 migration 清單只列到 `0017`，
+`0018`～`0020` 從來沒補進去），並多抓到 Leader 沒列的第六處。
+⚠ 它**拒絕照抄 Leader 的 hardcode 表格第 4 列**，而且是對的：
+`CustomerNotificationFlowTests` 只套 `0001`～`0004`，加 `customer_service` 會對
+一個不存在的 role 下 `ALTER ROLE`，直接讓 E2E 紅掉。
+⚠ 它也繞過了 #59（`GuidIdJsonConverterFactory.CanConvert` 把裸 `Guid?` 誤判成 `XxxId`、
+丟 `TypeLoadException`），改用 `TicketOrderId` wrapper，**根因未修，建議另開小包**。
+
+Leader 驗：Release 建置 0 警告 0 錯誤；13 個測試專案的 Release 執行檔逐一前景跑完，
+結果見 `03-驗收紀錄.md` 2026-09-19。dev 資料庫實際套過 22 支 migration（含 `0021` 三欄、`0022`），
+並用真 HTTP 打過客服工單端點、用真瀏覽器走完小幫手全流程到資料庫。
+
+⚠ 留下：BE-54 那條「舊版兩欄 → 新版三欄」的 migration 重放測試被中止沒補完
+（Leader 已用真 dev 資料庫驗證重放成立，缺的是自動化測試）；
+`platform.outbox_message` 沒有 `processed_at` 索引（現階段量小，等正式機資料量再判斷）。
+
+## 生效中（已撤包）：BE-54　訂單收件人姓名與手機——宅配從地址簿凍結快照、超商由客人填、後台看得到明文、outbox 補保存期限（ADR-039）
 
 使用者 2026-09-19 以 `/goal` 一次拍板三件事，這是第一件。計畫書 `docs/53-第四十波計畫書.md`（`8ab47fc`）。
 Leader 跨家盤點（Fable 後端、Gemini 前端）＋ Gemini 逐條覆驗，三條擋派工全部複驗後採納。
@@ -80,7 +109,7 @@ allow: .dispatch/reports/BE-54.md
 
 ---
 
-## 生效中：BE-55　客服工單——新模組 `CustomerService`、前台匿名留言端點、後台工單列表與結案（ADR-040）
+## 生效中（已撤包）：BE-55　客服工單——新模組 `CustomerService`、前台匿名留言端點、後台工單列表與結案（ADR-040）
 
 使用者 2026-09-19 `/goal` 拍板的第二件事：FAQ 有三處寫「請聯絡客服」但站上沒有客服管道。
 前台右下角做引導式小視窗（FE-35），留言進後台工單列表。**不接 AI、不開 GitHub issue。**
@@ -124,7 +153,7 @@ allow: GreyGray.slnx
 allow: .dispatch/reports/BE-55.md
 
 ---
-
+-->
 <!--
 ★ 2026-09-15 已通過整合驗收並提交（後端 `a4138a4`），撤包。原文保留供追溯。
 
