@@ -1,34 +1,37 @@
 # 啟動 prompt
 
-**第四十波生效中（2026-09-19）——五包平行、跨兩棵樹、`allow` 零重疊。**
+**目前沒有生效中的派工（2026-09-19）。** 第四十波五包全部驗收撤包：
 
-後端（`GreyGray_Platform`）：
-- **BE-54** 訂單收件人姓名手機：宅配從地址簿凍結快照、超商由客人填、後台看明文、outbox 補保存期限（`docs/54`）
-- **BE-55** 客服工單新模組 `CustomerService`、匿名留言端點、後台列表（`docs/55`）
+- 後端 **BE-54**（收件人姓名／手機／宅配地址凍結進訂單、後台明文、outbox 保存期限，migration `0021`）
+  ＋ **BE-55**（客服工單新模組 `CustomerService`、匿名留言端點、後台列表，migration `0022`）
+  —— 同一個 commit `5637409`
+- 前端 **FE-34** `8fb5f34`＋`06647c6`、**FE-35** `04a1510`、**FE-36** `e21930d`＋`68d98a2`
 
-前端（`GreyGray_Platform-fe`）：
-- **FE-34** 結帳頁收件人欄位 ＋ 前後台訂單詳情顯示明文（`docs/36`）
-- **FE-35** 右下角客服小幫手 ＋ 後台「客服訊息」頁（`docs/37`）
-- **FE-36** 服務條款頁 ＋ FAQ 鑑賞期與客服文案（`docs/38`）
+測試：後端 Release 13 個專案逐一前景跑完（結果見 `GreyGray_PM/03-驗收紀錄.md` 2026-09-19）、
+前端 654 → **768**。契約正式異動見 ADR-039／ADR-040 與 `docs/05` 的異動紀錄。
 
-使用者 2026-09-19 以 `/goal` 一次拍板三件事（收件人姓名手機要加且**後台全員看明文、不遮罩、不加解鎖按鈕**、
-客服做右下角引導式小視窗進後台工單、鑑賞期寫進服務條款）。
-計畫書 `docs/53-第四十波計畫書.md`（`8ab47fc`）。
-**契約（兩份 OpenAPI ＋ `docs/05`）與 ADR-039／ADR-040 由 Leader 寫好並提交——實作者不准改，前端也不要等後端交付。**
+⚠ **這一波還沒 push、還沒部署**（第三十八～四十波都沒上正式機）。
+部署時正式機要套 migration `0018`～`0022`，並在 Storefront 放 `Logistics:ECPay:*` 物流設定。
 
-盤點與覆驗：Fable 盤後端、Gemini 盤前端、Gemini 逐條覆驗計畫書（三條擋派工全部複驗後採納，
-其中「新模組要改五處 hardcode schema 清單」Leader 複驗後從三處擴充到五處）。
-⚠ **Codex 當天額度用完**（到 16:46 才恢復），這一波沒有 Codex 的覆驗與實作。
-測試基準：後端 **382**、前端 **643**。
+★ 下一波開工前要知道的：
 
-★ 派需要跑後端測試的包之前先 `docker info`；子代理跑 audit 用 `C:\Program Files\Git\bin\bash.exe` 明確路徑。
-★ Leader 自己重跑後端測試：**直接跑 `tests\<專案>\bin\Debug
-et10.0\<專案>.exe`**（`.dispatch/reports/README.md` 第 35 行）；
-`dotnet test` 在 .NET 10 會走 VSTest 全數報錯、`--project` 是未知參數——兩次都 exit 0 但一條測試都沒跑。
-★ **dev 環境現在有在跑**（Leader 2026-09-19 起的，Release ＋ 綠界模擬器）：
-後端 API 5000／5001、模擬器 5009、前台 5002、後台 5003（都是 production build）。
-後端子代理要重建 Release 得先停四個 pid（`D:\GreyGray\state\`），測試請用另一個 Configuration 避開 bin 鎖；
-⚠ 前端子代理**不要在 `pnpm start` 跑著時對同一個 app 跑 `next build`**（共用 `.next`，整站會變裸 500），要 build 先請 Leader 停掉那個 app。
+- **#59 還開著**：`src/Shared.Kernel/Json/GuidIdJsonConverter.cs` 的
+  `GuidIdJsonConverterFactory.CanConvert` 會把裸 `Guid?` 誤判成 `XxxId`，丟 `TypeLoadException`。
+  BE-55 用 wrapper 型別繞過了，**根因沒修**。任何契約型別只要用裸 `Guid?` 就會踩到，
+  而且錯誤訊息完全看不出跟 `Guid?` 有關。值得開一個小包修。
+- **`ops/` 的清單是人工維護的**：#58 這一波補了 migration 清單三處，
+  但「加東西要記得同步 hardcode 清單」這個形狀還在（schema 清單、
+  `verify-environment.ps1` 的期望值、E2E 測試裡的陣列）。
+- ⚠ 派需要跑後端測試的包之前先 `docker info`；子代理跑 audit 用
+  `C:\Program Files\Git\bin\bash.exe` 明確路徑。
+- ⚠ **長測試要在派工 prompt 裡明講「留在這一輪等它跑完，不要掛背景就結束」**——
+  第四十波兩個後端包都因此交付到一半就結束，要用 `session_id` 恢復。
+- ⚠ 子代理跑 Testcontainers 會讓 dev 的 `greygray-dev-postgres` 容器整個消失，
+  重建時第一次會因 crash recovery 超過 60 秒逾時而失敗，等 `pg_isready` 通了再跑一次。
+- ⚠ Leader 自己重跑後端測試：**直接跑 `tests\<專案>\bin\<Configuration>\net10.0\<專案>.exe`**；
+  `dotnet test` 在 .NET 10 會走 VSTest 全數報錯、`--project` 是未知參數——兩次都 exit 0 但一條沒跑。
+
+以下保留第四十波五包的啟動 prompt 供參考。
 
 ---
 
