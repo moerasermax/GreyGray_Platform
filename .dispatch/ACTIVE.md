@@ -51,6 +51,68 @@ Leader 要明講。
 
 ---
 
+## 生效中：FE-34　結帳頁收件人姓名與手機 ＋ 前後台訂單詳情顯示明文（ADR-039）
+
+使用者 2026-09-19 `/goal` 拍板：收件人姓名手機要加，**後台全員看明文、不遮罩、不加解鎖按鈕**。
+計畫書在後端樹 `docs/53-第四十波計畫書.md`（`8ab47fc`）。契約 Leader 已凍結，**照派工書做、不要等 BE-54 交付**。
+
+★★ 最容易做錯的：① **草稿還原**——選門市會跳出站外再回來，新欄位一定要進 `currentDraft()` 與 `loadCheckoutDraft` 的還原流程，
+漏了客人回來欄位就空了，**要有測試**；② **宅配模式不顯示也不送**這兩個欄位（後端從地址簿抄）；
+③ 手機要檢查 `09` 開頭十碼（比既有的 `validateAddressForm` 嚴，因為超商會擋）；
+④ 後台**拿掉 `MaskedContactNote.tsx`**、不要做「點一下看明文」的按鈕；
+⑤ `app/layout.tsx`、`app/_components/`、`packages/ui/` 是 FE-35 的，`app/(info)/` 是 FE-36 的。
+
+package: FE-34
+doc: docs/36-前端第二十二波派工書-第一包.md
+allow: frontend/apps/storefront/app/(checkout)/
+allow: frontend/apps/storefront/app/(account)/orders/
+allow: frontend/apps/admin/app/(dash)/orders/
+allow: frontend/packages/api-client/
+allow: .dispatch/reports/FE-34.md
+
+---
+
+## 生效中：FE-35　右下角客服小幫手（引導式選單、不接 AI）＋ 後台「客服訊息」頁（ADR-040）
+
+FAQ 有三處寫「請聯絡客服」但站上沒有客服管道。右下角展開式小視窗，選項與答案**重用 `FAQ_GROUPS`**，
+選不到答案才留言；留言進後台工單列表。契約 Leader 已凍結，不要等 BE-55。
+
+★★ 最容易做錯的：① **不接 AI、不接第三方客服套件**（ADR-040 明確否決）；
+② 選項文案**重用 `app/(info)/_content/faq.ts` 的 `FAQ_GROUPS`**，不要另抄一份（FE-36 正在改那些字，抄了會走鐘）；
+③ **不能擋住結帳頁的送出鈕與購物車的結帳鈕**，360px 下尤其要檢查，關閉鈕一定要看得見、不要疊在分頁列上；
+④ **不要改 `packages/api-client/`**（FE-34 正在動），客服的型別與呼叫寫在自己的 `_lib` 裡；
+⑤ `app/(info)/` 只能 import 不能改；⑥ 前台**不做**「查詢我的工單」頁（匿名工單沒有安全的查詢方式）。
+
+package: FE-35
+doc: docs/37-前端第二十二波派工書-第二包.md
+allow: frontend/apps/storefront/app/_components/
+allow: frontend/apps/storefront/app/_lib/
+allow: frontend/apps/storefront/app/layout.tsx
+allow: frontend/apps/admin/app/(dash)/layout.tsx
+allow: frontend/apps/admin/app/(dash)/tickets/
+allow: frontend/packages/ui/
+allow: .dispatch/reports/FE-35.md
+
+---
+
+## 生效中：FE-36　服務條款頁 ＋ FAQ 的鑑賞期與客服文案
+
+使用者 2026-09-19 `/goal` 拍板：**鑑賞期寫在服務條款**。站上沒有服務條款頁，要新建。
+`faq.ts` 裡那行「拿掉七天鑑賞期（ADR-025：法律適用由老闆判斷）」的註解要刪掉——**老闆現在判斷了**。
+條款全文在派工書裡，照抄。**這一包完全獨立，可以最先交付。**
+
+★★ 最容易做錯的：① 條款第五、六節有兩個**老闆確認項**，原樣保留成看得見的提醒，**不要自己刪、不要自己判斷法律適用**；
+② 三處「請聯絡客服」改成指向右下角小幫手，**不要寫死 LINE／Email／電話**（使用者還沒給，寫了就是假的）；
+③ **不要改 `FaqGroup`／`FaqItem` 的型別或匯出名字**——FE-35 要 import `FAQ_GROUPS`；
+④ FAQ 只寫指路，法律細節一律放服務條款一處；⑤ 這一頁要有出口，360px 下長文不要橫向捲動。
+
+package: FE-36
+doc: docs/38-前端第二十二波派工書-第三包.md
+allow: frontend/apps/storefront/app/(info)/
+allow: .dispatch/reports/FE-36.md
+
+---
+
 <!--
 ★ 2026-09-15 已通過整合驗收並提交（前端 `ff132af`），撤包。原文保留供追溯。
 
