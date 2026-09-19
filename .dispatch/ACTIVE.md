@@ -92,6 +92,17 @@ allow: .dispatch/reports/BE-54.md
 ④ 模組叫 `CustomerService` **不叫 `Support`**（`SupportModules` 是「支撐模組」的意思），但**端點路徑就是 `/v1/support/tickets`**，這個不一致是刻意的；
 ⑤ **不要**把它加進架構測試的 `SupportModules` 清單；⑥ 前台**沒有**查詢工單的端點，不要自己補。
 
+★ **Leader 2026-09-19 中途補授權（`ops/verify-environment.ps1`）＋ 追加一項工作**：
+子代理查知識庫查出「`ops/` 的 migration 清單是刻意列死的」，Leader 複驗後發現**比那更糟**——
+`ops/install-dev-environment.ps1` 第 46 行的 `$migrationFiles` **只列到 `0017`**，
+`ops/verify-environment.ps1` 第 274 行的 `$expectedCount = 17` 也寫死，
+**`0018`／`0019`／`0020` 從來沒補進去**（2026-09-19 Leader 起 dev 環境時被迫手動補套三支才發現）。
+這是既有缺口 **#58**，本波兩包各加一支會讓它更糟。
+
+**BE-55 一併補齊**：把 `0018`～`0022`（含 BE-54 的 `0021`）全部補進 `$migrationFiles`，
+`$expectedCount` 改成 22 並更新那兩行訊息字串。理由：這兩個檔本來就在 BE-55 的範圍，
+交給一個包統一補，比兩包各改一半安全。
+
 package: BE-55
 doc: docs/55-後端第三十八波派工書-第二包.md
 allow: db/migrations/0022
@@ -105,6 +116,7 @@ allow: src/Hosts/GreyGray.Api.Admin/GreyGray.Api.Admin.csproj
 allow: ops/install-dev-environment.ps1
 allow: ops/start-dev-hosts.ps1
 allow: ops/deploy.ps1
+allow: ops/verify-environment.ps1
 allow: tests/GreyGray.Architecture.Tests/
 allow: tests/GreyGray.EndToEnd.Tests/
 allow: tests/GreyGray.CustomerService.Tests/
