@@ -1,5 +1,50 @@
 # 啟動 prompt
 
+**生效中：BE-56（2026-09-19）——單檔小包，修 #59 的根因。**
+
+`GuidIdJsonConverterFactory.CanConvert` 把裸 `Guid?` 誤判成 `XxxId`，丟 `TypeLoadException`。
+第四十波 BE-55 用 wrapper 型別繞過了，這一包修根因。無契約變更、無 migration、不走外部覆驗鏈。
+
+## BE-56 的啟動 prompt
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
+GreyGray Platform 後端（.NET 10 modular monolith）。這一包只動一個檔加它的測試。沒有前端、沒有 migration、沒有契約變更。
+
+GG_PACKAGE=BE-56
+
+開工前務必先讀：
+  CLAUDE.md                          六條鐵則 ＋ 派工規則
+  docs/56-後端第三十九波派工書.md      ★ 整份讀完（很短）
+  .dispatch/reports/README.md        ★ 自驗報告格式，以及「不准把測試丟背景」
+
+★★ 兩條硬規則：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/BE-56.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 只准寫 .dispatch/ACTIVE.md 裡 BE-56 的 allow 路徑（三條）。缺授權停下來回報。
+
+★★ 最容易做錯的三件事：
+  ① 只在 CanConvert 開頭排除 Nullable<>，不要動其餘四個條件、不要動 CreateConverter 與
+     GuidIdJsonConverter<TId> 本體——XxxId? 走的是內建 NullableConverter 再交給我們，那條路本來就對
+  ② 先紅後綠：修之前那條迴歸測試要真的丟 TypeLoadException，把實際訊息貼進報告
+  ③ 不要拿掉 BE-55 的 TicketOrderId wrapper（已在生產路徑上，拿掉是另一個決定）
+
+⚠ dev 三個 Host 跑著 Debug、bin 被鎖——用 Release 建置與測試，不要去停 Host。
+⚠ 測試前景跑完，不要掛背景就結束。
+
+做完跑 tests\GreyGray.Contracts.Tests\bin\Release\net10.0\GreyGray.Contracts.Tests.exe（現況 16 條）
+與 tests\GreyGray.Architecture.Tests\bin\Release\net10.0\GreyGray.Architecture.Tests.exe（現況 28 條），結果貼進報告。
+```
+
+---
+
+以下保留第四十波（五包全部撤包）的標頭與啟動 prompt 供參考。
+
+---
+
+
 **目前沒有生效中的派工（2026-09-19）。** 第四十波五包全部驗收撤包：
 
 - 後端 **BE-54**（收件人姓名／手機／宅配地址凍結進訂單、後台明文、outbox 保存期限，migration `0021`）
