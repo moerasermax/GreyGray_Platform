@@ -53,6 +53,13 @@ export interface CheckoutRequest {
   readonly convenienceStoreSelectionId?: string | null;
   /** 相容舊用戶端（契約保留）：沒帶 `convenienceStoreSelectionId` 時才看這個。 */
   readonly convenienceStoreCode?: string | null;
+  /**
+   * 收件人真實姓名（ADR-039）。`deliveryMethod = ConvenienceStore` 時必填，缺了回
+   * `422 checkout.recipient-required`；`HomeDelivery` 時送了會被忽略（後端從地址簿抄）。
+   */
+  readonly recipientName?: string | null;
+  /** 收件人手機（ADR-039）。必填與忽略的規則同 `recipientName`。 */
+  readonly recipientPhone?: string | null;
   readonly buyerNote?: string | null;
 }
 

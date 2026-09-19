@@ -25,7 +25,6 @@ import { usePayloadIdempotency } from '../../../_lib/usePayloadIdempotency';
 import { listShipments } from '../../shipments/_lib/api';
 import { CancelOrderDialog } from '../_components/CancelOrderDialog';
 import { CancelOrderLineDialog } from '../_components/CancelOrderLineDialog';
-import { MaskedContactNote } from '../_components/MaskedContactNote';
 import { OrderShipmentsSection } from '../_components/OrderShipmentsSection';
 import { RefundShortfallDialog } from '../_components/RefundShortfallDialog';
 import {
@@ -317,10 +316,12 @@ export default function OrderDetailPage() {
           <p className="mt-1 text-sm font-medium text-fg">{order.customerDisplayName}</p>
         </div>
         <div>
-          <p className="text-xs text-fg-muted">聯絡方式</p>
-          <div className="mt-1">
-            <MaskedContactNote maskedContact={order.customerContactMasked} />
-          </div>
+          <p className="text-xs text-fg-muted">收件人</p>
+          <p className="mt-1 select-all text-sm font-medium text-fg">{order.recipientName ?? '—'}</p>
+        </div>
+        <div>
+          <p className="text-xs text-fg-muted">收件人手機</p>
+          <p className="gg-numeric mt-1 select-all text-sm font-medium text-fg">{order.recipientPhone ?? '—'}</p>
         </div>
         <div>
           <p className="text-xs text-fg-muted">配送方式</p>

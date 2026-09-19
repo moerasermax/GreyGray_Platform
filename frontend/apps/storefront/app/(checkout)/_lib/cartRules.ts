@@ -3,6 +3,7 @@
  * **不做任何金額運算**——這裡只做「能不能結帳」的判斷，數字一律讀後端回的欄位。
  */
 import type { components } from '@greygray/api-client/storefront';
+import { isRecipientNameFilled, isRecipientPhoneValid } from './recipientForm';
 
 type S = components['schemas'];
 
@@ -61,6 +62,9 @@ export interface CheckoutReadinessInput {
   readonly convenienceStoreSelectionId: string | null;
   /** 讀票讀到的門市；讀取中或讀失敗是 `null`。 */
   readonly convenienceStoreSelection: Pick<S['CvsStoreSelection'], 'selectionId'> | null;
+  /** 收件人姓名手機（ADR-039），只有超商取貨時要檢查。 */
+  readonly recipientName: string;
+  readonly recipientPhone: string;
 }
 
 /** 結帳頁「送出」鈕能不能按，以及按不了的原因——集中在一處，畫面只負責顯示。 */
@@ -86,11 +90,19 @@ export function evaluateCheckoutReadiness(input: CheckoutReadinessInput): Checko
     return { ready: false, reason: '請選擇收件地址。' };
   }
 
-  if (
-    requiresConvenienceStore(input.deliveryMethod) &&
-    !hasLoadedConvenienceStore(input.convenienceStoreSelectionId, input.convenienceStoreSelection)
-  ) {
-    return { ready: false, reason: '請選擇取貨門市。' };
+  if (requiresConvenienceStore(input.deliveryMethod)) {
+    if (!hasLoadedConvenienceStore(input.convenienceStoreSelectionId, input.convenienceStoreSelection)) {
+      return { ready: false, reason: '請選擇取貨門市。' };
+    }
+    if (!isRecipientNameFilled(input.recipientName)) {
+      return { ready: false, reason: '請填寫收件人姓名。' };
+    }
+    if (!input.recipientPhone.trim()) {
+      return { ready: false, reason: '請填寫收件人手機。' };
+    }
+    if (!isRecipientPhoneValid(input.recipientPhone)) {
+      return { ready: false, reason: '收件人手機格式不正確，請輸入 09 開頭的十碼手機號碼。' };
+    }
   }
 
   return { ready: true, reason: null };

@@ -20,6 +20,7 @@ import {
   shippingPolicyLabel,
 } from '../../_lib/orderStatus';
 import { submitPaymentForm } from '../../_lib/submitPaymentForm';
+import { recipientDisplayOf } from '../_lib/recipientDisplay';
 
 type Order = components['schemas']['Order'];
 type Money = components['schemas']['Money'];
@@ -126,6 +127,7 @@ export default function OrderDetailPage() {
 
   const canSelfCancel = order.status === 'AwaitingPayment';
   const canPay = order.status === 'AwaitingPayment';
+  const recipient = recipientDisplayOf(order);
 
   return (
     <main className="mx-auto flex max-w-[640px] flex-col gap-[var(--gg-space-5)] px-[var(--gg-space-4)] py-[var(--gg-space-8)]">
@@ -215,10 +217,21 @@ export default function OrderDetailPage() {
         <h2 className="font-display text-[length:var(--gg-text-lg)] font-bold text-fg">配送方式</h2>
         <p className="text-[length:var(--gg-text-sm)] text-fg">{deliveryMethodLabel(order.deliveryMethod)}</p>
         <p className="text-[length:var(--gg-text-sm)] text-fg-muted">{shippingPolicyLabel(order.shippingPolicy)}</p>
+        {/*
+          ADR-039：優先用訂單本身的快照（下單當時凍結，不會跟著地址簿變）；
+          快照為 null 才退回目前地址簿（ADR-039 之前的舊訂單），並標示那是目前的資料，
+          不是下單當時凍結的值——見 `_lib/recipientDisplay.ts`。
+        */}
+        {recipient && (
+          <p className="text-[length:var(--gg-text-sm)] text-fg-muted">
+            收件人：{recipient.recipientName}・{recipient.recipientPhone}
+            {recipient.isFallback && (
+              <span className="text-[length:var(--gg-text-xs)]">（舊訂單，顯示目前地址簿的收件資訊）</span>
+            )}
+          </p>
+        )}
         {order.shippingAddress && (
           <p className="text-[length:var(--gg-text-sm)] text-fg-muted">
-            {order.shippingAddress.recipientName}・{order.shippingAddress.phoneNumber}
-            <br />
             {order.shippingAddress.postalCode} {order.shippingAddress.city}
             {order.shippingAddress.district}
             {order.shippingAddress.streetAddress}

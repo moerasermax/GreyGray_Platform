@@ -746,6 +746,8 @@ function buildOrder(seed: OrderSeed, index: number): S['Order'] {
     paidAmount: isPaid ? { amountMinor: grandTotalMinor, currency: 'TWD' } : null,
     lines,
     shippingAddress: addresses[0] ?? null,
+    recipientName: '王小美',
+    recipientPhone: '0912345678',
     convenienceStoreName: '7-ELEVEN 信義門市',
     convenienceStoreAddress: '台北市信義區松仁路 100 號',
     placedAt,

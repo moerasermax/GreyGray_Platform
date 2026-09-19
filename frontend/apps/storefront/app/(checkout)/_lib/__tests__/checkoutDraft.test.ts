@@ -62,10 +62,12 @@ const FILLED: CheckoutDraft = {
   shippingPolicy: 'HoldUntilComplete',
   shippingAddressId: 'addr_1',
   convenienceStoreSelectionId: 'ABCDEFGHIJ0123456789',
+  recipientName: '王小美',
+  recipientPhone: '0912345678',
   buyerNote: '麻煩包好一點',
 };
 
-describe('存 → 取回，五個欄位一字不差', () => {
+describe('存 → 取回，七個欄位一字不差', () => {
   it('存進去再讀出來，跟原本填的一樣', () => {
     const storage = fakeStorage();
     saveCheckoutDraft('cart_1', FILLED, storage);
@@ -82,7 +84,7 @@ describe('存 → 取回，五個欄位一字不差', () => {
     expect(loadCheckoutDraft('cart_2', storage)?.buyerNote).toBe('另一張車');
   });
 
-  it('只存那五個欄位，沒有把整份購物車存進去', () => {
+  it('只存那七個欄位，沒有把整份購物車存進去', () => {
     const raw = serializeCheckoutDraft('cart_1', FILLED);
     expect(Object.keys(JSON.parse(raw) as object).sort()).toEqual(
       [
@@ -90,6 +92,8 @@ describe('存 → 取回，五個欄位一字不差', () => {
         'cartId',
         'convenienceStoreSelectionId',
         'deliveryMethod',
+        'recipientName',
+        'recipientPhone',
         'shippingAddressId',
         'shippingPolicy',
       ].sort(),
@@ -165,6 +169,8 @@ describe('壞掉的東西一律當作沒有草稿', () => {
       shippingPolicy: 'Whenever',
       shippingAddressId: 42,
       convenienceStoreSelectionId: { evil: true },
+      recipientName: 123,
+      recipientPhone: null,
       buyerNote: 'ok',
     });
     expect(parseCheckoutDraft(raw, 'cart_1')).toEqual({
@@ -172,6 +178,8 @@ describe('壞掉的東西一律當作沒有草稿', () => {
       shippingPolicy: null,
       shippingAddressId: null,
       convenienceStoreSelectionId: null,
+      recipientName: '',
+      recipientPhone: '',
       buyerNote: 'ok',
     });
   });
@@ -202,6 +210,8 @@ describe('選店票欄位（ADR-038）', () => {
       shippingPolicy: 'HoldUntilComplete',
       shippingAddressId: 'addr_1',
       convenienceStoreSelectionId: null,
+      recipientName: '',
+      recipientPhone: '',
       buyerNote: '麻煩包好一點',
     });
   });
@@ -218,6 +228,28 @@ describe('選店票欄位（ADR-038）', () => {
       ...emptyCheckoutDraft(),
       convenienceStoreSelectionId: null,
       buyerNote: '留言',
+    });
+  });
+});
+
+describe('收件人姓名手機（ADR-039）：跟選店票一樣要撐過整頁離開再回來', () => {
+  it('存進去再讀出來，姓名手機都還在——這是 ★ 最容易漏的那條路徑', () => {
+    const storage = fakeStorage();
+    saveCheckoutDraft('cart_1', FILLED, storage);
+    const restored = loadCheckoutDraft('cart_1', storage);
+    expect(restored?.recipientName).toBe('王小美');
+    expect(restored?.recipientPhone).toBe('0912345678');
+  });
+
+  it('只填了收件人姓名手機的草稿不算空的', () => {
+    expect(isEmptyDraft({ ...emptyCheckoutDraft(), recipientName: '王小美' })).toBe(false);
+    expect(isEmptyDraft({ ...emptyCheckoutDraft(), recipientPhone: '0912345678' })).toBe(false);
+  });
+
+  it('型別不對就退回空字串，不會把垃圾送進畫面', () => {
+    const raw = JSON.stringify({ cartId: 'cart_1', recipientName: 42, recipientPhone: ['0912345678'] });
+    expect(parseCheckoutDraft(raw, 'cart_1')).toEqual({
+      ...emptyCheckoutDraft(),
     });
   });
 });

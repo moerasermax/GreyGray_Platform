@@ -378,10 +378,16 @@ export const storefrontHandlers = [
       shippingAddressId?: string | null;
       convenienceStoreSelectionId?: string | null;
       convenienceStoreCode?: string | null;
+      recipientName?: string | null;
+      recipientPhone?: string | null;
       buyerNote?: string | null;
     };
     if (body.deliveryMethod === 'HomeDelivery' && !body.shippingAddressId) {
       return jsonProblem(problem(422, 'checkout.address-required', '請選擇收件地址'));
+    }
+    // ADR-039：超商取貨必填收件人姓名與手機；宅配的送了也不看，一律從地址簿抄。
+    if (body.deliveryMethod === 'ConvenienceStore' && (!body.recipientName || !body.recipientPhone)) {
+      return jsonProblem(problem(422, 'checkout.recipient-required', '請填寫收件人姓名與手機'));
     }
     // ADR-038：帶了選店票就以票為準、忽略代號；沒帶票才看舊的 `convenienceStoreCode`。
     const selectionId =
@@ -421,6 +427,9 @@ export const storefrontHandlers = [
         refundedAmount: null,
       })),
       shippingAddress: address,
+      // ADR-039：超商取貨凍結送出的收件人；宅配從地址簿抄一份，客人事後改地址不影響已成立的訂單。
+      recipientName: body.deliveryMethod === 'ConvenienceStore' ? (body.recipientName ?? null) : (address?.recipientName ?? null),
+      recipientPhone: body.deliveryMethod === 'ConvenienceStore' ? (body.recipientPhone ?? null) : (address?.phoneNumber ?? null),
       convenienceStoreName: selectionId
         ? MOCK_CVS_STORE.storeName
         : body.deliveryMethod === 'ConvenienceStore' && body.convenienceStoreCode

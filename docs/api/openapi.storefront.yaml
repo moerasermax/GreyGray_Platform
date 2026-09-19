@@ -980,12 +980,12 @@ paths:
           description: '`support.contact-required`'
           content:
             application/problem+json:
-              schema: { $ref: '#/components/schemas/Problem' }
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
         '429':
           description: '`support.too-many-requests`'
           content:
             application/problem+json:
-              schema: { $ref: '#/components/schemas/Problem' }
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
 
 components:
   securitySchemes:

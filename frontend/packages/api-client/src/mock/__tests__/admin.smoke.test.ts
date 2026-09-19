@@ -206,7 +206,10 @@ describe('admin mock：每個 M1a 端點打一次，回應要通過型別檢查'
     expect(statuses.has('Shipped')).toBe(true);
     expect(statuses.has('Unavailable')).toBe(true);
     expect(statuses.has('Pending')).toBe(true);
-    expect(detail.customerContactMasked).toMatch(/\*/);
+    // ADR-039：後台全員看明文，遮罩欄位恆為 null（保留只為相容舊用戶端）。
+    expect(detail.customerContactMasked).toBeNull();
+    expect(detail.recipientName).toBeTruthy();
+    expect(detail.recipientPhone).toBeTruthy();
   });
 
   it('超商訂單帶得出門市代號、名稱、地址（ADR-038）', async () => {

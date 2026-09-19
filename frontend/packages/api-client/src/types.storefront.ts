@@ -1051,6 +1051,17 @@ export interface paths {
                          *     `deliveryMethod = ConvenienceStore` 時兩者至少要有一個，都沒有回 `422 checkout.store-code-required`。
                          */
                         convenienceStoreCode?: string | null;
+                        /**
+                         * @description 收件人真實姓名（ADR-039）。**`deliveryMethod = ConvenienceStore` 時必填**——
+                         *     超商核對證件，姓名不符會拒絕交貨；缺了回 `422 checkout.recipient-required`。
+                         *
+                         *     `deliveryMethod = HomeDelivery` 時**送了會被忽略**：宅配的收件人以地址簿為準，
+                         *     後端在下單當下從 `shippingAddressId` 抄一份凍結進訂單
+                         *     （客人事後改地址或刪地址都不影響已成立的訂單）。
+                         */
+                        recipientName?: string | null;
+                        /** @description 收件人手機（ADR-039）。必填與忽略的規則同 `recipientName`。 */
+                        recipientPhone?: string | null;
                         buyerNote?: string | null;
                     };
                 };
@@ -1070,6 +1081,7 @@ export interface paths {
                 /**
                  * @description `checkout.cart-empty` · `checkout.address-required` ·
                  *     `checkout.store-code-required` · `checkout.store-selection-expired` ·
+                 *     `checkout.recipient-required` ·
                  *     `checkout.shipping-policy-required` ·
                  *     `campaign.not-accepting-orders` · `inventory.insufficient-stock` ·
                  *     `payment.provider-does-not-support-delivery-method`
@@ -1610,6 +1622,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/support/tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 留言給客服（**匿名可用**）
+         * @description 前台右下角的客服小幫手收到「其他問題」時打這一條（ADR-040）。
+         *
+         *     **匿名可打**——訪客也會有問題。已登入時後端自動綁上 `customerId`，
+         *     客人不必、也不能自己指定。
+         *
+         *     **沒有對應的查詢端點**：匿名工單沒有安全的查詢方式，所以前台不提供「查我的工單」。
+         *     這是刻意的，不是漏做。回覆走客人留下的 email 或手機。
+         *
+         *     **防灌**：同一 IP／同一購物車 cookie 每小時有上限，超過回 `429`。
+         *     ⚠ 計數用的 KV 掛掉時是 **fail-open（放行）**——客服留言不是安全邊界，
+         *     寧可收到灌水，也不要讓真客人問不了問題。
+         */
+        post: operations["createSupportTicket"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1723,6 +1765,26 @@ export interface components {
          * @enum {string}
          */
         InquiryOutcome: "ConfirmedByCustomer" | "DeclinedByCustomer" | "AutoApprovedOnTimeout";
+        /** @enum {string} */
+        SupportTicketStatus: "open" | "resolved";
+        SupportTicket: {
+            id: components["schemas"]["Id"];
+            status: components["schemas"]["SupportTicketStatus"];
+            message: string;
+            contactEmail?: string | null;
+            contactPhone?: string | null;
+            /** @description 客人在小幫手裡走過的選單路徑。 */
+            menuPath?: string[];
+            orderId?: components["schemas"]["Id"] | null;
+            /** @description 匿名留言為 null。 */
+            customerId?: components["schemas"]["Id"] | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            resolvedAt?: string | null;
+            resolvedBy?: string | null;
+            staffNote?: string | null;
+        };
         /**
          * @description **欄位已定案（ADR-019）。** 歷史會員與訂單不從租用平台遷移，客人在新站重新註冊。
          *
@@ -1981,6 +2043,14 @@ export interface components {
             convenienceStoreName?: string | null;
             /** @description 取貨門市地址（下單當時凍結）；舊訂單與非超商取貨為 null。 */
             convenienceStoreAddress?: string | null;
+            /**
+             * @description 收件人真實姓名（**下單當時凍結**，ADR-039）。超商取貨是客人填的，宅配是從地址簿抄的。
+             *     **這個值不會跟著地址簿變動**——客人事後改地址或刪地址，已成立的訂單照樣看得到當初的收件人。
+             *     ADR-039 之前的舊訂單為 null（那些訂單的收件資訊只能從 `shippingAddress` 即時回查，可能已經變了）。
+             */
+            recipientName?: string | null;
+            /** @description 收件人手機（下單當時凍結，ADR-039）。規則同 `recipientName`。 */
+            recipientPhone?: string | null;
             /** Format: date-time */
             placedAt: string;
             /**
@@ -2113,4 +2183,61 @@ export interface components {
     pathItems: never;
 }
 export type $defs = Record<string, never>;
-export type operations = Record<string, never>;
+export interface operations {
+    createSupportTicket: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一個使用者動作用同一把 key，重試時不變。詳見 `docs/05-API契約.md` §4。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    message: string;
+                    /** @description 與 `contactPhone` **至少要有一個**，兩個都沒有回 `422 support.contact-required`。 */
+                    contactEmail?: string | null;
+                    contactPhone?: string | null;
+                    /**
+                     * @description 客人在小幫手裡走過的選單路徑。**客服要知道他是卡在哪一題才問的**——
+                     *     只有一句「不能用」完全沒有上下文。
+                     */
+                    menuPath?: string[];
+                    orderId?: components["schemas"]["Id"] | null;
+                };
+            };
+        };
+        responses: {
+            /** @description 工單已建立 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportTicket"];
+                };
+            };
+            /** @description `support.contact-required` */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description `support.too-many-requests` */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+}

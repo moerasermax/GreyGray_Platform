@@ -1076,7 +1076,7 @@ paths:
           description: '`support.already-resolved`（別人剛處理過）'
           content:
             application/problem+json:
-              schema: { $ref: '#/components/schemas/Problem' }
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
 
 components:
   securitySchemes:

@@ -87,6 +87,8 @@ describe('evaluateCheckoutReadiness', () => {
     shippingAddressId: null,
     convenienceStoreSelectionId: null,
     convenienceStoreSelection: null,
+    recipientName: '',
+    recipientPhone: '',
   } as const;
   const TICKET = 'ABCDEFGHIJ0123456789';
 
@@ -139,12 +141,65 @@ describe('evaluateCheckoutReadiness', () => {
     expect(result).toEqual({ ready: false, reason: '請選擇取貨門市。' });
   });
 
-  it('超商取貨：讀到了門市 → 可以送', () => {
+  it('超商取貨：讀到了門市、收件人姓名手機都填好 → 可以送', () => {
     const result = evaluateCheckoutReadiness({
       ...baseInput,
       deliveryMethod: 'ConvenienceStore',
       convenienceStoreSelectionId: TICKET,
       convenienceStoreSelection: { selectionId: TICKET },
+      recipientName: '王小美',
+      recipientPhone: '0912345678',
+    });
+    expect(result).toEqual({ ready: true, reason: null });
+  });
+
+  it('超商取貨：讀到門市但沒填收件人姓名 → 擋下（ADR-039）', () => {
+    const result = evaluateCheckoutReadiness({
+      ...baseInput,
+      deliveryMethod: 'ConvenienceStore',
+      convenienceStoreSelectionId: TICKET,
+      convenienceStoreSelection: { selectionId: TICKET },
+      recipientName: '',
+      recipientPhone: '0912345678',
+    });
+    expect(result).toEqual({ ready: false, reason: '請填寫收件人姓名。' });
+  });
+
+  it('超商取貨：填了姓名但沒填手機 → 擋下', () => {
+    const result = evaluateCheckoutReadiness({
+      ...baseInput,
+      deliveryMethod: 'ConvenienceStore',
+      convenienceStoreSelectionId: TICKET,
+      convenienceStoreSelection: { selectionId: TICKET },
+      recipientName: '王小美',
+      recipientPhone: '',
+    });
+    expect(result).toEqual({ ready: false, reason: '請填寫收件人手機。' });
+  });
+
+  it.each(['0912', '912345678', '09123456789'])(
+    '超商取貨：手機格式錯（%s）→ 擋下，訊息說得出是格式問題',
+    (badPhone) => {
+      const result = evaluateCheckoutReadiness({
+        ...baseInput,
+        deliveryMethod: 'ConvenienceStore',
+        convenienceStoreSelectionId: TICKET,
+        convenienceStoreSelection: { selectionId: TICKET },
+        recipientName: '王小美',
+        recipientPhone: badPhone,
+      });
+      expect(result.ready).toBe(false);
+      expect(result.reason).toContain('手機');
+    },
+  );
+
+  it('宅配不受收件人姓名手機影響：沒填也能送（ADR-039，宅配從地址簿抄）', () => {
+    const result = evaluateCheckoutReadiness({
+      ...baseInput,
+      deliveryMethod: 'HomeDelivery',
+      shippingAddressId: 'addr_1',
+      recipientName: '',
+      recipientPhone: '',
     });
     expect(result).toEqual({ ready: true, reason: null });
   });

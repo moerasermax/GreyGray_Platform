@@ -19,7 +19,7 @@
  * 選店票綁的是上一張車，跟這一張沒有關係。鍵含 cart id 讓不同的車天生互不干擾；
  * 值裡再記一次是**第二道**——鍵可能被別的東西寫過，內容自己說得出它屬於誰才算數。
  *
- * ── 只存五個欄位，不存整份購物車 ──
+ * ── 只存使用者自己填的欄位，不存整份購物車 ──
  * 購物車的真相在後端（價格、庫存、可否購買都會變），存一份複本回來覆蓋
  * 就是拿舊資料畫新畫面。這裡只存**使用者自己填的東西**，其餘一律重新跟後端要。
  * 門市也只存選店票 id；名稱與地址每次跟後端讀，不落地（ADR-038）。
@@ -29,13 +29,16 @@ import { DELIVERY_METHOD_LABEL, SHIPPING_POLICY_LABEL } from './labels';
 
 type S = components['schemas'];
 
-/** 整頁離開時要保住的五個欄位。 */
+/** 整頁離開時要保住的欄位（ADR-039 加了收件人姓名手機，原本五個變七個）。 */
 export interface CheckoutDraft {
   readonly deliveryMethod: S['DeliveryMethod'] | null;
   readonly shippingPolicy: S['ShippingPolicy'] | null;
   readonly shippingAddressId: string | null;
   /** 選店票（`/v1/logistics/cvs-selections/{selectionId}`）。沒選過或已清掉是 `null`。 */
   readonly convenienceStoreSelectionId: string | null;
+  /** 收件人姓名手機（ADR-039，超商取貨專用）。跳去地圖再回來也要還原，不然客人要重填。 */
+  readonly recipientName: string;
+  readonly recipientPhone: string;
   readonly buyerNote: string;
 }
 
@@ -71,6 +74,8 @@ const EMPTY_DRAFT: CheckoutDraft = {
   shippingPolicy: null,
   shippingAddressId: null,
   convenienceStoreSelectionId: null,
+  recipientName: '',
+  recipientPhone: '',
   buyerNote: '',
 };
 
@@ -81,6 +86,8 @@ export function isEmptyDraft(draft: CheckoutDraft): boolean {
     draft.shippingPolicy === null &&
     draft.shippingAddressId === null &&
     draft.convenienceStoreSelectionId === null &&
+    draft.recipientName === '' &&
+    draft.recipientPhone === '' &&
     draft.buyerNote === ''
   );
 }
@@ -92,6 +99,8 @@ export function serializeCheckoutDraft(cartId: string, draft: CheckoutDraft): st
     shippingPolicy: draft.shippingPolicy,
     shippingAddressId: draft.shippingAddressId,
     convenienceStoreSelectionId: draft.convenienceStoreSelectionId,
+    recipientName: draft.recipientName,
+    recipientPhone: draft.recipientPhone,
     buyerNote: draft.buyerNote,
   });
 }
@@ -141,6 +150,8 @@ export function parseCheckoutDraft(raw: string | null | undefined, cartId: strin
     convenienceStoreSelectionId: isCvsSelectionId(record.convenienceStoreSelectionId)
       ? record.convenienceStoreSelectionId
       : null,
+    recipientName: asString(record.recipientName),
+    recipientPhone: asString(record.recipientPhone),
     buyerNote: asString(record.buyerNote),
   };
 }

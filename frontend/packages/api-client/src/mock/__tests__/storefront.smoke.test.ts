@@ -119,9 +119,13 @@ describe('storefront mock：每個 M1a 端點打一次，回應要通過型別�
       deliveryMethod: 'ConvenienceStore',
       shippingPolicy: 'ShipSeparately',
       convenienceStoreCode: '991234',
+      recipientName: '王小美',
+      recipientPhone: '0912345678',
     }, mutationOptions());
     expect(order.status).toBe('AwaitingPayment');
     expect(order.lines.length).toBeGreaterThan(0);
+    expect(order.recipientName).toBe('王小美');
+    expect(order.recipientPhone).toBe('0912345678');
 
     const cartAfter = await api.getCart(client);
     expect(cartAfter.lines).toHaveLength(0);
@@ -142,9 +146,13 @@ describe('storefront mock：每個 M1a 端點打一次，回應要通過型別�
       deliveryMethod: 'ConvenienceStore',
       shippingPolicy: 'ShipSeparately',
       convenienceStoreSelectionId: session.selectionId,
+      recipientName: '王小美',
+      recipientPhone: '0912345678',
     }, mutationOptions());
     expect(order.convenienceStoreName).toBe(selection.storeName);
     expect(order.convenienceStoreAddress).toBe(selection.storeAddress);
+    expect(order.recipientName).toBe('王小美');
+    expect(order.recipientPhone).toBe('0912345678');
   });
 
   it('訂單列表與詳情、取消、付款導轉', async () => {
@@ -266,8 +274,20 @@ describe('storefront mock：錯誤情境', () => {
         deliveryMethod: 'ConvenienceStore',
         shippingPolicy: 'ShipSeparately',
         convenienceStoreSelectionId: 'ZZZZZZZZZZZZZZZZZZZZ',
+        recipientName: '王小美',
+        recipientPhone: '0912345678',
       }, mutationOptions()),
     ).rejects.toMatchObject({ status: 422, problem: { code: 'checkout.store-selection-expired' } });
+  });
+
+  it('422：超商取貨沒填收件人姓名手機回 checkout.recipient-required（ADR-039）', async () => {
+    await expect(
+      api.checkout(client, {
+        deliveryMethod: 'ConvenienceStore',
+        shippingPolicy: 'ShipSeparately',
+        convenienceStoreCode: '991234',
+      }, mutationOptions()),
+    ).rejects.toMatchObject({ status: 422, problem: { code: 'checkout.recipient-required' } });
   });
 
   it('422：註冊密碼太弱時 ApiError.fieldErrors 有值', async () => {

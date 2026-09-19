@@ -1885,6 +1885,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/support/tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 客服訊息列表
+         * @description 前台右下角小幫手收到的留言（ADR-040）。游標式分頁，**不回總筆數**。
+         *     預設由新到舊。
+         */
+        get: operations["listSupportTickets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/support/tickets/{ticketId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 單一客服訊息 */
+        get: operations["getSupportTicket"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/support/tickets/{ticketId}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 標記已處理
+         * @description ⚠ `Operator` 與 `Accountant` 是**平行角色**，不是等級高低——
+         *     權限判斷不要用 enum 大小比較。
+         */
+        post: operations["resolveSupportTicket"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2098,8 +2157,19 @@ export interface components {
             payments?: components["schemas"]["PaymentSummary"][];
             quoteExplain?: string[];
             /**
-             * @description 遮罩後的聯絡方式。**要看明文必須另外呼叫並填寫存取理由**，
-             *     每一次讀取都會寫進 audit（個資法下最低限度的可問責性）。
+             * @description 收件人真實姓名，**明文**（ADR-039）。下單當時凍結，不會跟著地址簿變動。
+             *     超商取貨是客人填的、宅配是從地址簿抄的；ADR-039 之前的舊訂單為 null。
+             *     **出貨要用這個**——姓名與證件不符時超商會拒絕交貨。
+             */
+            recipientName?: string | null;
+            /** @description 收件人手機，明文（ADR-039）。規則同 `recipientName`。 */
+            recipientPhone?: string | null;
+            /**
+             * @description **已由 `recipientName` 與 `recipientPhone` 取代，恆為 `null`；保留欄位只為相容既有用戶端。**
+             *
+             *     舊描述寫的是「要看明文必須另外呼叫並填寫存取理由，每一次讀取都會寫進 audit」——
+             *     **那個端點從來沒有實作過**，而且 2026-09-19 使用者拍板改為
+             *     **後台全員直接看得到明文、不遮罩、不加解鎖閘門**（ADR-039 記了這個取捨與它的失效條件）。
              */
             customerContactMasked?: string | null;
         };
@@ -2220,6 +2290,34 @@ export interface components {
             /** Format: date-time */
             asOf: string;
         };
+        /** @enum {string} */
+        SupportTicketStatus: "open" | "resolved";
+        SupportTicket: {
+            id: components["schemas"]["Id"];
+            status: components["schemas"]["SupportTicketStatus"];
+            message: string;
+            contactEmail?: string | null;
+            contactPhone?: string | null;
+            /**
+             * @description 客人在小幫手裡走過的選單路徑。**客服要先看這個**——
+             *     只有一句「不能用」而不知道他卡在哪一題，回覆只能猜。
+             */
+            menuPath?: string[];
+            orderId?: components["schemas"]["Id"] | null;
+            /** @description 匿名留言為 null。 */
+            customerId?: components["schemas"]["Id"] | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            resolvedAt?: string | null;
+            resolvedBy?: string | null;
+            staffNote?: string | null;
+        };
+        SupportTicketPage: {
+            items: components["schemas"]["SupportTicket"][];
+            /** @description null 代表沒有下一頁。**不回總筆數**（游標式分頁的慣例）。 */
+            nextCursor?: string | null;
+        };
     };
     responses: {
         /** @description 未登入或 session 過期 */
@@ -2281,4 +2379,91 @@ export interface components {
     pathItems: never;
 }
 export type $defs = Record<string, never>;
-export type operations = Record<string, never>;
+export interface operations {
+    listSupportTickets: {
+        parameters: {
+            query?: {
+                /** @description 只看某個狀態；省略為全部。**未結案的優先看**。 */
+                status?: components["schemas"]["SupportTicketStatus"];
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportTicketPage"];
+                };
+            };
+        };
+    };
+    getSupportTicket: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticketId: components["schemas"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportTicket"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    resolveSupportTicket: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticketId: components["schemas"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    staffNote?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description 已標記 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportTicket"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description `support.already-resolved`（別人剛處理過） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+}

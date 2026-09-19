@@ -22,6 +22,7 @@ import {
   EmptyState,
   ErrorState,
   Field,
+  Input,
   PriceDisplay,
   Skeleton,
   Textarea,
@@ -57,6 +58,7 @@ import {
 } from '../_lib/cvsSelection';
 import { describeError, type ErrorDisplay } from '../_lib/errorDisplay';
 import { DELIVERY_METHOD_LABEL } from '../_lib/labels';
+import { checkoutRecipientPayload } from '../_lib/recipientForm';
 import { useCart } from '../_lib/useCart';
 
 type S = components['schemas'];
@@ -109,6 +111,10 @@ function CheckoutPageContent() {
   const [shippingAddressId, setShippingAddressId] = useState<string | null>(null);
   const [buyerNote, setBuyerNote] = useState('');
 
+  // ADR-039：超商取貨專用，結帳頁不收宅配的收件人（後端從地址簿抄）。
+  const [recipientName, setRecipientName] = useState('');
+  const [recipientPhone, setRecipientPhone] = useState('');
+
   const [convenienceStoreSelectionId, setConvenienceStoreSelectionId] = useState<string | null>(null);
   const [cvsSelection, setCvsSelection] = useState<S['CvsStoreSelection'] | null>(null);
   const [cvsSelectionLoading, setCvsSelectionLoading] = useState(false);
@@ -154,6 +160,8 @@ function CheckoutPageContent() {
     setShippingPolicy(entry.draft.shippingPolicy);
     setShippingAddressId(entry.draft.shippingAddressId);
     setBuyerNote(entry.draft.buyerNote);
+    setRecipientName(entry.draft.recipientName);
+    setRecipientPhone(entry.draft.recipientPhone);
     setConvenienceStoreSelectionId(entry.draft.convenienceStoreSelectionId);
     setCvsSelectionError(entry.errorMessage);
     // 5. 存回合併後的完整草稿：之後重新整理，票還在。
@@ -194,7 +202,15 @@ function CheckoutPageContent() {
   );
 
   function currentDraft(): CheckoutDraft {
-    return { deliveryMethod, shippingPolicy, shippingAddressId, convenienceStoreSelectionId, buyerNote };
+    return {
+      deliveryMethod,
+      shippingPolicy,
+      shippingAddressId,
+      convenienceStoreSelectionId,
+      recipientName,
+      recipientPhone,
+      buyerNote,
+    };
   }
 
   /*
@@ -270,6 +286,8 @@ function CheckoutPageContent() {
         shippingAddressId,
         // ADR-038：只送選店票，不送 `convenienceStoreCode`；只有超商取貨才送。
         convenienceStoreSelectionId: checkoutStoreSelectionId(deliveryMethod, convenienceStoreSelectionId),
+        // ADR-039：只有超商取貨才送收件人姓名手機；宅配的收件人以地址簿為準。
+        ...checkoutRecipientPayload(deliveryMethod, recipientName, recipientPhone),
         buyerNote: buyerNote || null,
       };
       const order = await checkoutActionRef.current!.run(input);
@@ -296,7 +314,7 @@ function CheckoutPageContent() {
          * 回程寫死 `/checkout`：購物車 cookie 不受登入影響，登入完回來東西還在。
          * `submitting` 不放掉——導向是非同步的，放掉會讓人在空隙裡再按一次。
          *
-         * **走之前先把已填的東西存起來**（含選店票）。只存使用者自己填的五個欄位，
+         * **走之前先把已填的東西存起來**（含選店票、收件人姓名手機）。只存使用者自己填的欄位，
          * 鍵含 cart id，`sessionStorage`（分頁關掉就消失）。
          */
         onUnauthorized: () => {
@@ -344,6 +362,8 @@ function CheckoutPageContent() {
     shippingAddressId,
     convenienceStoreSelectionId,
     convenienceStoreSelection: loadedCvsSelection,
+    recipientName,
+    recipientPhone,
   });
 
   return (
@@ -411,13 +431,39 @@ function CheckoutPageContent() {
       )}
 
       {deliveryMethod === 'ConvenienceStore' && (
-        <Card padding="md">
+        <Card padding="md" className="flex flex-col gap-[var(--gg-space-4)]">
           <ConvenienceStoreField
             selection={loadedCvsSelection}
             loading={cvsSelectionLoading}
             error={cvsSelectionError}
             onStart={handleStartCvsMap}
           />
+
+          <div className="flex flex-col gap-[var(--gg-space-3)] border-t border-border-soft pt-[var(--gg-space-3)]">
+            <Field
+              label="收件人姓名"
+              htmlFor="checkout-recipient-name"
+              required
+              hint="超商取貨時姓名要跟證件一致，不然超商不給領。"
+            >
+              <Input
+                id="checkout-recipient-name"
+                maxLength={50}
+                value={recipientName}
+                onChange={(e) => setRecipientName(e.target.value)}
+              />
+            </Field>
+            <Field label="收件人手機" htmlFor="checkout-recipient-phone" required>
+              <Input
+                id="checkout-recipient-phone"
+                type="tel"
+                inputMode="numeric"
+                maxLength={20}
+                value={recipientPhone}
+                onChange={(e) => setRecipientPhone(e.target.value)}
+              />
+            </Field>
+          </div>
         </Card>
       )}
 

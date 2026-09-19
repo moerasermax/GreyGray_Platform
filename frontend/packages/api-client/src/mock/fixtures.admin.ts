@@ -231,7 +231,10 @@ const mixedOrder: S['AdminOrder'] = {
     },
   ],
   quoteExplain: ['超商取貨一口價 NT$60（ADR-010）。'],
-  customerContactMasked: '0912***678',
+  // ADR-039：後台全員看明文，遮罩欄位恆為 null（保留只為相容舊用戶端）。
+  recipientName: '王小美',
+  recipientPhone: '0912345678',
+  customerContactMasked: null,
 };
 
 function buildSimpleAdminOrder(seedKey: string, status: S['OrderStatus'], daysAgo: number, index: number): S['AdminOrder'] {
@@ -267,7 +270,9 @@ function buildSimpleAdminOrder(seedKey: string, status: S['OrderStatus'], daysAg
     lines: [line],
     payments: [],
     quoteExplain: ['超商取貨一口價 NT$60（ADR-010）。'],
-    customerContactMasked: '0912***678',
+    recipientName: '王小美',
+    recipientPhone: '0912345678',
+    customerContactMasked: null,
   };
 }
 

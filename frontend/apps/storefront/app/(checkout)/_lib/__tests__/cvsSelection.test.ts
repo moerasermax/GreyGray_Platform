@@ -42,6 +42,8 @@ const DRAFT: CheckoutDraft = {
   shippingPolicy: 'ShipSeparately',
   shippingAddressId: null,
   convenienceStoreSelectionId: OLD_TICKET,
+  recipientName: '王小美',
+  recipientPhone: '0912345678',
   buyerNote: '麻煩包好一點',
 };
 
@@ -445,6 +447,14 @@ describe('handleCheckoutFailure：送出訂單失敗的分支', () => {
     const cb = callbacks();
     handleCheckoutFailure(apiError(422, 'checkout.address-required'), cb);
     expect(cb.setSubmitError).toHaveBeenCalledWith({ title: '後端的 checkout.address-required', traceId: null });
+    expect(cb.setSubmitting).toHaveBeenCalledWith(false);
+    expect(cb.clearSelectionId).not.toHaveBeenCalled();
+  });
+
+  it('422 checkout.recipient-required（ADR-039）→ 顯示得出具體訊息，票不動', () => {
+    const cb = callbacks();
+    handleCheckoutFailure(apiError(422, 'checkout.recipient-required'), cb);
+    expect(cb.setSubmitError).toHaveBeenCalledWith({ title: '後端的 checkout.recipient-required', traceId: null });
     expect(cb.setSubmitting).toHaveBeenCalledWith(false);
     expect(cb.clearSelectionId).not.toHaveBeenCalled();
   });
