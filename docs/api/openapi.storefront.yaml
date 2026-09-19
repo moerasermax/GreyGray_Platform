@@ -40,6 +40,8 @@ tags:
     description: 物流（M1b）
   - name: procurement
     description: 現場詢價回覆（M1b）
+  - name: support
+    description: 客服工單（ADR-040，右下角客服小幫手）
 
 security:
   - sessionCookie: []
@@ -594,6 +596,21 @@ paths:
                     **相容舊用戶端**：沒帶 `convenienceStoreSelectionId` 時才看這個。只有代號、沒有名稱與地址。
                     `deliveryMethod = ConvenienceStore` 時兩者至少要有一個，都沒有回 `422 checkout.store-code-required`。
                   type: [string, 'null']
+                recipientName:
+                  description: |
+                    收件人真實姓名（ADR-039）。**`deliveryMethod = ConvenienceStore` 時必填**——
+                    超商核對證件，姓名不符會拒絕交貨；缺了回 `422 checkout.recipient-required`。
+
+                    `deliveryMethod = HomeDelivery` 時**送了會被忽略**：宅配的收件人以地址簿為準，
+                    後端在下單當下從 `shippingAddressId` 抄一份凍結進訂單
+                    （客人事後改地址或刪地址都不影響已成立的訂單）。
+                  type: [string, 'null']
+                  maxLength: 50
+                recipientPhone:
+                  description: |
+                    收件人手機（ADR-039）。必填與忽略的規則同 `recipientName`。
+                  type: [string, 'null']
+                  maxLength: 20
                 buyerNote: { type: [string, 'null'], maxLength: 200 }
       responses:
         '201':
@@ -607,6 +624,7 @@ paths:
           description: |
             `checkout.cart-empty` · `checkout.address-required` ·
             `checkout.store-code-required` · `checkout.store-selection-expired` ·
+            `checkout.recipient-required` ·
             `checkout.shipping-policy-required` ·
             `campaign.not-accepting-orders` · `inventory.insufficient-stock` ·
             `payment.provider-does-not-support-delivery-method`
@@ -903,6 +921,72 @@ paths:
                   outcome: { $ref: '#/components/schemas/InquiryOutcome' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /v1/support/tickets:
+    post:
+      tags: [support]
+      operationId: createSupportTicket
+      summary: 留言給客服（**匿名可用**）
+      description: |
+        前台右下角的客服小幫手收到「其他問題」時打這一條（ADR-040）。
+
+        **匿名可打**——訪客也會有問題。已登入時後端自動綁上 `customerId`，
+        客人不必、也不能自己指定。
+
+        **沒有對應的查詢端點**：匿名工單沒有安全的查詢方式，所以前台不提供「查我的工單」。
+        這是刻意的，不是漏做。回覆走客人留下的 email 或手機。
+
+        **防灌**：同一 IP／同一購物車 cookie 每小時有上限，超過回 `429`。
+        ⚠ 計數用的 KV 掛掉時是 **fail-open（放行）**——客服留言不是安全邊界，
+        寧可收到灌水，也不要讓真客人問不了問題。
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+                contactEmail:
+                  description: '與 `contactPhone` **至少要有一個**，兩個都沒有回 `422 support.contact-required`。'
+                  type: [string, 'null']
+                  maxLength: 200
+                contactPhone:
+                  type: [string, 'null']
+                  maxLength: 20
+                menuPath:
+                  description: |
+                    客人在小幫手裡走過的選單路徑。**客服要知道他是卡在哪一題才問的**——
+                    只有一句「不能用」完全沒有上下文。
+                  type: array
+                  maxItems: 5
+                  items: { type: string, maxLength: 100 }
+                orderId:
+                  oneOf:
+                    - { $ref: '#/components/schemas/Id' }
+                    - { type: 'null' }
+      responses:
+        '201':
+          description: 工單已建立
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportTicket' }
+        '422':
+          description: '`support.contact-required`'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429':
+          description: '`support.too-many-requests`'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
 components:
   securitySchemes:
     sessionCookie:
@@ -1094,6 +1178,39 @@ components:
       type: string
       description: '`AutoApprovedOnTimeout` = 逾時視為照買，差額由賣方吸收（團價已定死）。'
       enum: [ConfirmedByCustomer, DeclinedByCustomer, AutoApprovedOnTimeout]
+
+    # ── 客服工單（ADR-040）────────────────────────────────────────────────
+    SupportTicketStatus:
+      type: string
+      enum: [open, resolved]
+
+    SupportTicket:
+      type: object
+      required: [id, status, message, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        status: { $ref: '#/components/schemas/SupportTicketStatus' }
+        message: { type: string, maxLength: 2000 }
+        contactEmail: { type: [string, 'null'], maxLength: 200 }
+        contactPhone: { type: [string, 'null'], maxLength: 20 }
+        menuPath:
+          description: 客人在小幫手裡走過的選單路徑。
+          type: array
+          maxItems: 5
+          items: { type: string, maxLength: 100 }
+        orderId:
+          oneOf:
+            - { $ref: '#/components/schemas/Id' }
+            - { type: 'null' }
+        customerId:
+          description: 匿名留言為 null。
+          oneOf:
+            - { $ref: '#/components/schemas/Id' }
+            - { type: 'null' }
+        createdAt: { type: string, format: date-time }
+        resolvedAt: { type: [string, 'null'], format: date-time }
+        resolvedBy: { type: [string, 'null'] }
+        staffNote: { type: [string, 'null'], maxLength: 2000 }
 
     # ── 客戶 ────────────────────────────────────────────────────────────
     RegisterRequest:
@@ -1456,6 +1573,15 @@ components:
         convenienceStoreAddress:
           type: [string, 'null']
           description: 取貨門市地址（下單當時凍結）；舊訂單與非超商取貨為 null。
+        recipientName:
+          type: [string, 'null']
+          description: |
+            收件人真實姓名（**下單當時凍結**，ADR-039）。超商取貨是客人填的，宅配是從地址簿抄的。
+            **這個值不會跟著地址簿變動**——客人事後改地址或刪地址，已成立的訂單照樣看得到當初的收件人。
+            ADR-039 之前的舊訂單為 null（那些訂單的收件資訊只能從 `shippingAddress` 即時回查，可能已經變了）。
+        recipientPhone:
+          type: [string, 'null']
+          description: 收件人手機（下單當時凍結，ADR-039）。規則同 `recipientName`。
         placedAt: { type: string, format: date-time }
         paymentDueAt:
           type: [string, 'null']

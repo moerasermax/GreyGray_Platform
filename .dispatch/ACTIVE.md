@@ -51,6 +51,68 @@ Leader 要明講。
 
 ---
 
+## 生效中：BE-54　訂單收件人姓名與手機——宅配從地址簿凍結快照、超商由客人填、後台看得到明文、outbox 補保存期限（ADR-039）
+
+使用者 2026-09-19 以 `/goal` 一次拍板三件事，這是第一件。計畫書 `docs/53-第四十波計畫書.md`（`8ab47fc`）。
+Leader 跨家盤點（Fable 後端、Gemini 前端）＋ Gemini 逐條覆驗，三條擋派工全部複驗後採納。
+**契約（兩份 OpenAPI 與 `docs/05`）與 ADR-039 Leader 已經寫好並提交——實作者一個字都不要改。**
+同一波後端還有 BE-55（`docs/55`），前端 FE-34／FE-35／FE-36 在前端樹 `docs/36`～`docs/38`。
+
+★★ 最容易做錯的：① **宅配不要叫客人填**——`ValidateDeliveryAsync` 宅配分支已經取到地址，在那裡抄一份就好；
+② `Cart.Complete` 的 `Completed*` 那一段**不要漏**（漏了事件重放時快照會變 null）；
+③ **冪等指紋一定要加這兩個欄位**，加了之後同鍵換收件人會回 422 `platform.idempotency-key-reused`，這是要的，補測試；
+④ 前台 `OrderResponse` 的收件人**從訂單快照取、不准從即時回查的地址簿取**；
+⑤ outbox 清理**不刪 `IsDeadLettered`**；⑥ `ops/`、`GreyGray.slnx`、架構測試是 BE-55 的，碰了會撞。
+
+package: BE-54
+doc: docs/54-後端第三十八波派工書.md
+allow: db/migrations/0021
+allow: src/Modules/Checkout/
+allow: src/Modules/Ordering/
+allow: src/Platform/Outbox/
+allow: src/Hosts/GreyGray.Api.Storefront/M1aEndpoints.cs
+allow: src/Hosts/GreyGray.Api.Admin/M1aEndpoints.cs
+allow: src/Hosts/GreyGray.Worker/
+allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
+allow: tests/GreyGray.M1a.Migrations.Tests/
+allow: tests/GreyGray.Platform.Tests/
+allow: .dispatch/reports/BE-54.md
+
+---
+
+## 生效中：BE-55　客服工單——新模組 `CustomerService`、前台匿名留言端點、後台工單列表與結案（ADR-040）
+
+使用者 2026-09-19 `/goal` 拍板的第二件事：FAQ 有三處寫「請聯絡客服」但站上沒有客服管道。
+前台右下角做引導式小視窗（FE-35），留言進後台工單列表。**不接 AI、不開 GitHub issue。**
+**契約與 ADR-040 Leader 已經寫好並提交——一個字都不要改。**
+
+★★ 最容易做錯的：① **端點寫在自己的新檔** `SupportEndpoints.cs`，**不准改 `M1aEndpoints.cs`**（BE-54 正在改，一定撞）；
+② **五處 hardcode schema 清單**（三個 ops 腳本 ＋ 兩個 E2E 測試）漏一個就 dev 起不來或 CI 紅，自己 grep 確認不要照抄行號；
+③ 防灌的 **fail-open 要自己包 try-catch**——`IDistributedCache` 斷線會拋例外，照抄就變成 Garnet 一掛連正常留言都 500；
+④ 模組叫 `CustomerService` **不叫 `Support`**（`SupportModules` 是「支撐模組」的意思），但**端點路徑就是 `/v1/support/tickets`**，這個不一致是刻意的；
+⑤ **不要**把它加進架構測試的 `SupportModules` 清單；⑥ 前台**沒有**查詢工單的端點，不要自己補。
+
+package: BE-55
+doc: docs/55-後端第三十八波派工書-第二包.md
+allow: db/migrations/0022
+allow: src/Modules/CustomerService/
+allow: src/Hosts/GreyGray.Api.Storefront/SupportEndpoints.cs
+allow: src/Hosts/GreyGray.Api.Storefront/Program.cs
+allow: src/Hosts/GreyGray.Api.Storefront/GreyGray.Api.Storefront.csproj
+allow: src/Hosts/GreyGray.Api.Admin/SupportEndpoints.cs
+allow: src/Hosts/GreyGray.Api.Admin/Program.cs
+allow: src/Hosts/GreyGray.Api.Admin/GreyGray.Api.Admin.csproj
+allow: ops/install-dev-environment.ps1
+allow: ops/start-dev-hosts.ps1
+allow: ops/deploy.ps1
+allow: tests/GreyGray.Architecture.Tests/
+allow: tests/GreyGray.EndToEnd.Tests/
+allow: tests/GreyGray.CustomerService.Tests/
+allow: GreyGray.slnx
+allow: .dispatch/reports/BE-55.md
+
+---
+
 <!--
 ★ 2026-09-15 已通過整合驗收並提交（後端 `a4138a4`），撤包。原文保留供追溯。
 

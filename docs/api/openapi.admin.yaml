@@ -36,6 +36,8 @@ tags:
     description: M3
   - name: audit
     description: M3
+  - name: support
+    description: 客服工單（ADR-040）
 
 security:
   - adminSessionCookie: []
@@ -994,6 +996,88 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/LiabilityVsCash' }
 
+  # ── 客服工單（ADR-040）──────────────────────────────────────────────────
+  /v1/support/tickets:
+    get:
+      tags: [support]
+      x-required-role: ReadOnly
+      operationId: listSupportTickets
+      summary: 客服訊息列表
+      description: |
+        前台右下角小幫手收到的留言（ADR-040）。游標式分頁，**不回總筆數**。
+        預設由新到舊。
+      parameters:
+        - name: status
+          in: query
+          description: 只看某個狀態；省略為全部。**未結案的優先看**。
+          schema: { $ref: '#/components/schemas/SupportTicketStatus' }
+        - name: cursor
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportTicketPage' }
+
+  /v1/support/tickets/{ticketId}:
+    get:
+      tags: [support]
+      x-required-role: ReadOnly
+      operationId: getSupportTicket
+      summary: 單一客服訊息
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Id' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportTicket' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/support/tickets/{ticketId}/resolve:
+    post:
+      tags: [support]
+      x-required-role: Operator
+      operationId: resolveSupportTicket
+      summary: 標記已處理
+      description: |
+        ⚠ `Operator` 與 `Accountant` 是**平行角色**，不是等級高低——
+        權限判斷不要用 enum 大小比較。
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Id' }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                staffNote: { type: [string, 'null'], maxLength: 2000 }
+      responses:
+        '200':
+          description: 已標記
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportTicket' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`support.already-resolved`（別人剛處理過）'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
 components:
   securitySchemes:
     adminSessionCookie:
@@ -1377,11 +1461,23 @@ components:
             quoteExplain:
               type: array
               items: { type: string }
+            recipientName:
+              type: [string, 'null']
+              description: |
+                收件人真實姓名，**明文**（ADR-039）。下單當時凍結，不會跟著地址簿變動。
+                超商取貨是客人填的、宅配是從地址簿抄的；ADR-039 之前的舊訂單為 null。
+                **出貨要用這個**——姓名與證件不符時超商會拒絕交貨。
+            recipientPhone:
+              type: [string, 'null']
+              description: 收件人手機，明文（ADR-039）。規則同 `recipientName`。
             customerContactMasked:
               type: [string, 'null']
               description: |
-                遮罩後的聯絡方式。**要看明文必須另外呼叫並填寫存取理由**，
-                每一次讀取都會寫進 audit（個資法下最低限度的可問責性）。
+                **已由 `recipientName` 與 `recipientPhone` 取代，恆為 `null`；保留欄位只為相容既有用戶端。**
+
+                舊描述寫的是「要看明文必須另外呼叫並填寫存取理由，每一次讀取都會寫進 audit」——
+                **那個端點從來沒有實作過**，而且 2026-09-19 使用者拍板改為
+                **後台全員直接看得到明文、不遮罩、不加解鎖閘門**（ADR-039 記了這個取捨與它的失效條件）。
 
     PaymentSummary:
       type: object
@@ -1535,3 +1631,49 @@ components:
           type: boolean
           description: true 代表**你正在用還沒交貨的錢過日子**。首頁要顯眼。
         asOf: { type: string, format: date-time }
+
+    # ── 客服工單（ADR-040）────────────────────────────────────────────────
+    SupportTicketStatus:
+      type: string
+      enum: [open, resolved]
+
+    SupportTicket:
+      type: object
+      required: [id, status, message, createdAt]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        status: { $ref: '#/components/schemas/SupportTicketStatus' }
+        message: { type: string, maxLength: 2000 }
+        contactEmail: { type: [string, 'null'], maxLength: 200 }
+        contactPhone: { type: [string, 'null'], maxLength: 20 }
+        menuPath:
+          description: |
+            客人在小幫手裡走過的選單路徑。**客服要先看這個**——
+            只有一句「不能用」而不知道他卡在哪一題，回覆只能猜。
+          type: array
+          maxItems: 5
+          items: { type: string, maxLength: 100 }
+        orderId:
+          oneOf:
+            - { $ref: '#/components/schemas/Id' }
+            - { type: 'null' }
+        customerId:
+          description: 匿名留言為 null。
+          oneOf:
+            - { $ref: '#/components/schemas/Id' }
+            - { type: 'null' }
+        createdAt: { type: string, format: date-time }
+        resolvedAt: { type: [string, 'null'], format: date-time }
+        resolvedBy: { type: [string, 'null'] }
+        staffNote: { type: [string, 'null'], maxLength: 2000 }
+
+    SupportTicketPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/SupportTicket' }
+        nextCursor:
+          description: null 代表沒有下一頁。**不回總筆數**（游標式分頁的慣例）。
+          type: [string, 'null']

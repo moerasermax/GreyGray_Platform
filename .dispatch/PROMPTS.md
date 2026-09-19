@@ -1,11 +1,219 @@
 # 啟動 prompt
 
-**目前沒有生效中的派工（2026-09-15）。** 第三十九波兩包都已驗收撤包：後端 **BE-53**（`a4138a4`：7-ELEVEN 選店票、門市凍結進訂單、模擬器假地圖，測試 340 → **382**、migration `0020`）＋ 前端 **FE-33**（`ff132af`：結帳頁電子地圖選門市、前後台訂單詳情顯示門市，測試 558 → **643**）。
-**這一波還沒有部署**；部署時正式機要套 migration `0019`、`0020`，並在 Storefront 放 `Logistics:ECPay:*` 物流設定（沒放＝超商取貨選門市回 503，不擋開機）。真瀏覽器畫面走查仍待補（Chrome 擴充未連線，這一次用 HTTP 走完 32 項）。
-★ 下一波派需要跑後端測試的包之前，先 `docker info`；子代理跑 audit 用 `C:\Program Files\Git\bin\bash.exe` 明確路徑。
-★ Leader 自己重跑後端測試：**直接跑 `tests\<專案>\bin\Debug\net10.0\<專案>.exe`**（`.dispatch/reports/README.md` 第 35 行）；`dotnet test` 在 .NET 10 會走 VSTest 全數報錯、`--project` 是未知參數——兩次都 exit 0 但一條測試都沒跑。
+**第四十波生效中（2026-09-19）——五包平行、跨兩棵樹、`allow` 零重疊。**
 
-以下保留派工時的標頭與兩份啟動 prompt 供參考。
+後端（`GreyGray_Platform`）：
+- **BE-54** 訂單收件人姓名手機：宅配從地址簿凍結快照、超商由客人填、後台看明文、outbox 補保存期限（`docs/54`）
+- **BE-55** 客服工單新模組 `CustomerService`、匿名留言端點、後台列表（`docs/55`）
+
+前端（`GreyGray_Platform-fe`）：
+- **FE-34** 結帳頁收件人欄位 ＋ 前後台訂單詳情顯示明文（`docs/36`）
+- **FE-35** 右下角客服小幫手 ＋ 後台「客服訊息」頁（`docs/37`）
+- **FE-36** 服務條款頁 ＋ FAQ 鑑賞期與客服文案（`docs/38`）
+
+使用者 2026-09-19 以 `/goal` 一次拍板三件事（收件人姓名手機要加且**後台全員看明文、不遮罩、不加解鎖按鈕**、
+客服做右下角引導式小視窗進後台工單、鑑賞期寫進服務條款）。
+計畫書 `docs/53-第四十波計畫書.md`（`8ab47fc`）。
+**契約（兩份 OpenAPI ＋ `docs/05`）與 ADR-039／ADR-040 由 Leader 寫好並提交——實作者不准改，前端也不要等後端交付。**
+
+盤點與覆驗：Fable 盤後端、Gemini 盤前端、Gemini 逐條覆驗計畫書（三條擋派工全部複驗後採納，
+其中「新模組要改五處 hardcode schema 清單」Leader 複驗後從三處擴充到五處）。
+⚠ **Codex 當天額度用完**（到 16:46 才恢復），這一波沒有 Codex 的覆驗與實作。
+測試基準：後端 **382**、前端 **643**。
+
+★ 派需要跑後端測試的包之前先 `docker info`；子代理跑 audit 用 `C:\Program Files\Git\bin\bash.exe` 明確路徑。
+★ Leader 自己重跑後端測試：**直接跑 `tests\<專案>\bin\Debug
+et10.0\<專案>.exe`**（`.dispatch/reports/README.md` 第 35 行）；
+`dotnet test` 在 .NET 10 會走 VSTest 全數報錯、`--project` 是未知參數——兩次都 exit 0 但一條測試都沒跑。
+★ **dev 環境現在有在跑**（Leader 2026-09-19 起的，Release ＋ 綠界模擬器）：
+後端 API 5000／5001、模擬器 5009、前台 5002、後台 5003（都是 production build）。
+後端子代理要重建 Release 得先停四個 pid（`D:\GreyGray\state\`），測試請用另一個 Configuration 避開 bin 鎖；
+⚠ 前端子代理**不要在 `pnpm start` 跑著時對同一個 app 跑 `next build`**（共用 `.next`，整站會變裸 500），要 build 先請 Leader 停掉那個 app。
+
+---
+
+## BE-54 的啟動 prompt
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
+GreyGray Platform 後端（.NET 10 modular monolith）。這一包動 Checkout／Ordering 的收件人快照、兩個 Host 的 M1aEndpoints.cs、Platform/Outbox 的保存期限、一支新 migration（0021）、tests。契約 Leader 已寫好，不准改。沒有前端。
+
+GG_PACKAGE=BE-54
+
+開工前務必先讀：
+  CLAUDE.md                                六條鐵則 ＋ 派工規則
+  docs/45-開發工作流與設計準則.md            §4 平行派工、§5 自驗＝必要不充分、§6 邊界測試
+  docs/00-decisions.md                     ADR-039（收件人資訊）、ADR-038（門市凍結五段，照抄它）
+  docs/54-後端第三十八波派工書.md            ★ 整份讀完
+  docs/api/openapi.storefront.yaml         CheckoutRequest／Order 的新欄位（不准改）
+  docs/api/openapi.admin.yaml              AdminOrder 的新欄位與 customerContactMasked 描述（不准改）
+  .dispatch/reports/README.md              ★ 自驗報告格式，以及「測試要分專案前景跑」
+
+★★ 兩條硬規則，機械檢查不是勸告：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/BE-54.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 只准寫 .dispatch/ACTIVE.md 裡 BE-54 的 allow 路徑。缺授權停下來回報，不要自己改 .dispatch/。
+
+★★ 這一包最容易做錯的六件事（派工書 §1 有完整說明）：
+  ① 宅配不要叫客人填——ValidateDeliveryAsync 宅配分支已經取到地址，在那裡抄一份
+  ② Cart.Complete 的 Completed* 那一段不要漏（漏了事件重放時快照變 null）
+  ③ 冪等指紋一定要加這兩個欄位；加了之後同鍵換收件人回 422 platform.idempotency-key-reused，這是要的，補測試
+  ④ 前台 OrderResponse 的收件人從訂單快照取，不准從即時回查的地址簿取
+  ⑤ outbox 清理不刪 IsDeadLettered 的
+  ⑥ ops/、GreyGray.slnx、架構測試是 BE-55 的，碰了會撞
+
+做完跑 ops	est.ps1 與 ops\check-openapi.ps1，結果貼進報告。
+```
+
+---
+
+## BE-55 的啟動 prompt
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform
+GreyGray Platform 後端（.NET 10 modular monolith）。這一包開一個新模組 CustomerService（Contracts/Core/Infra）、兩個 Host 各一支新的 SupportEndpoints.cs、一支新 migration（0022，含新 schema 與 login role）、三個 ops 腳本與兩個 E2E 測試的 schema 清單、架構測試、slnx。契約 Leader 已寫好，不准改。沒有前端。
+
+GG_PACKAGE=BE-55
+
+開工前務必先讀：
+  CLAUDE.md                                六條鐵則 ＋ 派工規則
+  docs/45-開發工作流與設計準則.md            §4 平行派工、§5 自驗＝必要不充分
+  docs/00-decisions.md                     ADR-040（客服工單）、ADR-017（支撐模組的界線）
+  docs/55-後端第三十八波派工書-第二包.md      ★ 整份讀完
+  docs/api/openapi.storefront.yaml         POST /v1/support/tickets、SupportTicket（不准改）
+  docs/api/openapi.admin.yaml              三條後台端點、SupportTicketPage（不准改）
+  .dispatch/reports/README.md              ★ 自驗報告格式
+
+★★ 兩條硬規則：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/BE-55.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 只准寫 .dispatch/ACTIVE.md 裡 BE-55 的 allow 路徑。缺授權停下來回報。
+
+★★ 這一包最容易做錯的六件事：
+  ① 端點寫在自己的新檔 SupportEndpoints.cs，不准改 M1aEndpoints.cs（BE-54 正在改，一定撞）
+  ② 五處 hardcode schema 清單（三個 ops 腳本 ＋ 兩個 E2E 測試）漏一個就 dev 起不來或 CI 紅；自己 grep 確認，不要照抄派工書的行號
+  ③ 防灌的 fail-open 要自己包 try-catch——IDistributedCache 斷線會拋例外，照抄就變成 Garnet 一掛連正常留言都 500
+  ④ 模組叫 CustomerService 不叫 Support；但端點路徑就是 /v1/support/tickets，這個不一致是刻意的
+  ⑤ 不要把它加進架構測試的 SupportModules 清單（那是「支撐模組」的意思）
+  ⑥ 前台沒有查詢工單的端點，不要自己補
+
+做完除了 ops	est.ps1，★ 一定要自己起一次 dev 環境證明沒把它弄壞：
+  ops\install-dev-environment.ps1
+  ops\start-dev-hosts.ps1 -Configuration Release -UseEcpaySimulator
+把 PASS 行貼進報告。起 Host 一律用新的 shell（#38：同一個 shell 裡起→停→再起，第二次環境變數會是空的）。
+```
+
+---
+
+---
+
+## FE-34 的啟動 prompt
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe
+GreyGray 前端（Next.js App Router，pnpm workspace）。這一包動結帳頁的收件人欄位、前台訂單詳情、後台訂單詳情、api-client 的型別。契約 Leader 已寫好（後端樹 docs/api），不准改。後端 BE-54 平行進行中，不要等它。
+
+GG_PACKAGE=FE-34
+
+開工前務必先讀：
+  CLAUDE.md                                前端四條鐵則 ＋ 派工規則
+  docs/45-開發工作流與設計準則.md            §4 平行派工、§5 自驗＝必要不充分
+  docs/36-前端第二十二波派工書-第一包.md      ★ 整份讀完
+  .dispatch/reports/README.md              ★ 自驗報告格式
+
+★★ 兩條硬規則：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/FE-34.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 只准寫 .dispatch/ACTIVE.md 裡 FE-34 的 allow 路徑。缺授權停下來回報。
+
+★★ 這一包最容易做錯的五件事：
+  ① 草稿還原——選門市會跳出站外再回來，新欄位一定要進 currentDraft() 與 loadCheckoutDraft 的還原流程，漏了客人回來欄位就空了。要有測試
+  ② 宅配模式不顯示也不送這兩個欄位（後端從地址簿抄）；只有超商取貨才顯示
+  ③ 手機要檢查 09 開頭十碼，比既有的 validateAddressForm 嚴（超商會擋，錯了客人拿不到貨）
+  ④ 後台拿掉 MaskedContactNote.tsx，不要做「點一下看明文」的按鈕——使用者明確不要那道摩擦
+  ⑤ app/layout.tsx、app/_components/、packages/ui/ 是 FE-35 的，app/(info)/ 是 FE-36 的，碰了會撞
+
+360px 與「頁面有沒有出口」是硬性檢查項。做完跑 test／typecheck／lint／build，結果貼進報告。
+```
+
+---
+
+## FE-35 的啟動 prompt
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe
+GreyGray 前端（Next.js App Router，pnpm workspace）。這一包做前台右下角的客服小幫手（引導式選單、不接 AI）與後台「客服訊息」頁。契約 Leader 已寫好（後端樹 docs/api），不准改。後端 BE-55 平行進行中，不要等它。
+
+GG_PACKAGE=FE-35
+
+開工前務必先讀：
+  CLAUDE.md                                前端四條鐵則 ＋ 派工規則
+  docs/45-開發工作流與設計準則.md            §4 平行派工、§5 自驗＝必要不充分
+  docs/37-前端第二十二波派工書-第二包.md      ★ 整份讀完
+  .dispatch/reports/README.md              ★ 自驗報告格式
+
+★★ 兩條硬規則：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/FE-35.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 只准寫 .dispatch/ACTIVE.md 裡 FE-35 的 allow 路徑。缺授權停下來回報。
+
+★★ 這一包最容易做錯的六件事：
+  ① 不接 AI、不接第三方客服套件（ADR-040 明確否決）
+  ② 選項與答案重用 app/(info)/_content/faq.ts 的 FAQ_GROUPS，不要另抄一份（FE-36 正在改那些字，抄了會走鐘）；那個檔你只能 import 不能改
+  ③ 不能擋住結帳頁的送出鈕與購物車的結帳鈕；360px 下關閉鈕一定要看得見、按鈕不要疊在分頁列上
+  ④ 不要改 packages/api-client/（FE-34 正在動），客服的型別與呼叫寫在自己的 _lib 裡
+  ⑤ 前台不做「查詢我的工單」頁——匿名工單沒有安全的查詢方式，這是刻意的
+  ⑥ packages/ui/ 是兩個 app 共用的，改動要向下相容；不確定就用包裝，不要改既有元件的 API
+
+做完跑 test／typecheck／lint／build，結果貼進報告。
+```
+
+---
+
+## FE-36 的啟動 prompt
+
+```
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe
+GreyGray 前端（Next.js App Router，pnpm workspace）。這一包新增服務條款頁並改 FAQ 的鑑賞期與客服文案。完全獨立，不依賴任何後端改動。
+
+GG_PACKAGE=FE-36
+
+開工前務必先讀：
+  CLAUDE.md                                前端四條鐵則 ＋ 派工規則
+  docs/00-decisions.md（後端樹）             ADR-025（鑑賞期七天、法律適用由老闆判斷）
+  docs/38-前端第二十二波派工書-第三包.md      ★ 整份讀完，條款全文在 §1.4，照抄
+  .dispatch/reports/README.md              ★ 自驗報告格式
+
+★★ 兩條硬規則：
+
+  ① 自驗報告寫成檔案：.dispatch/reports/FE-36.md
+     三個標頭一字不差：「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」
+
+  ② 只准寫 .dispatch/ACTIVE.md 裡 FE-36 的 allow 路徑（只有 app/(info)/）。缺授權停下來回報。
+
+★★ 這一包最容易做錯的五件事：
+  ① 條款第五、六節有兩個「老闆確認項」，原樣保留成看得見的提醒，不要自己刪、不要自己判斷法律適用
+  ② 三處「請聯絡客服」改成指向右下角小幫手，不要寫死 LINE／Email／電話（使用者還沒給，寫了就是假的）
+  ③ 不要改 FaqGroup／FaqItem 的型別或匯出名字——FE-35 要 import FAQ_GROUPS
+  ④ FAQ 只寫指路，法律細節一律放服務條款一處，不要兩邊各寫一份會走鐘
+  ⑤ 這一頁要有出口（曾經有三頁一個出口都沒有），360px 下長文不要橫向捲動
+
+做完跑 test／typecheck／lint／build，結果貼進報告。
+```
+
+---
+
+---
+
+以下保留上一波（第三十九波，已撤包）的標頭與啟動 prompt 供參考。
 
 **（派工時）第三十九波（2026-09-15）——兩包平行、跨兩棵樹、`allow` 零重疊。**
 後端 **BE-53**（7-ELEVEN 選店票、綠界回傳驗證、門市凍結進訂單、後台門市欄位、模擬器假地圖，`docs/52`）＋ 前端 **FE-33**（結帳頁電子地圖選門市、前後台訂單詳情顯示門市，前端樹 `docs/35`）。
