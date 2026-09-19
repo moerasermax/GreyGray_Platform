@@ -51,7 +51,19 @@ Leader 要明講。
 
 ---
 
-## 生效中：BE-56　修 #59 的根因——`GuidIdJsonConverterFactory.CanConvert` 把裸 `Guid?` 誤判成 `XxxId`
+<!--
+★ 2026-09-19 已通過整合驗收並提交，撤包。原文保留供追溯。
+
+修法：`CanConvert` 開頭一行排除 `Nullable<>`，交給 System.Text.Json 內建的 `NullableConverter`，
+它會把底層型別（`Guid` 或 `XxxId`）交回這個 factory 再判斷一次——所以 `XxxId?` 那條路完全不變。
+子代理照要求做了先紅後綠：新增的迴歸測試在修之前真的丟 `TypeLoadException`。
+
+Leader 驗：`Contracts.Tests` 16 → **18**、`Architecture.Tests` **28**，兩支 Release 執行檔自己重跑，
+數字與自驗報告相符。改動只有兩個檔加報告，零越界。
+
+⚠ 留下：BE-55 的 `TicketOrderId` wrapper 刻意沒拿掉（已在生產路徑上，拿掉是另一個決定）。
+
+## 生效中（已撤包）：BE-56　修 #59 的根因——`GuidIdJsonConverterFactory.CanConvert` 把裸 `Guid?` 誤判成 `XxxId`
 
 第四十波 BE-55 做客服工單時第一次在契約型別用到裸 `Guid?`，踩到一個一直存在但從沒被觸發的臭蟲：
 `Nullable<Guid>` 剛好滿足 `CanConvert` 的每一個條件（是 value type、有 `Value` 屬性且型別是 `Guid`、
@@ -75,6 +87,7 @@ allow: tests/GreyGray.Contracts.Tests/
 allow: .dispatch/reports/BE-56.md
 
 ---
+-->
 <!--
 ★ 2026-09-19 兩包已通過整合驗收並提交，撤包。原文保留供追溯。
 

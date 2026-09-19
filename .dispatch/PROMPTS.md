@@ -1,9 +1,32 @@
 # 啟動 prompt
 
-**生效中：BE-56（2026-09-19）——單檔小包，修 #59 的根因。**
+**目前沒有生效中的派工（2026-09-19）。**
 
-`GuidIdJsonConverterFactory.CanConvert` 把裸 `Guid?` 誤判成 `XxxId`，丟 `TypeLoadException`。
-第四十波 BE-55 用 wrapper 型別繞過了，這一包修根因。無契約變更、無 migration、不走外部覆驗鏈。
+第四十波五包（BE-54／BE-55／FE-34／FE-35／FE-36）與收尾的 **BE-56**（修 #59 根因）全部驗收撤包。
+後端 `5637409` → 撤包 `3dceb1f` → BE-56；前端 `8fb5f34`／`04a1510`／`e21930d` 等 → 撤包 `1b8e4db`。
+後端 13 個測試專案 Release 逐一前景跑完全部 exit 0；前端 654 → **768**。兩棵樹都已 push。
+
+★ 下一波開工前要知道的：
+
+- **#59 已修**（BE-56）：`GuidIdJsonConverterFactory.CanConvert` 現在會排除 `Nullable<>`，
+  契約型別可以放心用裸 `Guid?` 了。⚠ BE-55 的 `TicketOrderId` wrapper 還在，
+  要不要改回 `Guid?` 是另一個決定。
+- **`ops/` 的清單是人工維護的**：#58 補了 migration 清單三處，但「加東西要記得同步 hardcode 清單」
+  這個形狀還在（schema 清單、`verify-environment.ps1` 的期望值、E2E 測試裡的陣列）。
+- ⚠ 派需要跑後端測試的包之前先 `docker info`；子代理跑 audit 用
+  `C:\Program Files\Git\bin\bash.exe` 明確路徑。
+- ⚠ **長測試要在派工 prompt 裡明講「留在這一輪等它跑完，不要掛背景就結束」**——
+  第四十波兩個後端包都因此交付到一半就結束，要用 `session_id` 恢復。
+- ⚠ 子代理跑 Testcontainers 會讓 dev 的 `greygray-dev-postgres` 容器整個消失，
+  重建時第一次會因 crash recovery 超過 60 秒逾時而失敗，等 `pg_isready` 通了再跑一次。
+- ⚠ **kill 子代理不會殺掉它背景跑的測試行程**，孤兒會鎖住 bin 讓建置失敗（MSB3027／MSB3021）。
+- ⚠ Leader 自己重跑後端測試：**直接跑 `tests\<專案>\bin\<Configuration>\net10.0\<專案>.exe`**；
+  `dotnet test` 在 .NET 10 會走 VSTest 全數報錯、`--project` 是未知參數——兩次都 exit 0 但一條沒跑。
+- ⚠ **`ops\build.ps1` 會順便跑完整測試**，沒有跳過的參數；要建 artifact 就得等那 30～40 分鐘。
+
+以下保留 BE-56 與第四十波五包的啟動 prompt 供參考。
+
+---
 
 ## BE-56 的啟動 prompt
 
