@@ -226,6 +226,18 @@ if ($dataProtectionKeyIsNew) {
 $dataProtectionKey = (Get-Content -LiteralPath $dataProtectionKeyFile -Raw).Trim()
 Write-Host "✓ Identity 個資保護金鑰：$dataProtectionKeyFile（$(if ($dataProtectionKeyIsNew) { '本次產生' } else { '沿用既有' })）"
 
+# 真正要送進 NSSM AppEnvironmentExtra 的設定。通用 .NET Host 設定與
+# Storefront-only 設定分開，避免 Admin／Worker 取得不需要的物流資料。
+$secretConnectionStrings = [ordered]@{}
+foreach ($schema in $moduleSchemas) {
+    $secretConnectionStrings["ConnectionStrings__GreyGray_$schema"] =
+        "Host=$DatabaseHost;Port=$DatabasePort;Database=$DatabaseName;Username=greygray_$schema;Password=$modulePassword"
+}
+# Garnet 與三個 Host 同機（ADR-003 原生部署），不走 LAN。
+$secretConnectionStrings['ConnectionStrings__GreyGray_valkey'] = '127.0.0.1:6379'
+$secretConnectionStrings['Identity__DataProtectionKey'] = $dataProtectionKey
+$storefrontSecretSettings = [ordered]@{}
+
 <#
     綠界憑證（E3）：正式商店代號與金鑰是老闆要去辦的事，不是這支腳本能生的。
     憑證到手之後，把三個憑證值與兩個必填網址一起放進 $secretsDir\ecpay.json。
@@ -250,33 +262,58 @@ if (Test-Path -LiteralPath $ecpayFile -PathType Leaf) {
         }
     }
     Write-Host "✓ 綠界憑證：$ecpayFile 五個鍵齊全，將注入三個 .NET 服務"
-}
-else {
-    Write-Host "⚠ 找不到 $ecpayFile；Payment:ECPay:* 不注入，Payment 模組會照舊明確報缺設定（等 E3 憑證到位）。"
-}
 
-# 真正要送進 NSSM AppEnvironmentExtra 的那一包。鍵名用雙底線，跟 .NET 設定綁定
-# 慣例一致（ConnectionStrings__X → ConnectionStrings:X）。
-# ★ 正式機刻意不加 Include Error Detail=true：那個開發用旗標會讓 Npgsql 例外訊息
-#   帶出 SQL 與參數明細，正式機不該把這些吐出去。start-dev-hosts.ps1 有、這裡沒有，是刻意的差異。
-$secretConnectionStrings = [ordered]@{}
-foreach ($schema in $moduleSchemas) {
-    $secretConnectionStrings["ConnectionStrings__GreyGray_$schema"] =
-        "Host=$DatabaseHost;Port=$DatabasePort;Database=$DatabaseName;Username=greygray_$schema;Password=$modulePassword"
-}
-# Garnet 與三個 Host 同機（ADR-003 原生部署），不走 LAN。
-$secretConnectionStrings['ConnectionStrings__GreyGray_valkey'] = '127.0.0.1:6379'
-$secretConnectionStrings['Identity__DataProtectionKey'] = $dataProtectionKey
-if ($null -ne $ecpaySettings) {
     $secretConnectionStrings['Payment__ECPay__MerchantId'] = [string]$ecpaySettings.MerchantId
     $secretConnectionStrings['Payment__ECPay__HashKey'] = [string]$ecpaySettings.HashKey
     $secretConnectionStrings['Payment__ECPay__HashIV'] = [string]$ecpaySettings.HashIV
     $secretConnectionStrings['Payment__ECPay__CheckoutUrl'] = [string]$ecpaySettings.CheckoutUrl
     $secretConnectionStrings['Payment__ECPay__CreditDetailUrl'] = [string]$ecpaySettings.CreditDetailUrl
 }
+else {
+    Write-Host "⚠ 找不到 $ecpayFile；Payment:ECPay:* 不注入，Payment 模組會照舊明確報缺設定（等 E3 憑證到位）。"
+}
+$ecpaySettings = $null
+
+<#
+    綠界 C2C 物流選店設定。這份檔案與金流 ecpay.json 分開：目前選店地圖
+    只需商店代號、物流子類型與地圖端點，不使用物流 HashKey／HashIV。
+
+        { "MerchantId": "...", "LogisticsSubType": "UNIMARTC2C", "MapUrl": "https://logistics.ecpay.com.tw/Express/map" }
+
+    檔案不存在時維持既有行為：不注入，Storefront 選店 API 會回明確的 503。
+#>
+$logisticsFile = Join-Path $secretsDir 'logistics-ecpay.json'
+$logisticsSettings = $null
+if (Test-Path -LiteralPath $logisticsFile -PathType Leaf) {
+    $logisticsSettings = Get-Content -LiteralPath $logisticsFile -Raw | ConvertFrom-Json
+    foreach ($key in @('MerchantId', 'LogisticsSubType', 'MapUrl')) {
+        $present = @($logisticsSettings.PSObject.Properties.Name) -contains $key
+        if (-not $present -or [string]::IsNullOrWhiteSpace([string]$logisticsSettings.$key)) {
+            throw "$logisticsFile 缺少或空白的 $key；格式：{ ""MerchantId"": ""..."", ""LogisticsSubType"": ""UNIMARTC2C"", ""MapUrl"": ""https://logistics.ecpay.com.tw/Express/map"" }"
+        }
+    }
+    if ([string]$logisticsSettings.MerchantId -notmatch '^\d{7,10}$') {
+        throw "$logisticsFile 的 MerchantId 必須為 7–10 位數字。"
+    }
+    if ([string]$logisticsSettings.LogisticsSubType -cne 'UNIMARTC2C') {
+        throw "$logisticsFile 的 LogisticsSubType 必須是 UNIMARTC2C。"
+    }
+    if ([string]$logisticsSettings.MapUrl -cne 'https://logistics.ecpay.com.tw/Express/map') {
+        throw "$logisticsFile 的 MapUrl 必須是正式綠界選店網址 https://logistics.ecpay.com.tw/Express/map。"
+    }
+
+    $storefrontSecretSettings['Logistics__ECPay__MerchantId'] = [string]$logisticsSettings.MerchantId
+    $storefrontSecretSettings['Logistics__ECPay__LogisticsSubType'] = [string]$logisticsSettings.LogisticsSubType
+    $storefrontSecretSettings['Logistics__ECPay__MapUrl'] = [string]$logisticsSettings.MapUrl
+    Write-Host "✓ 綠界 C2C 物流設定：$logisticsFile 三個鍵齊全，將只注入 GreyGray-Storefront"
+}
+else {
+    Write-Host "⚠ 找不到 $logisticsFile；Logistics:ECPay:* 不注入，Storefront 選店 API 會回 503。"
+}
+$logisticsSettings = $null
+
 $modulePassword = $null
 $dataProtectionKey = $null
-$ecpaySettings = $null
 
 function Invoke-Nssm {
     param([string[]]$Arguments, [switch]$AllowNonZeroExit)
@@ -475,6 +512,9 @@ try {
                 if ($definition.Name -eq 'GreyGray-Storefront') {
                     $environmentArguments += "Storefront__PublicOrigin=$StorefrontPublicOrigin"
                     $environmentArguments += "Storefront__PublicApiOrigin=$StorefrontPublicApiOrigin"
+                    foreach ($secretKey in $storefrontSecretSettings.Keys) {
+                        $environmentArguments += "$secretKey=$($storefrontSecretSettings[$secretKey])"
+                    }
                 }
             }
             if ($definition.Kind -eq 'DotNet' -and [int]$definition.Port -gt 0) {
@@ -492,6 +532,7 @@ try {
         # 連線字串與金鑰的明文只需要活到 NSSM 設定寫完為止；之後 script 還有
         # 健康檢查、排程註冊等好幾十行，不要讓它們一路活到最後。
         $secretConnectionStrings = $null
+        $storefrontSecretSettings = $null
         $environmentArguments = $null
     }
 

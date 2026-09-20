@@ -276,7 +276,7 @@ if ($deployErrors.Count -gt 0) { throw "deploy.ps1 解析失敗：$($deployError
 # BE-49：執行 deploy 的原始驗鍵與注入片段；ValidateOnly 在讀 ecpay.json 前就返回，驗不到這條路。
 # 只取頂層 $ecpayFile 到機密清除前的 statements，避免啟動部署、NSSM、排程或連線資料庫。
 $ecpayStart = @($deployAst.EndBlock.Statements | Where-Object { $_.Extent.Text -match '^\$ecpayFile\s*=' })
-$ecpayEnd = @($deployAst.EndBlock.Statements | Where-Object { $_.Extent.Text -match '^\$modulePassword\s*=\s*\$null' })
+$ecpayEnd = @($deployAst.EndBlock.Statements | Where-Object { $_.Extent.Text -match '^\$logisticsFile\s*=' })
 if ($ecpayStart.Count -ne 1 -or $ecpayEnd.Count -ne 1) { throw '找不到唯一的 ECPay 投遞片段，拒絕空跑。' }
 $ecpayStatements = @($deployAst.EndBlock.Statements | Where-Object {
     $_.Extent.StartOffset -ge $ecpayStart[0].Extent.StartOffset -and
@@ -294,6 +294,8 @@ function Invoke-EcpayDeploymentFixture {
     $DatabaseName = 'selftest'
     $modulePassword = 'fixture-only'
     $dataProtectionKey = 'fixture-only'
+    $secretConnectionStrings = [ordered]@{}
+    $storefrontSecretSettings = [ordered]@{}
     # 5.1 的 6> 會依 console 寬度替訊息換行；直接取 InformationRecord 的文字再存檔。
     $messages = @(. $ecpayBlock 6>&1)
     $messages | ForEach-Object { $_.ToString() } |
@@ -342,6 +344,99 @@ finally {
     $allowedEcpayPrefix = Join-Path ([IO.Path]::GetFullPath([IO.Path]::GetTempPath())) 'greygray-ecpay-selftest-'
     if (-not $resolvedEcpayRoot.StartsWith($allowedEcpayPrefix, [StringComparison]::OrdinalIgnoreCase)) { throw '拒絕清除非 ECPay 測試暫存路徑。' }
     if (Test-Path -LiteralPath $resolvedEcpayRoot) { Remove-Item -LiteralPath $resolvedEcpayRoot -Recurse -Force }
+}
+
+# 綠界 C2C 物流設定：只取 logistics-ecpay.json 驗證與 Storefront 注入片段。
+$logisticsStart = @($deployAst.EndBlock.Statements | Where-Object { $_.Extent.Text -match '^\$logisticsFile\s*=' })
+$logisticsEnd = @($deployAst.EndBlock.Statements | Where-Object { $_.Extent.Text -match '^\$modulePassword\s*=\s*\$null' })
+if ($logisticsStart.Count -ne 1 -or $logisticsEnd.Count -ne 1) { throw '找不到唯一的 ECPay 物流投遞片段，拒絕空跑。' }
+$logisticsStatements = @($deployAst.EndBlock.Statements | Where-Object {
+    $_.Extent.StartOffset -ge $logisticsStart[0].Extent.StartOffset -and
+    $_.Extent.EndOffset -le $logisticsEnd[0].Extent.StartOffset
+})
+if ($logisticsStatements.Count -eq 0) { throw 'ECPay 物流投遞片段是空的，拒絕空跑。' }
+$logisticsBlock = [scriptblock]::Create(($logisticsStatements | ForEach-Object { $_.Extent.Text }) -join "`n")
+$logisticsTestRoot = Join-Path ([IO.Path]::GetTempPath()) ('greygray-logistics-selftest-' + [guid]::NewGuid().ToString('N'))
+
+function Invoke-LogisticsDeploymentFixture {
+    param([string]$SecretsDir)
+    $storefrontSecretSettings = [ordered]@{}
+    $messages = @(. $logisticsBlock 6>&1)
+    $messages | ForEach-Object { $_.ToString() } |
+        Set-Content -LiteralPath (Join-Path $SecretsDir 'logistics-output.log') -Encoding UTF8
+    return $storefrontSecretSettings
+}
+
+try {
+    New-Item -ItemType Directory -Path $logisticsTestRoot | Out-Null
+    $logisticsTestFile = Join-Path $logisticsTestRoot 'logistics-ecpay.json'
+    $logisticsFixture = [ordered]@{
+        MerchantId = '1234567'
+        LogisticsSubType = 'UNIMARTC2C'
+        MapUrl = 'https://logistics.ecpay.com.tw/Express/map'
+    }
+    $logisticsFixture | ConvertTo-Json | Set-Content -LiteralPath $logisticsTestFile -Encoding UTF8
+    $logisticsInjected = Invoke-LogisticsDeploymentFixture -SecretsDir $logisticsTestRoot
+    foreach ($key in $logisticsFixture.Keys) {
+        if ($logisticsInjected["Logistics__ECPay__$key"] -cne $logisticsFixture[$key]) {
+            throw "ECPay 物流 $key 未原樣注入 Storefront 設定。"
+        }
+    }
+    if (@($logisticsInjected.Keys | Where-Object { $_ -eq 'Logistics__ECPay__AllowNonEcpayEndpoints' }).Count -ne 0) {
+        throw '正式物流設定不得注入 AllowNonEcpayEndpoints。'
+    }
+
+    foreach ($key in $logisticsFixture.Keys) {
+        foreach ($badValue in @($null, '', '   ')) {
+            $invalid = [ordered]@{}
+            foreach ($fixtureKey in $logisticsFixture.Keys) { $invalid[$fixtureKey] = $logisticsFixture[$fixtureKey] }
+            if ($null -eq $badValue) { $invalid.Remove($key) } else { $invalid[$key] = $badValue }
+            $invalid | ConvertTo-Json | Set-Content -LiteralPath $logisticsTestFile -Encoding UTF8
+            $failure = $null
+            try { Invoke-LogisticsDeploymentFixture -SecretsDir $logisticsTestRoot | Out-Null }
+            catch { $failure = $_.Exception.Message }
+            if ($null -eq $failure -or -not $failure.Contains("缺少或空白的 $key")) {
+                throw "ECPay 物流 $key 缺少或空白未被明確拒絕。"
+            }
+        }
+    }
+
+    $invalidCases = @(
+        @{ Name = 'MerchantId'; Value = 'ABC1234'; Error = 'MerchantId 必須為 7–10 位數字' },
+        @{ Name = 'LogisticsSubType'; Value = 'UNIMART'; Error = 'LogisticsSubType 必須是 UNIMARTC2C' },
+        @{ Name = 'MapUrl'; Value = 'https://example.com/Express/map'; Error = 'MapUrl 必須是正式綠界選店網址' }
+    )
+    foreach ($case in $invalidCases) {
+        $invalid = [ordered]@{}
+        foreach ($fixtureKey in $logisticsFixture.Keys) { $invalid[$fixtureKey] = $logisticsFixture[$fixtureKey] }
+        $invalid[$case.Name] = $case.Value
+        $invalid | ConvertTo-Json | Set-Content -LiteralPath $logisticsTestFile -Encoding UTF8
+        $failure = $null
+        try { Invoke-LogisticsDeploymentFixture -SecretsDir $logisticsTestRoot | Out-Null }
+        catch { $failure = $_.Exception.Message }
+        if ($null -eq $failure -or -not $failure.Contains($case.Error)) {
+            throw "ECPay 物流 $($case.Name) 錯誤值未被明確拒絕。"
+        }
+    }
+
+    Remove-Item -LiteralPath $logisticsTestFile
+    $withoutLogisticsFile = Invoke-LogisticsDeploymentFixture -SecretsDir $logisticsTestRoot
+    if (@($withoutLogisticsFile.Keys | Where-Object { $_ -like 'Logistics__ECPay__*' }).Count -ne 0) {
+        throw '缺 logistics-ecpay.json 時不應注入 ECPay 物流設定。'
+    }
+    $expectedLogisticsMessage = "⚠ 找不到 $logisticsTestFile；Logistics:ECPay:* 不注入，Storefront 選店 API 會回 503。"
+    if ((Get-Content -LiteralPath (Join-Path $logisticsTestRoot 'logistics-output.log') -Raw -Encoding UTF8).Trim() -cne $expectedLogisticsMessage) {
+        throw '缺 logistics-ecpay.json 的訊息不正確。'
+    }
+    Write-Host 'PASS ECPay C2C 物流投遞：三鍵僅注入 Storefront；9 案缺少／空白、3 案格式錯誤均拒絕；缺檔不注入'
+}
+finally {
+    $resolvedLogisticsRoot = [IO.Path]::GetFullPath($logisticsTestRoot)
+    $allowedLogisticsPrefix = Join-Path ([IO.Path]::GetFullPath([IO.Path]::GetTempPath())) 'greygray-logistics-selftest-'
+    if (-not $resolvedLogisticsRoot.StartsWith($allowedLogisticsPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw '拒絕清除非 ECPay 物流測試暫存路徑。'
+    }
+    if (Test-Path -LiteralPath $resolvedLogisticsRoot) { Remove-Item -LiteralPath $resolvedLogisticsRoot -Recurse -Force }
 }
 
 $closureCalls = @($deployAst.FindAll({
