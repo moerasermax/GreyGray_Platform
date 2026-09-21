@@ -1,5 +1,12 @@
 # 啟動 prompt
 
+## FE-43 資訊頁閱讀精修（2026-09-21）
+
+```text
+GG_PACKAGE=FE-43
+你是唯一 Fable medium 實作者，不開子代理。讀 ACTIVE 與 docs/FE-43-資訊頁閱讀精修派工書.md，僅改 about/guide/faq 三頁與報告。容器上限用既有 container-max 的三分之二，正文用 text-base/leading-normal，整理閱讀層級；保留文案、原生details/summary、ol/li順序、metadata與可見導覽。先列目標、TEMP GUID備份，保留所有dirty。前景跑storefront typecheck/tests，最多兩輪。不得改內容來源、共用元件或token、閘門、其他包，不build、啟停服務、安裝、提交部署。報告三個精確標題、實際輸出與未驗。工具20/讀15/搜8/改5/測修2輪，達限回報。stop gate如提示既有dirty，只回報不還原，最後仍重述本包交付證據。
+```
+
 ## FE-42 會員頁視覺精修（2026-09-21）
 
 ```text

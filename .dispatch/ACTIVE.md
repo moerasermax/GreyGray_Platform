@@ -17,6 +17,17 @@ allow: <相對 repo 根的路徑前綴，一行一個>
 
 ---
 
+## 生效中：FE-43 資訊頁閱讀精修
+
+package: FE-43
+doc: docs/FE-43-資訊頁閱讀精修派工書.md
+allow: frontend/apps/storefront/app/(info)/about/page.tsx
+allow: frontend/apps/storefront/app/(info)/guide/page.tsx
+allow: frontend/apps/storefront/app/(info)/faq/page.tsx
+allow: .dispatch/reports/FE-43.md
+
+---
+
 ## 生效中：FE-42 會員頁視覺精修
 
 package: FE-42
