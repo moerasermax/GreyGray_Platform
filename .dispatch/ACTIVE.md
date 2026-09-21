@@ -17,6 +17,18 @@ allow: <相對 repo 根的路徑前綴，一行一個>
 
 ---
 
+## 生效中：FE-40 商品詳情與購物車視覺精修
+
+package: FE-40
+doc: docs/42-商品詳情與購物車視覺精修派工書.md
+allow: frontend/apps/storefront/app/(shop)/products/[productId]/page.tsx
+allow: frontend/apps/storefront/app/(checkout)/cart/page.tsx
+allow: frontend/apps/storefront/app/(checkout)/_components/CartLineRow.tsx
+allow: frontend/packages/ui/src/components/BottomActionBar.tsx
+allow: .dispatch/reports/FE-40.md
+
+---
+
 ## 開工：你只開一個 terminal
 
 **Leader 模型。** 使用者開一個 terminal 當 Leader，Leader 用 ai-cli fan out 子代理，
