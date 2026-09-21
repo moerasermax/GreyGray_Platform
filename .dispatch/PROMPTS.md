@@ -1,5 +1,12 @@
 # 啟動 prompt
 
+## FE-42 會員頁視覺精修（2026-09-21）
+
+```text
+GG_PACKAGE=FE-42
+你是唯一實作者，fable medium，不開子代理。讀 ACTIVE 與 docs/44-會員頁視覺精修派工書.md。僅改 register、me、orders 三檔與報告。修正已停用舊平台的註冊提醒；先核對 Card、PriceDisplay 與全域樣式，再改善長會員資料、訂單識別與金額排版，以及整卡鍵盤焦點。既有暖白／深灰／粉紅 token，保留全部 API、登入登出、safeNext、冪等鍵、篩選分頁與 loading/error/empty。列目標後備份到 TEMP GUID 目錄。前景跑 storefront typecheck 與 tests，最多兩輪。不得提交、部署、build、啟停服務、安裝、還原 dirty、修改閘門或其他包。報告使用三個精確標題，區分讀碼／實測／未驗。工具20／讀15／搜尋8／修改5／測修2輪，達限回報。既有 dirty 不是你的修改，不要因 stop gate 提示而還原它們。
+```
+
 ## FE-41 開團頁視覺精修（2026-09-21）
 
 ```text
