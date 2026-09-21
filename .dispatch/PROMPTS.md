@@ -1,5 +1,12 @@
 # 啟動 prompt
 
+## FE-41 開團頁視覺精修（2026-09-21）
+
+```text
+GG_PACKAGE=FE-41
+你是唯一實作者，fable medium，不開子代理。讀 ACTIVE 與 docs/43-開團頁視覺精修派工書.md。僅改三個 allow 原始碼與報告；開團卡片缺圖改為目的地排版，詳情桌面双欄、手機合理橫幅，品項列手機控制分行、長字不溢出。保留 SSR/metadata、狀態/截團判斷、數量/冪等鍵/API 與可見導航。列目標後備份至 TEMP GUID 目錄。前景執行 ui/storefront/admin typecheck、storefront tests，最多兩輪。不得 build、啟停服務、安裝、提交、部署、還原 dirty 或修改其他包。報告用三個精確標題，區分讀碼/實测/未驗。工具20/讀15/搜8/改5/測修2輪，達限回報。
+```
+
 ## FE-40 商品詳情與購物車視覺精修（2026-09-21）
 
 ```text

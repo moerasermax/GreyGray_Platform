@@ -17,6 +17,17 @@ allow: <相對 repo 根的路徑前綴，一行一個>
 
 ---
 
+## 生效中：FE-41 開團頁視覺精修（待自測與提交後派出）
+
+package: FE-41
+doc: docs/43-開團頁視覺精修派工書.md
+allow: frontend/apps/storefront/app/(shop)/_components/CampaignCard.tsx
+allow: frontend/apps/storefront/app/(shop)/campaigns/[campaignId]/page.tsx
+allow: frontend/apps/storefront/app/(shop)/campaigns/[campaignId]/_components/CampaignOfferRow.tsx
+allow: .dispatch/reports/FE-41.md
+
+---
+
 ## 生效中：FE-40 商品詳情與購物車視覺精修
 
 package: FE-40
