@@ -1,5 +1,12 @@
 # 啟動 prompt
 
+## FE-40 商品詳情與購物車視覺精修（2026-09-21）
+
+```text
+GG_PACKAGE=FE-40
+你是唯一實作者，fable medium，不開子代理。讀 ACTIVE 與 docs/42-商品詳情與購物車視覺精修派工書.md，僅實作四個 allow 原始碼及報告。桌面商品詳情兩欄、手機合理媒體與資訊層級；購物車長文字/金額不擠壓控制；共用 BottomActionBar 保留 safe-area 與行為，加入置中有限寬度內層。先列目標並備份至 TEMP（GUID 命名）。保留 API/SSR/金額/數量/交易與 PageTopBar 導航。ui/storefront/admin typecheck、storefront tests，前景最多兩輪。不要啟停服務、build、安裝、提交、部署或還原既有 dirty。報告用 README 三個精確標題。工具20/讀15/搜8/改5/測修2輪；達限回報，不得自行擴包。
+```
+
 **目前沒有生效中的派工（2026-09-19）。**
 
 第四十波五包（BE-54／BE-55／FE-34／FE-35／FE-36）與收尾的 **BE-56**（修 #59 根因）全部驗收撤包。
