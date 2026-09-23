@@ -16,7 +16,13 @@ export interface ProductCardProps {
   name: string;
   /** 1–2 句描述。 */
   description?: string | undefined;
-  price: Money;
+  /**
+   * 未定價商品傳 `null`／不傳：價格區改顯示 `unavailableLabel`，**不補假價格**。
+   * 媒體區、標題與卡片節奏跟有定價的卡完全相同。
+   */
+  price?: Money | null | undefined;
+  /** 沒有 `price` 時顯示在價格區的說明（例如「目前無法購買，點擊查看詳情」）。 */
+  unavailableLabel?: string | undefined;
   compareAtPrice?: Money | undefined;
   /**
    * 單位價格顯示字串，**直接用後端給的 `Product.unitPriceLabel`**（契約 §Product）。
@@ -27,6 +33,11 @@ export interface ProductCardProps {
   badges?: Array<{ variant: BadgeVariant; label?: string | undefined }> | undefined;
   favorited?: boolean;
   onToggleFavorite?: (() => void) | undefined;
+  /**
+   * 呼叫端自己組的收藏鈕，放在跟內建愛心同一個位置（媒體區右上）。
+   * 給了就不畫內建的那一顆；導航攔截由呼叫端自己負責。
+   */
+  favoriteSlot?: React.ReactNode | undefined;
   onClick?: (() => void) | undefined;
   className?: string;
 }
@@ -69,7 +80,7 @@ export function suppressCardNavigation(event: SuppressibleCardEvent): void {
 /**
  * 純展示元件，不處理路由——要包 `next/link` 或 `onClick` 導頁是頁面自己的事。
  * 圖片走 `next/image` ＋ 1:1 裁切（鐵則 7）；`imageUrl` 是 `null` 時不發圖片請求，
- * 直接畫底色佔位。
+ * 畫中性的「商品圖片待補」佔位版面（不捏造商品照片）。
  */
 export function ProductCard({
   imageSrc,
@@ -77,11 +88,13 @@ export function ProductCard({
   name,
   description,
   price,
+  unavailableLabel,
   compareAtPrice,
   unitPriceLabel,
   badges,
   favorited = false,
   onToggleFavorite,
+  favoriteSlot,
   onClick,
   className,
 }: ProductCardProps) {
@@ -110,7 +123,8 @@ export function ProductCard({
         className,
       )}
     >
-      <div className="relative aspect-square w-full overflow-hidden bg-surface-sunken">
+      <div className="relative aspect-square w-full overflow-hidden border-b border-border-soft bg-surface-sunken">
+        {!imageSrc && <ImagePendingPlaceholder />}
         {/* 卡片在手機兩欄、平板三欄、桌機四欄，讓瀏覽器挑尺寸而不是一律載大圖 */}
         <Thumbnail
           src={imageSrc}
@@ -126,7 +140,13 @@ export function ProductCard({
           </div>
         )}
 
-        {onToggleFavorite && (
+        {favoriteSlot && (
+          <span className="absolute right-[var(--gg-space-2)] top-[var(--gg-space-2)]">
+            {favoriteSlot}
+          </span>
+        )}
+
+        {!favoriteSlot && onToggleFavorite && (
           <span
             className="absolute right-[var(--gg-space-2)] top-[var(--gg-space-2)]"
             onClick={suppressCardNavigation}
@@ -140,8 +160,8 @@ export function ProductCard({
         )}
       </div>
 
-      <div className="flex flex-1 flex-col gap-[var(--gg-space-1)] p-[var(--gg-space-4)]">
-        <h3 className="line-clamp-1 font-display text-[length:var(--gg-text-base)] font-bold text-fg">
+      <div className="flex flex-1 flex-col gap-[var(--gg-space-1)] p-[var(--gg-space-3)] sm:p-[var(--gg-space-4)]">
+        <h3 className="line-clamp-2 break-words font-display text-[length:var(--gg-text-sm)] font-bold leading-snug text-fg sm:text-[length:var(--gg-text-base)]">
           {name}
         </h3>
         {description && (
@@ -152,8 +172,14 @@ export function ProductCard({
 
         <div className="mt-auto flex items-end justify-between pt-[var(--gg-space-2)]">
           <div className="flex flex-col gap-[var(--gg-space-1)]">
-            <PriceDisplay amount={price} compareAtAmount={compareAtPrice} />
-            {unitPriceLabel && (
+            {price ? (
+              <PriceDisplay amount={price} compareAtAmount={compareAtPrice} />
+            ) : (
+              unavailableLabel && (
+                <p className="text-[length:var(--gg-text-xs)] text-fg-muted">{unavailableLabel}</p>
+              )
+            )}
+            {price && unitPriceLabel && (
               <span className="text-[length:var(--gg-text-xs)] text-fg-muted">
                 {unitPriceLabel}
               </span>
@@ -162,5 +188,31 @@ export function ProductCard({
         </div>
       </div>
     </Root>
+  );
+}
+
+/**
+ * 沒有商品圖時的佔位版面：通用的「圖片」線條圖示 ＋ 一句說明。
+ * 刻意中性——不放任何看起來像商品照片的東西，顏色只用 token（`currentColor`）。
+ */
+function ImagePendingPlaceholder() {
+  return (
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-[var(--gg-space-2)] p-[var(--gg-space-3)] text-center text-fg-muted">
+      <svg
+        aria-hidden={true}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="h-[var(--gg-space-6)] w-[var(--gg-space-6)]"
+      >
+        <rect x="3" y="4" width="18" height="16" rx="3" />
+        <circle cx="9" cy="10" r="1.5" />
+        <path d="M21 16l-4.5-4.5L8 20" />
+      </svg>
+      <span className="text-[length:var(--gg-text-xs)]">商品圖片待補</span>
+    </div>
   );
 }

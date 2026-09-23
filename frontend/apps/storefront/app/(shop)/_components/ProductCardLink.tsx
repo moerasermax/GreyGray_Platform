@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Card, FavoriteHeart, ProductCard, Toast, suppressCardNavigation } from '@greygray/ui';
+import { FavoriteHeart, ProductCard, Toast, suppressCardNavigation } from '@greygray/ui';
 import type { components } from '@greygray/api-client/storefront';
 import { loginHrefForCurrentPage } from '../../(account)/_lib/authRedirect';
 import { useFavoriteToggle } from '../../_lib/favorites';
@@ -36,27 +36,25 @@ export function ProductCardLink({ product }: { product: S['ProductListItem'] }) 
     />
   ) : (
       // 契約允許未定價商品出現在最愛清單；這個分支也必須能取消收藏。
-      <Card className="relative flex h-full flex-col gap-[var(--gg-space-2)]">
-        <span
-          className="absolute right-[var(--gg-space-2)] top-[var(--gg-space-2)]"
-          onClick={suppressCardNavigation}
-        >
-          <FavoriteHeart
-            pressed={favorite.favorited}
-            onToggle={() => void favorite.toggle()}
-            aria-label={favorite.favorited ? `取消收藏 ${product.name}` : `加入收藏 ${product.name}`}
-          />
-        </span>
-        <p className="line-clamp-1 pr-[var(--gg-space-8)] font-display font-bold text-fg">{product.name}</p>
-        {product.shortDescription && (
-          <p className="line-clamp-2 text-[length:var(--gg-text-sm)] text-fg-muted">
-            {product.shortDescription}
-          </p>
-        )}
-        <p className="mt-auto text-[length:var(--gg-text-xs)] text-fg-muted">
-          目前無法購買，點擊查看詳情
-        </p>
-      </Card>
+      // 版面交給同一個 ProductCard（媒體區、兩行標題、卡片節奏一致），不傳價格、不補假價格；
+      // 愛心仍在這個分支自己組，沿用同一套導航攔截。
+      <ProductCard
+        imageSrc={product.imageUrl}
+        imageAlt={product.name}
+        name={product.name}
+        description={product.shortDescription ?? undefined}
+        unavailableLabel="目前無法購買，點擊查看詳情"
+        favoriteSlot={
+          <span className="block" onClick={suppressCardNavigation}>
+            <FavoriteHeart
+              pressed={favorite.favorited}
+              onToggle={() => void favorite.toggle()}
+              aria-label={favorite.favorited ? `取消收藏 ${product.name}` : `加入收藏 ${product.name}`}
+            />
+          </span>
+        }
+        className="h-full"
+      />
   );
 
   return (

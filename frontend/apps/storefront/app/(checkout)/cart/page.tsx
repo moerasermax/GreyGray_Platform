@@ -155,13 +155,14 @@ function CartPageContent() {
       </Card>
 
       {cart.hasMixedModes && (
-        <p className="text-[length:var(--gg-text-sm)] text-fg-muted">
+        <p className="rounded-card bg-surface-sunken p-[var(--gg-space-3)] text-[length:var(--gg-text-sm)] leading-[var(--gg-leading-normal)] text-fg-muted">
           這張購物車同時有現貨與預購商品，結帳時要選出貨方式（現貨先出或等回國一起出）。
         </p>
       )}
 
       <BottomActionBar>
-        <div className="flex flex-1 flex-col">
+        {/* 寬螢幕上金額靠到按鈕旁邊（`sm:ml-auto`），不再各據列的一端；手機維持金額撐滿、按鈕靠右。 */}
+        <div className="flex min-w-0 flex-1 flex-col break-words sm:ml-auto sm:flex-none sm:items-end sm:text-right">
           {cart.quote ? (
             <PriceDisplay amount={cart.quote.grandTotal} size="lg" />
           ) : (
@@ -174,7 +175,7 @@ function CartPageContent() {
             前往結帳
           </Button>
         ) : (
-          <Link href="/checkout">
+          <Link href="/checkout" className="shrink-0">
             <Button variant="primary">前往結帳</Button>
           </Link>
         )}

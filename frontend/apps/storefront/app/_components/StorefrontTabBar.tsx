@@ -66,11 +66,17 @@ export function StorefrontTabBar() {
     <nav
       aria-label="主要導覽"
       className={
-        'fixed inset-x-0 bottom-0 z-[var(--gg-z-bottom-bar)] flex items-stretch ' +
+        'fixed inset-x-0 bottom-0 z-[var(--gg-z-bottom-bar)] flex items-stretch justify-center ' +
         'border-t border-border-soft bg-surface shadow-bottom-bar'
       }
       style={{ minHeight: TAB_BAR_HEIGHT, paddingBottom: TAB_BAR_SAFE_AREA_PADDING }}
     >
+      {/*
+       * 底色與高度留在外層 <nav>（滿版、算式不動）；項目放進這個有限寬度的容器。
+       * 手機：容器滿寬、四等分。桌面（md 以上）：集中在中間、圖文橫排，
+       * 不再是全螢幕寬度上四個孤立的圖示。
+       */}
+      <div className="flex w-full items-stretch md:max-w-xl md:gap-[var(--gg-space-2)] md:px-[var(--gg-space-4)]">
       {STOREFRONT_TABS.map((tab) => {
         const isActive = tab.href === active;
         const isCart = tab.icon === 'cart';
@@ -85,7 +91,9 @@ export function StorefrontTabBar() {
               'flex flex-1 flex-col items-center justify-center gap-[var(--gg-space-1)] ' +
               'py-[var(--gg-space-2)] text-[length:var(--gg-text-xs)] font-bold no-underline ' +
               'transition-colors duration-[var(--gg-duration-base)] ease-out-soft ' +
-              (isActive ? 'text-primary-text' : 'text-fg-muted')
+              'rounded-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ' +
+              'md:my-[var(--gg-space-2)] md:flex-row md:gap-[var(--gg-space-3)] md:text-[length:var(--gg-text-sm)] ' +
+              (isActive ? 'text-primary-text md:bg-surface-sunken' : 'text-fg-muted hover:text-fg')
             }
           >
             <span className="relative flex text-[length:var(--gg-text-xl)] leading-none">
@@ -113,6 +121,7 @@ export function StorefrontTabBar() {
           </Link>
         );
       })}
+      </div>
     </nav>
   );
 }

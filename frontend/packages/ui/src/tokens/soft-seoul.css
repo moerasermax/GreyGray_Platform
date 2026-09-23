@@ -1,9 +1,14 @@
 /*
- * Soft Seoul —— GreyGray 前台的設計 token（ADR-009）
+ * Soft Seoul —— GreyGray 前台的設計 token（ADR-009；2026-09-21 FE-38 視覺演進）
  *
  * 這個檔案是**前台所有顏色、圓角、間距、動態的唯一來源**。
  * 元件裡不准出現任何 raw hex、任何 px 圓角——一律用這裡的變數。
  * 平行開發時這條特別重要：四個人各自挑一個粉紅色，出來就是四個產品。
+ *
+ * ── FE-38：不再整頁粉底粉字 ──
+ * 原本背景、文字、邊框、陰影全部是粉色，缺圖的地方就變成一整片粉塊，層級讀不出來。
+ * 現在是**暖白背景、深灰正文、低彩度邊框**，粉紅只留給互動與品牌識別
+ * （按鈕、連結、選中態、品牌標記）。圓角與 mobile first 不變。
  *
  * ── 對比度都實際量過（WCAG 2.1 相對亮度公式），不是憑感覺 ──
  * 工具建議的 #EC4899 拿來當白字按鈕底色只有 3.53:1，**過不了 AA 的 4.5:1**。
@@ -11,12 +16,17 @@
  *
  *   --gg-pink-decor   #EC4899  只給漸層、裝飾、圖示描邊。上面不可以放小字。
  *   --gg-primary      #DB2777  互動元件底色（按鈕、選中態），白字 4.60:1 ✓
- *   --gg-primary-text #BE185D  淺底上的粉紅文字與連結，6.04:1 ✓
+ *   --gg-primary-text #BE185D  淺底上的粉紅文字與連結，在 --gg-bg 上 5.70:1 ✓
  *
- * 內文 #831843 在 #FDF2F8 上是 8.84:1，次要文字 #8A5A72 是 5.08:1，兩個都過。
+ * 2026-09-21 重量（node 依 WCAG 公式計算，最低的那一格才算數）：
+ *   內文     #26221F：--gg-bg 14.89 · surface 15.78 · surface-sunken 14.02 · primary-subtle 14.25 · banner 最深處 13.27
+ *   次要文字 #6B625C：--gg-bg  5.62 · surface  5.95 · surface-sunken  5.29 · primary-subtle  5.38 · banner 最深處  5.01
+ *   粉紅文字 #BE185D：--gg-bg  5.70 · surface  6.04 · surface-sunken  5.37 · primary-subtle  5.45 · banner 最深處  5.08
+ * 「banner 最深處」是 --gg-gradient-banner 三個色標裡最深的 #FBE6EF。
  *
  * ── 全站沒有一個直角（ADR-009）──
  * 最小圓角是 --gg-radius-sm（10px）。要用 0 請先說明理由。
+ * FE-38 把大圓角收斂一階（md 16→14、lg 24→20、xl 32→24），比較俐落但仍然是圓的。
  */
 
 :root {
@@ -31,16 +41,16 @@
   --gg-accent: #8b5cf6;
   --gg-accent-text: #6d28d9;
 
-  /* ── 表面 ─────────────────────────────────────────────────────────── */
-  --gg-bg: #fdf2f8;
+  /* ── 表面。暖白與暖灰，不帶粉 ─────────────────────────────────────── */
+  --gg-bg: #faf8f6;
   --gg-surface: #ffffff;
-  --gg-surface-sunken: #fce7f3;
-  --gg-border: #fbcfe8;
-  --gg-border-strong: #f9a8d4;
+  --gg-surface-sunken: #f4f1ee;
+  --gg-border: #e8e2dd;
+  --gg-border-strong: #d2c9c2;
 
-  /* ── 文字 ─────────────────────────────────────────────────────────── */
-  --gg-fg: #831843;
-  --gg-fg-muted: #8a5a72;
+  /* ── 文字。深暖灰，不是粉紅也不是純黑 ─────────────────────────────── */
+  --gg-fg: #26221f;
+  --gg-fg-muted: #6b625c;
   --gg-fg-on-dark: #ffffff;
 
   /* ── 狀態 ─────────────────────────────────────────────────────────── */
@@ -52,13 +62,14 @@
   /*
    * 狀態色的淺底，**一定要不透明**。
    * 用 `bg-warning/10` 這種半透明疊色的話，實際對比度取決於它疊在什麼上面——
-   * Badge 疊到商品圖的粉底時實測只剩 3.42:1，過不了 AA。不透明才算得準。
+   * Badge 疊到商品圖的有色底時實測只剩 3.42:1，過不了 AA。不透明才算得準。
    */
   --gg-success-subtle: #f0fdf4;
   --gg-warning-subtle: #fffbeb;
   --gg-danger-subtle: #fff1f2;
   --gg-info-subtle: #f5f3ff;
-  --gg-primary-subtle: #fce7f3;
+  /* 粉紅淺底只給「選中／品牌提示」這種小面積用，不要拿來鋪整塊版面。 */
+  --gg-primary-subtle: #fdf0f6;
 
   /*
    * 琥珀色放在淺底上當文字時要再深一階。
@@ -67,15 +78,19 @@
    */
   --gg-warning-text: #92400e;
 
-  /* ── 柔粉漸層 banner（ADR-009 的切版重點）────────────────────────── */
-  --gg-gradient-banner: linear-gradient(135deg, #fbcfe8 0%, #f9a8d4 45%, #ddd6fe 100%);
+  /*
+   * ── 主視覺底色 ──
+   * 以前是高彩度的粉→紫漸層，上面只能放深粉字。現在是接近暖白的極淺粉霧，
+   * 粉紅只在角落透出來；上面放的是 --gg-fg／--gg-fg-muted（最深色標上 13.27／5.01）。
+   */
+  --gg-gradient-banner: linear-gradient(135deg, #fffafc 0%, #fbe6ef 58%, #f1ecf9 100%);
   --gg-gradient-cta: linear-gradient(135deg, #db2777 0%, #8b5cf6 100%);
 
   /* ── 圓角。全站沒有直角 ───────────────────────────────────────────── */
   --gg-radius-sm: 10px;
-  --gg-radius-md: 16px;
-  --gg-radius-lg: 24px;
-  --gg-radius-xl: 32px;
+  --gg-radius-md: 14px;
+  --gg-radius-lg: 20px;
+  --gg-radius-xl: 24px;
   --gg-radius-pill: 9999px;
 
   /* BottomSheet 展開後的最大高度。留 20vh 讓客人看得到底下還有頁面，知道可以關掉。 */
@@ -91,10 +106,10 @@
   --gg-space-7: 48px;
   --gg-space-8: 64px;
 
-  /* ── 陰影。柔、無硬邊，不要 1px 黑線那種 ────────────────────────── */
-  --gg-shadow-card: 0 1px 2px rgba(131, 24, 67, 0.04), 0 8px 24px rgba(131, 24, 67, 0.06);
-  --gg-shadow-raised: 0 2px 4px rgba(131, 24, 67, 0.06), 0 16px 40px rgba(131, 24, 67, 0.1);
-  --gg-shadow-bottom-bar: 0 -4px 24px rgba(131, 24, 67, 0.08);
+  /* ── 陰影。中性暖灰、比以前輕；層級主要靠邊框與留白，不靠陰影 ────── */
+  --gg-shadow-card: 0 1px 2px rgba(38, 34, 31, 0.04), 0 4px 16px rgba(38, 34, 31, 0.05);
+  --gg-shadow-raised: 0 2px 4px rgba(38, 34, 31, 0.05), 0 12px 32px rgba(38, 34, 31, 0.08);
+  --gg-shadow-bottom-bar: 0 -2px 16px rgba(38, 34, 31, 0.06);
 
   /* ── 字體 ─────────────────────────────────────────────────────────── */
   /*
@@ -118,6 +133,9 @@
   --gg-leading-tight: 1.25;
   --gg-leading-normal: 1.6;  /* 中文行高要比拉丁字寬鬆一點才不擠 */
 
+  /* 小標（eyebrow）的字距。只給全大寫拉丁字與短中文標籤用，正文不要加。 */
+  --gg-tracking-eyebrow: 0.14em;
+
   /* ── 動態。150–300ms，超過就開始像卡頓 ─────────────────────────── */
   --gg-duration-fast: 150ms;
   --gg-duration-base: 220ms;
@@ -134,6 +152,14 @@
   /* 頁面自己的頂部列（返回／頁名／購物車）。比底部列矮：它是導覽不是操作區，
      裡面只有一顆 44×44 的圖示按鈕與一行標題，56 + 上下各 6px 剛好包得住。 */
   --gg-top-bar-height: 56px;
+  /*
+   * 首頁主視覺（FE-38）。以前活動圖在手機只有 64px、桌面 128px 的一顆圓，撐不起版面。
+   * media-h 是手機上封面區的高度（堆疊在文字下方）；min-h-lg 是桌面左右並排時整塊的最小高度。
+   */
+  --gg-hero-media-h: 200px;
+  --gg-hero-min-h-lg: 360px;
+  /* 主視覺文字欄的最大行寬，約 22 個中文字，長標題在 1440 也不會拉成一條線。 */
+  --gg-hero-text-max: 34rem;
   --gg-z-bottom-bar: 40;
   --gg-z-header: 50;
   --gg-z-modal: 100;
@@ -141,7 +167,7 @@
 
 /*
  * 前台**刻意不做深色模式**。
- * 理由：Soft Seoul 的整套調性建立在淺粉底上，硬翻深色會變成完全不同的產品，
+ * 理由：Soft Seoul 的整套調性建立在淺色暖白底上，硬翻深色會變成完全不同的產品，
  * 而工時要多一倍。後台有深色模式（見 admin.css），因為那是每天盯八小時的畫面。
  * 這裡明確宣告，免得有人以為是漏掉的。
  */
