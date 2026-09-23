@@ -1,5 +1,19 @@
 # 啟動 prompt
 
+## FE-46 結帳頁版面與付款錯誤出口（2026-09-24）
+
+```text
+GG_PACKAGE=FE-46
+你是唯一 Fable medium 實作者，不開子代理。讀 ACTIVE 與 docs/48-結帳頁版面與付款出口派工書.md，僅改 checkout/page.tsx、新增 _components/CheckoutOrderSummary.tsx、payment/[orderId]/page.tsx 與報告。新增純展示「訂購明細」（品項、件數、小計，詢價後運費與總額），只用已載入的 cart/quote、不新增 API、不自己算金額；lg 以上兩欄右欄 sticky，手機明細在表單前、超過 3 件用原生 details 折疊；付款頁只在錯誤狀態加「查看我的訂單」「回首頁」。BottomActionBar、詢價序號、冪等鍵、草稿還原、送出流程、地址/門市/收件人驗證、TAB_BAR_RULES 全部不動。先列目標、TEMP GUID 備份，保留所有 dirty（FE-37/FE-47 的檔別碰）。前景跑 ui/storefront/admin typecheck 與 storefront tests，最多兩輪。不 build、啟停服務、安裝、提交部署、改閘門。報告三個精確標題、實際輸出與未驗。工具20/讀15/搜8/改4/測修2輪，達限回報。stop gate 如提示既有 dirty，只回報不還原，最後重述本包交付證據。
+```
+
+## FE-47 會員區寬度一致與首頁桌面標題（2026-09-24）
+
+```text
+GG_PACKAGE=FE-47
+你是唯一 Fable medium 實作者，不開子代理。讀 ACTIVE 與 docs/49-會員區寬度一致與首頁標題派工書.md，僅改 me/page.tsx、wallet/page.tsx、(shop)/page.tsx 與報告。/me 與 /wallet 所有分支的 main 改成與 /orders 相同的 640px；首頁 lg 以上補一個只給輔助科技的 h1（lg 以下不渲染），任何寬度可讀 h1 恰好一個。不動 API、登入判斷、登出、safeNext、儲值金邏輯與文案、HomeSearchHeader、SiteHeader、主視覺。先列目標、TEMP GUID 備份，保留所有 dirty（FE-37/FE-46 的檔別碰）。前景跑 storefront typecheck 與 tests，最多兩輪。不 build、啟停服務、安裝、提交部署、改閘門。報告三個精確標題、實際輸出與未驗。工具20/讀15/搜8/改4/測修2輪，達限回報。stop gate 如提示既有 dirty，只回報不還原，最後重述本包交付證據。
+```
+
 ## FE-44 全站桌面頁首（2026-09-24）
 
 ```text
