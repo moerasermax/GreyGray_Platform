@@ -17,37 +17,25 @@ allow: <相對 repo 根的路徑前綴，一行一個>
 
 ---
 
-## 生效中：FE-44 全站桌面頁首
+## 生效中：FE-46 結帳頁版面與付款錯誤出口
 
-package: FE-44
-doc: docs/46-全站桌面頁首派工書.md
-allow: frontend/apps/storefront/app/_components/SiteHeader.tsx
-allow: frontend/apps/storefront/app/layout.tsx
-allow: frontend/apps/storefront/app/_components/StorefrontTabBar.tsx
-allow: frontend/apps/storefront/app/_components/PageTopBar.tsx
-allow: frontend/apps/storefront/app/(shop)/_components/HomeSearchHeader.tsx
-allow: .dispatch/reports/FE-44.md
+package: FE-46
+doc: docs/48-結帳頁版面與付款出口派工書.md
+allow: frontend/apps/storefront/app/(checkout)/checkout/page.tsx
+allow: frontend/apps/storefront/app/(checkout)/_components/CheckoutOrderSummary.tsx
+allow: frontend/apps/storefront/app/(checkout)/payment/[orderId]/page.tsx
+allow: .dispatch/reports/FE-46.md
 
 ---
 
-## 生效中：FE-45 服務條款與登入頁精修
+## 生效中：FE-47 會員區寬度一致與首頁桌面標題
 
-package: FE-45
-doc: docs/47-條款與登入頁精修派工書.md
-allow: frontend/apps/storefront/app/(info)/terms/page.tsx
-allow: frontend/apps/storefront/app/(account)/login/page.tsx
-allow: .dispatch/reports/FE-45.md
-
----
-
-## 生效中：FE-42 會員頁視覺精修
-
-package: FE-42
-doc: docs/44-會員頁視覺精修派工書.md
-allow: frontend/apps/storefront/app/(account)/register/page.tsx
+package: FE-47
+doc: docs/49-會員區寬度一致與首頁標題派工書.md
 allow: frontend/apps/storefront/app/(account)/me/page.tsx
-allow: frontend/apps/storefront/app/(account)/orders/page.tsx
-allow: .dispatch/reports/FE-42.md
+allow: frontend/apps/storefront/app/(account)/wallet/page.tsx
+allow: frontend/apps/storefront/app/(shop)/page.tsx
+allow: .dispatch/reports/FE-47.md
 
 ---
 
@@ -99,6 +87,45 @@ Leader 要明講。
 包名拼錯一律擋下（fail-closed）。
 
 ---
+
+<!--
+★ 2026-09-24 撤包：FE-42／44／45 已由 Leader 以 Playwright 真畫面驗收並整合提交 9870cd2。原文保留供追溯。
+
+## 已撤包：FE-44 全站桌面頁首
+
+(撤包) package: FE-44
+(撤包) doc: docs/46-全站桌面頁首派工書.md
+(撤包) allow: frontend/apps/storefront/app/_components/SiteHeader.tsx
+(撤包) allow: frontend/apps/storefront/app/layout.tsx
+(撤包) allow: frontend/apps/storefront/app/_components/StorefrontTabBar.tsx
+(撤包) allow: frontend/apps/storefront/app/_components/PageTopBar.tsx
+(撤包) allow: frontend/apps/storefront/app/(shop)/_components/HomeSearchHeader.tsx
+(撤包) allow: .dispatch/reports/FE-44.md
+
+---
+
+## 已撤包：FE-45 服務條款與登入頁精修
+
+(撤包) package: FE-45
+(撤包) doc: docs/47-條款與登入頁精修派工書.md
+(撤包) allow: frontend/apps/storefront/app/(info)/terms/page.tsx
+(撤包) allow: frontend/apps/storefront/app/(account)/login/page.tsx
+(撤包) allow: .dispatch/reports/FE-45.md
+
+---
+
+## 已撤包：FE-42 會員頁視覺精修
+
+(撤包) package: FE-42
+(撤包) doc: docs/44-會員頁視覺精修派工書.md
+(撤包) allow: frontend/apps/storefront/app/(account)/register/page.tsx
+(撤包) allow: frontend/apps/storefront/app/(account)/me/page.tsx
+(撤包) allow: frontend/apps/storefront/app/(account)/orders/page.tsx
+(撤包) allow: .dispatch/reports/FE-42.md
+
+---
+
+-->
 
 <!--
 ★ 2026-09-24 撤包：FE-38／39／40／41／43 已由 Leader 重跑 typecheck 與 584 測試並整合提交 34f253b。原文保留供追溯。
