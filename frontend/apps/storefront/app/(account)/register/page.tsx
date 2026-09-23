@@ -83,7 +83,7 @@ function RegisterPageContent() {
         <h1 className="font-display text-[length:var(--gg-text-3xl)] font-extrabold text-fg">建立帳號</h1>
         <p className="text-[length:var(--gg-text-sm)] text-fg-muted">
           舊平台的會員與訂單不會自動搬過來，請重新註冊一次。
-          <strong className="text-fg">舊訂單請到原平台查詢，查詢期限請見公告。</strong>
+          <strong className="text-fg">舊平台已停用，無法再查詢舊訂單。</strong>
         </p>
       </header>
 

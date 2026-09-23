@@ -20,7 +20,8 @@ const NAV_LINKS = [
  * 首頁標頭：品牌 ＋ 搜尋 ＋ 瀏覽入口 ＋ 會員（ADR-009 首頁切版第一段；FE-38 改版）。
  * 送出搜尋就導去商品列表頁——這個行為沒有變。
  *
- * 手機：品牌與會員一列、搜尋一列、入口一列；桌面（lg）收成一列。
+ * 手機：品牌與會員一列、搜尋一列、入口一列。桌面（lg 以上）整個隱藏，
+ * 由全站 `SiteHeader`（FE-44）負責，免得首頁出現雙頁首；原本的 lg 排版樣式保留不動。
  * 用 `order` 排而不是渲染兩份，免得同一個連結在 DOM 裡出現兩次、Tab 要走兩遍。
  */
 export function HomeSearchHeader() {
@@ -33,7 +34,7 @@ export function HomeSearchHeader() {
   }
 
   return (
-    <header className="flex flex-wrap items-center gap-x-[var(--gg-space-5)] gap-y-[var(--gg-space-3)] border-b border-border-soft pb-[var(--gg-space-4)]">
+    <header className="flex flex-wrap items-center gap-x-[var(--gg-space-5)] gap-y-[var(--gg-space-3)] border-b border-border-soft pb-[var(--gg-space-4)] lg:hidden">
       {/* 首頁的 <h1> 就是品牌名；主視覺與各區塊從 <h2> 開始。 */}
       <h1 className="order-1 shrink-0">
         <Link

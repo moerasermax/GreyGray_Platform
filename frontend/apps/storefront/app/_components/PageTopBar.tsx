@@ -60,6 +60,9 @@ export function PageTopBar({ title }: PageTopBarProps) {
   return (
     <TopBar
       title={title}
+      // lg 以上由全站 SiteHeader（FE-44）提供出口；走 TopBar 自己的 className，
+      // 不外包一層 div——那會讓 sticky 在手機失效。
+      className="lg:hidden"
       left={
         <Link
           href={backHref}

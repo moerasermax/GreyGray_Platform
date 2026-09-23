@@ -66,7 +66,8 @@ export function StorefrontTabBar() {
     <nav
       aria-label="主要導覽"
       className={
-        'fixed inset-x-0 bottom-0 z-[var(--gg-z-bottom-bar)] flex items-stretch justify-center ' +
+        // lg 以上由 SiteHeader（FE-44）接手導覽，分頁列只留給手機；高度算式與 body 留白刻意不動。
+        'fixed inset-x-0 bottom-0 z-[var(--gg-z-bottom-bar)] flex items-stretch justify-center lg:hidden ' +
         'border-t border-border-soft bg-surface shadow-bottom-bar'
       }
       style={{ minHeight: TAB_BAR_HEIGHT, paddingBottom: TAB_BAR_SAFE_AREA_PADDING }}

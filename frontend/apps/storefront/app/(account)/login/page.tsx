@@ -20,7 +20,7 @@ const RATE_LIMITED_MESSAGE = '嘗試次數過多，請稍後再試。';
 const UNEXPECTED_MESSAGE = '登入時發生問題，請稍後再試。';
 
 const LOGIN_SKELETON = (
-  <main className="mx-auto flex max-w-[420px] flex-col gap-[var(--gg-space-6)] px-[var(--gg-space-4)] py-[var(--gg-space-8)]">
+  <main className="mx-auto flex max-w-[480px] flex-col gap-[var(--gg-space-6)] px-[var(--gg-space-4)] py-[var(--gg-space-8)]">
     <Skeleton variant="block" className="h-[320px] w-full" />
   </main>
 );
@@ -80,7 +80,7 @@ function LoginPageContent() {
   }
 
   return (
-    <main className="mx-auto flex max-w-[420px] flex-col gap-[var(--gg-space-6)] px-[var(--gg-space-4)] py-[var(--gg-space-8)]">
+    <main className="mx-auto flex max-w-[480px] flex-col gap-[var(--gg-space-6)] px-[var(--gg-space-4)] py-[var(--gg-space-8)]">
       <header className="flex flex-col gap-[var(--gg-space-2)]">
         <h1 className="font-display text-[length:var(--gg-text-3xl)] font-extrabold text-fg">登入</h1>
         <p className="text-[length:var(--gg-text-sm)] text-fg-muted">用手機號碼與密碼登入 GreyGray。</p>

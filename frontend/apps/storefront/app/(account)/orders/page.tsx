@@ -133,10 +133,16 @@ export default function OrdersPage() {
       {!loading && !error && items.length > 0 && (
         <div className="flex flex-col gap-[var(--gg-space-3)]">
           {items.map((order) => (
-            <Link key={order.id} href={`/orders/${order.id}`}>
-              <Card className="flex items-center justify-between gap-[var(--gg-space-4)] transition-colors duration-[var(--gg-duration-fast)] ease-out-soft hover:bg-surface-sunken">
-                <div className="flex flex-col gap-[var(--gg-space-1)]">
-                  <p className="font-bold text-fg">{order.orderNumber}</p>
+            /*
+             * 手機：識別資訊與金額上下排，金額自己一行靠右——兩邊都拿得到整個寬度，
+             * 不會互擠。`sm` 以上才並排，這時左欄 `min-w-0` 可收縮換行、金額 `shrink-0` 保持完整。
+             * （只加 `shrink-0` 不改手機排法的話，大金額會把自己推出卡片。）
+             * `block rounded-card` 的理由同 `me/page.tsx`：焦點框要跟著整張卡的圓角。
+             */
+            <Link key={order.id} href={`/orders/${order.id}`} className="block rounded-card">
+              <Card className="flex flex-col gap-[var(--gg-space-2)] transition-colors duration-[var(--gg-duration-fast)] ease-out-soft hover:bg-surface-sunken sm:flex-row sm:items-center sm:justify-between sm:gap-[var(--gg-space-4)]">
+                <div className="flex min-w-0 flex-col gap-[var(--gg-space-1)]">
+                  <p className="font-bold text-fg [overflow-wrap:anywhere]">{order.orderNumber}</p>
                   <p className="text-[length:var(--gg-text-sm)] text-fg-muted">
                     {orderStatusLabel(order.status)}・{order.lineCount} 項商品
                   </p>
@@ -144,7 +150,7 @@ export default function OrdersPage() {
                     {new Date(order.placedAt).toLocaleString('zh-TW')}
                   </p>
                 </div>
-                <PriceDisplay amount={order.grandTotal} />
+                <PriceDisplay amount={order.grandTotal} className="max-w-full self-end sm:shrink-0 sm:self-auto" />
               </Card>
             </Link>
           ))}

@@ -117,21 +117,42 @@ export default function MePage() {
 
       {!loading && !error && me && (
         <>
-          <Card className="flex flex-col gap-[var(--gg-space-1)]">
-            <p className="font-display text-[length:var(--gg-text-xl)] font-bold text-fg">
+          {/*
+           * 名稱與 email 是使用者自己填的，長度沒有上限可以假設。
+           * `Card` 與全域樣式都沒有換行保護（一長串沒有空白的 email 會直接撐出卡片），
+           * 所以在這裡就地 `overflow-wrap:anywhere`——完整顯示、必要時換行，不截斷。
+           */}
+          <Card className="flex flex-col gap-[var(--gg-space-3)]">
+            <p className="font-display text-[length:var(--gg-text-xl)] font-bold text-fg [overflow-wrap:anywhere]">
               {me.displayName}
             </p>
-            {me.phoneNumberMasked && (
-              <p className="text-[length:var(--gg-text-sm)] text-fg-muted">{me.phoneNumberMasked}</p>
-            )}
-            {me.email && (
-              <p className="text-[length:var(--gg-text-sm)] text-fg-muted">{me.email}</p>
+            {(me.phoneNumberMasked || me.email) && (
+              <dl className="flex flex-col gap-[var(--gg-space-2)] border-t border-border-soft pt-[var(--gg-space-3)]">
+                {me.phoneNumberMasked && (
+                  <div className="flex flex-col">
+                    <dt className="text-[length:var(--gg-text-xs)] text-fg-muted">手機</dt>
+                    <dd className="text-[length:var(--gg-text-sm)] text-fg">{me.phoneNumberMasked}</dd>
+                  </div>
+                )}
+                {me.email && (
+                  <div className="flex min-w-0 flex-col">
+                    <dt className="text-[length:var(--gg-text-xs)] text-fg-muted">Email</dt>
+                    <dd className="text-[length:var(--gg-text-sm)] text-fg [overflow-wrap:anywhere]">
+                      {me.email}
+                    </dd>
+                  </div>
+                )}
+              </dl>
             )}
           </Card>
 
           <nav aria-label="帳號功能" className="flex flex-col gap-[var(--gg-space-3)]">
             {ACCOUNT_LINKS.map((link) => (
-              <Link key={link.href} href={link.href}>
+              /*
+               * `block rounded-card`：`<a>` 預設是 inline，包著 block 的卡片時焦點框會碎掉；
+               * 全域 `:focus-visible` 又把圓角設成 `radius-sm`，跟 16px 的卡片對不上。
+               */
+              <Link key={link.href} href={link.href} className="block rounded-card">
                 <Card className="flex flex-col gap-[var(--gg-space-1)] transition-colors duration-[var(--gg-duration-fast)] ease-out-soft hover:bg-surface-sunken">
                   <p className="font-bold text-fg">{link.label}</p>
                   <p className="text-[length:var(--gg-text-sm)] text-fg-muted">{link.description}</p>

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Nunito, Noto_Sans_TC } from 'next/font/google';
 import './globals.css';
 import { MockBootstrap } from './_mock/MockBootstrap';
+import { SiteHeader } from './_components/SiteHeader';
 import { StorefrontTabBar } from './_components/StorefrontTabBar';
 import { SupportWidget } from './_components/SupportWidget';
 
@@ -39,7 +40,8 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   // 不要設 maximumScale 或 userScalable: false——那會擋掉視力不佳的人放大。
-  themeColor: '#fdf2f8',
+  // FE-38 定案的暖白 `--gg-bg`。這是 metadata 字串，引用不了 CSS 變數，只能寫死同一個值。
+  themeColor: '#faf8f6',
 };
 
 export default function RootLayout({
@@ -49,6 +51,12 @@ export default function RootLayout({
     <html lang="zh-Hant-TW" className={`${nunito.variable} ${notoSansTC.variable}`}>
       <body>
         <MockBootstrap />
+        {/*
+          全站桌面頁首（FE-44）。只在 lg 以上出現、sticky 佔位，所以不需要補頂部留白；
+          手機由它自己的 `hidden lg:block` 藏起來，手機的殼仍是下面的分頁列與各頁的 PageTopBar。
+          跟分頁列一樣掛在 <body> 直屬層——前台沒有共同的中介 layout。
+        */}
+        <SiteHeader />
         {children}
         {/*
           底部分頁列（#30）。掛在 `{children}` 之後、`<body>` 直屬層，
