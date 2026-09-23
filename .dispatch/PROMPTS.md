@@ -1,5 +1,19 @@
 # 啟動 prompt
 
+## FE-44 全站桌面頁首（2026-09-24）
+
+```text
+GG_PACKAGE=FE-44
+你是唯一 Fable medium 實作者，不開子代理。讀 ACTIVE 與 docs/46-全站桌面頁首派工書.md，僅改五個 allow 原始碼（含新增 SiteHeader.tsx）與報告。lg 以上新增全站 SiteHeader（品牌、SearchBar、全部商品/開團/購買流程/常見問題、購物車徽章、會員，aria-current 選中），/payment/:orderId 不顯示（用既有 tabBarRuleFor）；lg 以上隱藏底部分頁列、PageTopBar（用 TopBar 的 className，不外包 div）、首頁 HomeSearchHeader；手機完全不變；themeColor 改 #faf8f6。不得改 TAB_BAR_HEIGHT、globals.css、既有測試期望、SupportWidget、BottomActionBar、API 或交易。先列目標、TEMP GUID 備份，保留所有 dirty（FE-37/FE-42/FE-45 的檔別碰）。前景跑 ui/storefront/admin typecheck 與 storefront tests，最多兩輪。不 build、啟停服務、安裝、提交部署、改閘門。報告三個精確標題、實際輸出與未驗。工具20/讀15/搜8/改6/測修2輪，達限回報。stop gate 如提示既有 dirty，只回報不還原，最後重述本包交付證據。
+```
+
+## FE-45 服務條款與登入頁精修（2026-09-24）
+
+```text
+GG_PACKAGE=FE-45
+你是唯一 Fable medium 實作者，不開子代理。讀 ACTIVE 與 docs/47-條款與登入頁精修派工書.md，僅改 terms/page.tsx、login/page.tsx 與報告。terms 套 FE-43 閱讀版型（container-max 三分之二、text-base/leading-normal、層級間距），內容與老闆確認項原樣保留、不碰 _content；login 寬度與層級對齊註冊頁（480px），safeNext/registerHref/錯誤訊息/送出流程/Suspense 完全不動。先列目標、TEMP GUID 備份，保留所有 dirty（FE-37/FE-42/FE-44 的檔別碰）。前景跑 storefront typecheck 與 tests，最多兩輪。不 build、啟停服務、安裝、提交部署、改閘門、抽共用元件。報告三個精確標題、實際輸出與未驗。工具20/讀15/搜8/改3/測修2輪，達限回報。stop gate 如提示既有 dirty，只回報不還原，最後重述本包交付證據。
+```
+
 ## FE-43 資訊頁閱讀精修（2026-09-21）
 
 ```text
@@ -27,6 +41,23 @@ GG_PACKAGE=FE-41
 GG_PACKAGE=FE-40
 你是唯一實作者，fable medium，不開子代理。讀 ACTIVE 與 docs/42-商品詳情與購物車視覺精修派工書.md，僅實作四個 allow 原始碼及報告。桌面商品詳情兩欄、手機合理媒體與資訊層級；購物車長文字/金額不擠壓控制；共用 BottomActionBar 保留 safe-area 與行為，加入置中有限寬度內層。先列目標並備份至 TEMP（GUID 命名）。保留 API/SSR/金額/數量/交易與 PageTopBar 導航。ui/storefront/admin typecheck、storefront tests，前景最多兩輪。不要啟停服務、build、安裝、提交、部署或還原既有 dirty。報告用 README 三個精確標題。工具20/讀15/搜8/改5/測修2輪；達限回報，不得自行擴包。
 ```
+
+## FE-39 商品卡與導覽視覺精修（2026-09-21）
+
+```text
+GG_PACKAGE=FE-39
+你是唯一實作者，fable medium，不開子代理。先讀 ACTIVE 與 docs/41-商品卡與導覽視覺精修派工書.md，實作四個 allow 原始碼並寫報告。改善缺圖商品、未定價卡一致性、兩行標題、分類缺圖與桌面導覽。備份至工作區外，使用既有 token，保留收藏/導頁/件數/底部安全留白。不動其他 dirty 檔，不安裝、不 build、不啟停服務、不提交部署。前景跑 ui/storefront typecheck 與 storefront tests，逐條報實際輸出與未驗，工具20/讀15/搜8/改5/測修2輪。
+```
+
+
+## FE-38 前台視覺精修（2026-09-21，待閘門自測後派出）
+
+```text
+GG_PACKAGE=FE-38
+你是唯一實作者，使用 fable + medium，不開子代理。先讀 .dispatch/ACTIVE.md 與 docs/40-前台視覺精修派工書.md，依其四個原始碼路徑實作俐落專業的前台視覺。用暖白、深灰與克制的粉紅識別，做出完整品牌標頭、響應式活動主視覺與清楚的商品區層級，保留導航和搜尋行為。不得只交建議。修改前列路徑並備份至工作區外的臨時目錄。不得改 GreyGray_PM、閘門、FE-37、API、契約或交易行為，不提交、不部署、不安裝、不啟停服務。前景完成自驗並寫 .dispatch/reports/FE-38.md，列實際輸出與未驗項。至多5個修改檔案、15個讀檔、8輪搜尋、20次工具、2輪測試修正；達限留下具體進度。原有未提交變更是基線，stop gate 如因既有變更阻擋要回報，不得還原別人的檔案。
+```
+
+以下為歷史派工資訊；生效狀態以 ACTIVE.md 為準。
 
 **目前沒有生效中的派工（2026-09-19）。**
 
@@ -273,6 +304,27 @@ GG_PACKAGE=FE-35
   ⑥ packages/ui/ 是兩個 app 共用的，改動要向下相容；不確定就用包裝，不要改既有元件的 API
 
 做完跑 test／typecheck／lint／build，結果貼進報告。
+```
+
+---
+
+## FE-37 的啟動 prompt
+
+```
+GG_PACKAGE=FE-37
+
+專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe
+你是 GreyGray 前端實作者。只完成 FE-37：定稿所有商品七日鑑賞期並新增隱私權政策。
+
+開工前完整讀：CLAUDE.md、docs/39-前端第二十三波派工書.md、.dispatch/reports/README.md，以及五個 allow 目標的既有內容。
+
+硬規則：
+- 只准改 ACTIVE.md 的 FE-37 allow；使用 apply_patch，保留既有使用者變更，不做 commit/stash/reset/clean/checkout。
+- 先更新測試並記錄它對舊實作的預期紅燈，再完成實作轉綠。
+- 條款不得保留 owner note 或合理例外清單；本站所有商品都適用七日鑑賞期，解除權不得以完整包裝／發票作成立條件。
+- 隱私政策只寫程式與派工書查證過的資料流，不捏造公司法定資料、Email、電話、固定保存期限、刪除 SLA 或絕對安全保證。
+- 執行 storefront test/typecheck/lint 與 dispatch audit；build 由 Leader 跑。
+- 寫 `.dispatch/reports/FE-37.md`，三個必要標頭逐字正確。你不可以自行宣告通過，交付完就停。
 ```
 
 ---

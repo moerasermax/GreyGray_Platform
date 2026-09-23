@@ -17,14 +17,26 @@ allow: <相對 repo 根的路徑前綴，一行一個>
 
 ---
 
-## 生效中：FE-43 資訊頁閱讀精修
+## 生效中：FE-44 全站桌面頁首
 
-package: FE-43
-doc: docs/FE-43-資訊頁閱讀精修派工書.md
-allow: frontend/apps/storefront/app/(info)/about/page.tsx
-allow: frontend/apps/storefront/app/(info)/guide/page.tsx
-allow: frontend/apps/storefront/app/(info)/faq/page.tsx
-allow: .dispatch/reports/FE-43.md
+package: FE-44
+doc: docs/46-全站桌面頁首派工書.md
+allow: frontend/apps/storefront/app/_components/SiteHeader.tsx
+allow: frontend/apps/storefront/app/layout.tsx
+allow: frontend/apps/storefront/app/_components/StorefrontTabBar.tsx
+allow: frontend/apps/storefront/app/_components/PageTopBar.tsx
+allow: frontend/apps/storefront/app/(shop)/_components/HomeSearchHeader.tsx
+allow: .dispatch/reports/FE-44.md
+
+---
+
+## 生效中：FE-45 服務條款與登入頁精修
+
+package: FE-45
+doc: docs/47-條款與登入頁精修派工書.md
+allow: frontend/apps/storefront/app/(info)/terms/page.tsx
+allow: frontend/apps/storefront/app/(account)/login/page.tsx
+allow: .dispatch/reports/FE-45.md
 
 ---
 
@@ -39,26 +51,18 @@ allow: .dispatch/reports/FE-42.md
 
 ---
 
-## 生效中：FE-41 開團頁視覺精修（待自測與提交後派出）
+## 生效中：FE-37　定稿七日鑑賞期 ＋ 隱私權政策
 
-package: FE-41
-doc: docs/43-開團頁視覺精修派工書.md
-allow: frontend/apps/storefront/app/(shop)/_components/CampaignCard.tsx
-allow: frontend/apps/storefront/app/(shop)/campaigns/[campaignId]/page.tsx
-allow: frontend/apps/storefront/app/(shop)/campaigns/[campaignId]/_components/CampaignOfferRow.tsx
-allow: .dispatch/reports/FE-41.md
+使用者 2026-09-21 明確決定：本站所有商品適用七日鑑賞期，並立即新增隱私權政策。只改五個資訊頁檔案；不得捏造法定公司資料、聯絡資料、保存期限或安全承諾。
 
----
-
-## 生效中：FE-40 商品詳情與購物車視覺精修
-
-package: FE-40
-doc: docs/42-商品詳情與購物車視覺精修派工書.md
-allow: frontend/apps/storefront/app/(shop)/products/[productId]/page.tsx
-allow: frontend/apps/storefront/app/(checkout)/cart/page.tsx
-allow: frontend/apps/storefront/app/(checkout)/_components/CartLineRow.tsx
-allow: frontend/packages/ui/src/components/BottomActionBar.tsx
-allow: .dispatch/reports/FE-40.md
+package: FE-37
+doc: docs/39-前端第二十三波派工書.md
+allow: frontend/apps/storefront/app/(info)/_content/terms.ts
+allow: frontend/apps/storefront/app/(info)/_content/privacy.ts
+allow: frontend/apps/storefront/app/(info)/privacy/page.tsx
+allow: frontend/apps/storefront/app/(info)/_components/InfoLinks.tsx
+allow: frontend/apps/storefront/app/(info)/__tests__/infoPages.test.ts
+allow: .dispatch/reports/FE-37.md
 
 ---
 
@@ -95,6 +99,69 @@ Leader 要明講。
 包名拼錯一律擋下（fail-closed）。
 
 ---
+
+<!--
+★ 2026-09-24 撤包：FE-38／39／40／41／43 已由 Leader 重跑 typecheck 與 584 測試並整合提交 34f253b。原文保留供追溯。
+
+## 已撤包：FE-43 資訊頁閱讀精修
+
+(撤包) package: FE-43
+(撤包) doc: docs/FE-43-資訊頁閱讀精修派工書.md
+(撤包) allow: frontend/apps/storefront/app/(info)/about/page.tsx
+(撤包) allow: frontend/apps/storefront/app/(info)/guide/page.tsx
+(撤包) allow: frontend/apps/storefront/app/(info)/faq/page.tsx
+(撤包) allow: .dispatch/reports/FE-43.md
+
+---
+
+## 已撤包：FE-41 開團頁視覺精修（待自測與提交後派出）
+
+(撤包) package: FE-41
+(撤包) doc: docs/43-開團頁視覺精修派工書.md
+(撤包) allow: frontend/apps/storefront/app/(shop)/_components/CampaignCard.tsx
+(撤包) allow: frontend/apps/storefront/app/(shop)/campaigns/[campaignId]/page.tsx
+(撤包) allow: frontend/apps/storefront/app/(shop)/campaigns/[campaignId]/_components/CampaignOfferRow.tsx
+(撤包) allow: .dispatch/reports/FE-41.md
+
+---
+
+## 已撤包：FE-40 商品詳情與購物車視覺精修
+
+(撤包) package: FE-40
+(撤包) doc: docs/42-商品詳情與購物車視覺精修派工書.md
+(撤包) allow: frontend/apps/storefront/app/(shop)/products/[productId]/page.tsx
+(撤包) allow: frontend/apps/storefront/app/(checkout)/cart/page.tsx
+(撤包) allow: frontend/apps/storefront/app/(checkout)/_components/CartLineRow.tsx
+(撤包) allow: frontend/packages/ui/src/components/BottomActionBar.tsx
+(撤包) allow: .dispatch/reports/FE-40.md
+
+---
+
+## 已撤包：FE-39 商品卡與導覽視覺精修
+
+(撤包) package: FE-39
+(撤包) doc: docs/41-商品卡與導覽視覺精修派工書.md
+(撤包) allow: frontend/packages/ui/src/components/ProductCard.tsx
+(撤包) allow: frontend/packages/ui/src/components/CategoryChip.tsx
+(撤包) allow: frontend/apps/storefront/app/(shop)/_components/ProductCardLink.tsx
+(撤包) allow: frontend/apps/storefront/app/_components/StorefrontTabBar.tsx
+(撤包) allow: .dispatch/reports/FE-39.md
+
+---
+
+## 已撤包：FE-38　前台視覺精修（待閘門自測後派出）
+
+(撤包) package: FE-38
+(撤包) doc: docs/40-前台視覺精修派工書.md
+(撤包) allow: frontend/packages/ui/src/tokens/soft-seoul.css
+(撤包) allow: frontend/apps/storefront/app/(shop)/_components/HeroBanner.tsx
+(撤包) allow: frontend/apps/storefront/app/(shop)/_components/HomeSearchHeader.tsx
+(撤包) allow: frontend/apps/storefront/app/(shop)/page.tsx
+(撤包) allow: .dispatch/reports/FE-38.md
+
+---
+
+-->
 
 <!--
 ★ 2026-09-19 三包都已通過整合驗收並提交，撤包。原文保留供追溯。
