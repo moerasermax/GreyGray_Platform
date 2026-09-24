@@ -27,7 +27,7 @@ internal static class SupportEndpoints
         var api = endpoints.MapGroup("/v1");
 
         api.MapGet("/support/tickets", async (
-            SupportTicketStatus? status,
+            string? status,
             string? cursor,
             int? limit,
             ICustomerServiceTickets tickets,
@@ -55,12 +55,27 @@ internal static class SupportEndpoints
     }
 
     internal static async Task<IResult> ListTicketsAsync(
-        SupportTicketStatus? status,
+        string? status,
         string? cursor,
         int? limit,
         ICustomerServiceTickets tickets,
         CancellationToken cancellationToken)
     {
+        SupportTicketStatus? parsedStatus = status switch
+        {
+            null => null,
+            "open" => SupportTicketStatus.Open,
+            "resolved" => SupportTicketStatus.Resolved,
+            _ => null,
+        };
+
+        if (status is not null && parsedStatus is null)
+        {
+            return BffHttp.Problem(
+                new Error("support.invalid-status", "客服工單狀態格式錯誤。"),
+                StatusCodes.Status400BadRequest);
+        }
+
         TicketId? pageCursor = null;
         if (cursor is not null)
         {
@@ -74,7 +89,7 @@ internal static class SupportEndpoints
         }
 
         var result = await tickets.ListAsync(
-            new AdminTicketListRequest(status, pageCursor, limit ?? 20),
+            new AdminTicketListRequest(parsedStatus, pageCursor, limit ?? 20),
             cancellationToken);
         return result.IsSuccess ? Results.Ok(result.Value) : BffHttp.Problem(result.Error);
     }
