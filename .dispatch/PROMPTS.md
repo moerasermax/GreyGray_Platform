@@ -1,5 +1,12 @@
 # 啟動 prompt
 
+## FE-50 後台角色判斷對齊後端規則（2026-09-24）
+
+```text
+GG_PACKAGE=FE-50
+讀 ACTIVE 與 docs/52-後台角色判斷對齊後端派工書.md，僅改 apps/admin/app/login/_lib/（含新增測試）、(dash)/orders/page.tsx、(dash)/orders/[orderId]/page.tsx 與報告。hasRequiredRole 改成與後端 IStaffRolePolicy.Allows 完全相同（Owner 全通、角色相同才通、要求 ReadOnly 人人可進），拿掉等級比較，簽章不變；補 4×4 共 16 條角色組合測試。訂單列表未符合 Operator 不呼叫 listShipments、出貨進度顯示「—」；訂單詳情取消整張訂單／取消此品項只在符合 Operator 時渲染，其他寫入按鈕查後端 StaffRoleFilter 後同樣處理並列對照表。不改 API、後端、側邊欄 requiredRole、FE-48 登入還原。前景跑 admin typecheck 與 admin tests，最多兩輪。你是唯一實作者，fable medium，不開子代理。先列目標、TEMP GUID 備份，保留所有既有 dirty（FE-37 的檔別碰）。不 build、不啟停服務、不安裝、不提交部署、不改閘門。報告三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」、實際輸出與未驗。工具20/讀15/搜8/改4/測修2輪，達限回報。stop gate 如提示既有 dirty，只回報不還原，最後重述本包交付證據。
+```
+
 ## BE-57 客服訊息列表 status 篩選綁定修正（2026-09-24）
 
 ```text

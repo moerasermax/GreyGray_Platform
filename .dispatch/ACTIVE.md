@@ -17,16 +17,6 @@ allow: <相對 repo 根的路徑前綴，一行一個>
 
 ---
 
-## 生效中：BE-57 客服訊息列表 status 篩選綁定修正
-
-package: BE-57
-doc: docs/57-後端客服訊息篩選綁定修正派工書.md
-allow: src/Hosts/GreyGray.Api.Admin/SupportEndpoints.cs
-allow: tests/GreyGray.CustomerService.Tests/
-allow: .dispatch/reports/BE-57.md
-
----
-
 ## 開工：你只開一個 terminal
 
 **Leader 模型。** 使用者開一個 terminal 當 Leader，Leader 用 ai-cli fan out 子代理，
@@ -60,6 +50,21 @@ Leader 要明講。
 包名拼錯一律擋下（fail-closed）。
 
 ---
+
+<!--
+★ 2026-09-24 撤包：BE-57 已由 Leader 重跑 28/28 並以 Playwright 驗收，整合提交 ec9dbea。原文保留供追溯。
+
+## 已撤包：BE-57 客服訊息列表 status 篩選綁定修正
+
+(撤包) package: BE-57
+(撤包) doc: docs/57-後端客服訊息篩選綁定修正派工書.md
+(撤包) allow: src/Hosts/GreyGray.Api.Admin/SupportEndpoints.cs
+(撤包) allow: tests/GreyGray.CustomerService.Tests/
+(撤包) allow: .dispatch/reports/BE-57.md
+
+---
+
+-->
 
 <!--
 ★ 2026-09-19 已通過整合驗收並提交，撤包。原文保留供追溯。
