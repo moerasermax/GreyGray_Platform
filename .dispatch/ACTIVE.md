@@ -17,6 +17,26 @@ allow: <相對 repo 根的路徑前綴，一行一個>
 
 ---
 
+## 生效中：FE-48 後台登入狀態還原與手機導覽
+
+package: FE-48
+doc: docs/50-後台登入還原與手機導覽派工書.md
+allow: frontend/apps/admin/app/(dash)/layout.tsx
+allow: frontend/packages/ui/src/admin/AppShell.tsx
+allow: .dispatch/reports/FE-48.md
+
+---
+
+## 生效中：FE-49 後台依角色隱藏無權限區塊與訂單詳情數字對齊
+
+package: FE-49
+doc: docs/51-後台角色感知與數字對齊派工書.md
+allow: frontend/apps/admin/app/(dash)/page.tsx
+allow: frontend/apps/admin/app/(dash)/orders/[orderId]/page.tsx
+allow: .dispatch/reports/FE-49.md
+
+---
+
 ## 生效中：FE-37　定稿七日鑑賞期 ＋ 隱私權政策
 
 使用者 2026-09-21 明確決定：本站所有商品適用七日鑑賞期，並立即新增隱私權政策。只改五個資訊頁檔案；不得捏造法定公司資料、聯絡資料、保存期限或安全承諾。
