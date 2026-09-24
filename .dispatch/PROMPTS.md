@@ -1,5 +1,26 @@
 # 啟動 prompt
 
+## BE-57 客服訊息列表 status 篩選綁定修正（2026-09-24）
+
+```text
+GG_PACKAGE=BE-57
+讀 ACTIVE 與 docs/57-後端客服訊息篩選綁定修正派工書.md，僅改 SupportEndpoints.cs、在 tests/GreyGray.CustomerService.Tests/ 新增測試檔與報告。status 查詢參數要接受契約小寫 open／resolved、省略為全部、非法值回 400；不改 SupportTicketStatus、JSON 行為、Shared.Kernel、契約。新測試必須經過真的 ASP.NET Core 參數綁定（可起最小 WebApplication 送 HTTP，不得裝新套件），先紅後綠。掃其餘 7 處列舉查詢參數只回報不改。只跑 GreyGray.CustomerService.Tests 的測試執行檔，不跑全套 Testcontainers。你是唯一實作者，fable medium，不開子代理。先列目標、TEMP GUID 備份，保留所有既有 dirty（別包的檔別碰）。不 build、不啟停服務、不安裝、不提交部署、不改閘門。報告三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」、實際輸出與未驗。工具20/讀15/搜8/改3/測修2輪，達限回報。stop gate 如提示既有 dirty，只回報不還原，最後重述本包交付證據。
+```
+
+## FE-48 後台登入狀態還原與手機導覽（2026-09-24）
+
+```text
+GG_PACKAGE=FE-48
+讀 ACTIVE 與 docs/50-後台登入還原與手機導覽派工書.md，僅改 (dash)/layout.tsx、packages/ui/src/admin/AppShell.tsx 與報告。快取空時先 refreshSession，401 才導 /login?from=<原路徑>，其他例外顯示 ErrorState；md 以下 AppShell 加選單按鈕開 Drawer，內容與側邊欄同（已依角色篩過）、點項目後關閉、Esc 關閉焦點回按鈕；md 以上不變。不動頁面檔、API、session.ts、角色規則。前景跑 ui/admin typecheck 與 admin tests，最多兩輪。你是唯一實作者，fable medium，不開子代理。先列目標、TEMP GUID 備份，保留所有既有 dirty（別包的檔別碰）。不 build、不啟停服務、不安裝、不提交部署、不改閘門。報告三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」、實際輸出與未驗。工具20/讀15/搜8/改3/測修2輪，達限回報。stop gate 如提示既有 dirty，只回報不還原，最後重述本包交付證據。
+```
+
+## FE-49 後台依角色隱藏無權限區塊與訂單詳情數字對齊（2026-09-24）
+
+```text
+GG_PACKAGE=FE-49
+讀 ACTIVE 與 docs/51-後台角色感知與數字對齊派工書.md，僅改 (dash)/page.tsx、(dash)/orders/[orderId]/page.tsx 與報告。用 getSession()＋既有 hasRequiredRole：未達 Accountant 不發帳務兩支請求、不渲染那兩區；未達 Operator 不發 /v1/shipments、出貨單區顯示中性說明。訂單編號標題與資訊區數值改靠左（不改 .gg-numeric 全域定義），表格數字仍靠右。不動 API、角色規則、深色模式與既有 loading/error/empty。前景跑 admin typecheck 與 admin tests，最多兩輪。你是唯一實作者，fable medium，不開子代理。先列目標、TEMP GUID 備份，保留所有既有 dirty（別包的檔別碰）。不 build、不啟停服務、不安裝、不提交部署、不改閘門。報告三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」、實際輸出與未驗。工具20/讀15/搜8/改3/測修2輪，達限回報。stop gate 如提示既有 dirty，只回報不還原，最後重述本包交付證據。
+```
+
 ## FE-46 結帳頁版面與付款錯誤出口（2026-09-24）
 
 ```text
