@@ -247,6 +247,14 @@ gg_path_allowed() {
         gg_active_packages | grep -qxF "$__rp" && return 0
       fi ;;
   esac
+  # 報告路徑只能由上面的精確規則放行。若精確規則沒有命中，不能再落入
+  # 一般 allow 的前綴比對，否則 FE-37.md.bak 與 FE-37.md/../ACTIVE.md
+  # 都會被誤認成 FE-37.md 的子路徑。
+  case "$rel" in
+    .dispatch/reports/*)
+      gg_is_leader && return 0
+      return 1 ;;
+  esac
   # 閘門自己的檔案：只有 Leader 放行（或什麼都還沒派的空窗期）。
   #
   # 原本這裡寫的是 `! gg_has_dispatch`（＝完全沒有派工生效時才放行），

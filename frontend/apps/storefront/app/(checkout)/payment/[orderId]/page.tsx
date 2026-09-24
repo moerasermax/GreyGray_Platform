@@ -9,6 +9,7 @@
  * 防住 React Strict Mode 的 effect 重複執行，也避免同元件切到另一張訂單時沿用舊 key。
  */
 
+import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button, ErrorState, Spinner } from '@greygray/ui';
@@ -66,6 +67,23 @@ export default function PaymentRedirectPage() {
     return (
       <main className="mx-auto flex max-w-[var(--gg-container-max)] flex-col gap-[var(--gg-space-4)] px-[var(--gg-space-4)] py-[var(--gg-space-8)]">
         <ErrorState title={error.title} traceId={error.traceId} onRetry={requestPayment} />
+        {/*
+         * FE-46：這一頁依 `TAB_BAR_RULES` 刻意不畫分頁列與頁首，所以錯誤狀態原本只有「重試」，
+         * 沒有任何出口（#30／#32 同型：不顯示導覽就要給替代出口）。
+         * **只在錯誤狀態加**；正在導轉綠界的狀態不加任何可點的東西，那是刻意的。
+         */}
+        <div className="flex flex-col gap-[var(--gg-space-3)] sm:flex-row sm:justify-center">
+          <Link href="/orders">
+            <Button variant="secondary" className="w-full sm:w-auto">
+              查看我的訂單
+            </Button>
+          </Link>
+          <Link href="/">
+            <Button variant="secondary" className="w-full sm:w-auto">
+              回首頁
+            </Button>
+          </Link>
+        </div>
       </main>
     );
   }

@@ -34,9 +34,9 @@ import { PageTopBar } from '../../_components/PageTopBar';
 import { browserApi } from '../../_lib/apiClient';
 import { loginHref } from '../../_lib/auth';
 import { AddressSelect } from '../_components/AddressSelect';
+import { CheckoutOrderSummary } from '../_components/CheckoutOrderSummary';
 import { ConvenienceStoreField } from '../_components/ConvenienceStoreField';
 import { DeliveryMethodPicker } from '../_components/DeliveryMethodPicker';
-import { ExplainDisclosure } from '../_components/ExplainDisclosure';
 import { ShippingPolicyPicker } from '../_components/ShippingPolicyPicker';
 import { createIdempotentAction, createPayloadIdempotentAction } from '../_lib/idempotentAction';
 import { evaluateCheckoutReadiness } from '../_lib/cartRules';
@@ -367,9 +367,23 @@ function CheckoutPageContent() {
   });
 
   return (
-    <main className="mx-auto flex max-w-[var(--gg-container-max)] flex-col gap-[var(--gg-space-5)] px-[var(--gg-space-4)] py-[var(--gg-space-6)] pb-[calc(var(--gg-bottom-bar-height)+var(--gg-space-8))]">
-      <h1 className="font-display text-[length:var(--gg-text-2xl)] font-extrabold text-fg">結帳</h1>
+    /*
+     * FE-46 版面：`lg` 以下單欄，訂購明細在表單卡片**之前**（客人先確認買了什麼再填資料）；
+     * `lg` 以上兩欄 grid，左欄表單、右欄明細 `sticky`，top 讓出 FE-44 桌面頁首的高度。
+     * DOM 順序只有一份（明細在前），桌面用 grid 的 col/row 定位把它放到右欄，
+     * 所以手機與桌面的可讀順序一致，不需要重複渲染。
+     * `BottomActionBar` 與 `DeliveryMethodPicker` 是 fixed／sheet，不受 grid 影響。
+     */
+    <main className="mx-auto flex max-w-[var(--gg-container-max)] flex-col gap-[var(--gg-space-5)] px-[var(--gg-space-4)] py-[var(--gg-space-6)] pb-[calc(var(--gg-bottom-bar-height)+var(--gg-space-8))] lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] lg:items-start lg:gap-x-[var(--gg-space-6)]">
+      <h1 className="font-display text-[length:var(--gg-text-2xl)] font-extrabold text-fg lg:col-span-2">結帳</h1>
 
+      <CheckoutOrderSummary
+        cart={cart}
+        quote={quote}
+        className="lg:sticky lg:top-[calc(var(--gg-top-bar-height)+var(--gg-space-4))] lg:col-start-2 lg:row-start-2"
+      />
+
+      <div className="flex min-w-0 flex-col gap-[var(--gg-space-5)] lg:col-start-1 lg:row-start-2">
       <Card padding="md" className="flex flex-col gap-[var(--gg-space-3)]">
         <div className="flex items-center justify-between gap-[var(--gg-space-3)]">
           <div>
@@ -389,23 +403,6 @@ function CheckoutPageContent() {
           </p>
         )}
 
-        {quote && (
-          <div className="flex flex-col gap-[var(--gg-space-2)] border-t border-border-soft pt-[var(--gg-space-3)]">
-            <div className="flex items-center justify-between text-[length:var(--gg-text-sm)] text-fg-muted">
-              <span>商品小計</span>
-              <PriceDisplay amount={quote.goodsTotal} size="sm" />
-            </div>
-            <div className="flex items-center justify-between text-[length:var(--gg-text-sm)] text-fg-muted">
-              <span>運費</span>
-              <PriceDisplay amount={quote.shippingFee} size="sm" />
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-fg">含運總額</span>
-              <PriceDisplay amount={quote.grandTotal} size="md" />
-            </div>
-            <ExplainDisclosure items={quote.explain} />
-          </div>
-        )}
       </Card>
 
       {cart.hasMixedModes && (
@@ -489,6 +486,7 @@ function CheckoutPageContent() {
           )}
         </div>
       )}
+      </div>
 
       <DeliveryMethodPicker
         open={sheetOpen}

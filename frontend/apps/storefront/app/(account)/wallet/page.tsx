@@ -39,7 +39,7 @@ export default function WalletPage() {
   }, [router]);
 
   return (
-    <main className="mx-auto flex max-w-[480px] flex-col gap-[var(--gg-space-5)] px-[var(--gg-space-4)] py-[var(--gg-space-8)]">
+    <main className="mx-auto flex max-w-[640px] flex-col gap-[var(--gg-space-5)] px-[var(--gg-space-4)] py-[var(--gg-space-8)]">
       <h1 className="font-display text-[length:var(--gg-text-3xl)] font-extrabold text-fg">儲值金餘額</h1>
 
       {loading && <Skeleton variant="block" className="h-[140px] w-full" />}

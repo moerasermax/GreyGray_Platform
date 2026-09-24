@@ -24,6 +24,15 @@ export default async function HomePage() {
     <main className="mx-auto flex max-w-[var(--gg-container-max)] flex-col gap-[var(--gg-space-6)] px-[var(--gg-space-4)] py-[var(--gg-space-4)] lg:gap-[var(--gg-space-7)] lg:px-[var(--gg-space-5)] lg:py-[var(--gg-space-5)]">
       <HomeSearchHeader />
 
+      {/*
+       * FE-47：`HomeSearchHeader`（首頁唯一可見的 <h1>）在 lg 以上整個 `lg:hidden`，
+       * 桌面首頁的 <h1> 數會變成 0。這裡補一個只給輔助科技的 <h1>：
+       * `hidden lg:block` 讓它在 lg 以下根本不進 DOM 的可讀樹（display:none），
+       * `sr-only` 讓它在 lg 以上不佔版面——任何寬度下可讀的 <h1> 恰好一個。
+       * 文字與 `HomeSearchHeader` 的品牌標題一致；不改 SiteHeader、HomeSearchHeader 與主視覺。
+       */}
+      <h1 className="sr-only hidden lg:block">GreyGray 選品代購</h1>
+
       <HeroBanner campaign={openCampaigns.items[0]} />
 
       <HomeSection id="home-categories" title="逛分類" description="依類別找商品。">
