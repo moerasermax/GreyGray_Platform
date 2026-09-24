@@ -17,28 +17,6 @@ allow: <相對 repo 根的路徑前綴，一行一個>
 
 ---
 
-## 生效中：FE-46 結帳頁版面與付款錯誤出口
-
-package: FE-46
-doc: docs/48-結帳頁版面與付款出口派工書.md
-allow: frontend/apps/storefront/app/(checkout)/checkout/page.tsx
-allow: frontend/apps/storefront/app/(checkout)/_components/CheckoutOrderSummary.tsx
-allow: frontend/apps/storefront/app/(checkout)/payment/[orderId]/page.tsx
-allow: .dispatch/reports/FE-46.md
-
----
-
-## 生效中：FE-47 會員區寬度一致與首頁桌面標題
-
-package: FE-47
-doc: docs/49-會員區寬度一致與首頁標題派工書.md
-allow: frontend/apps/storefront/app/(account)/me/page.tsx
-allow: frontend/apps/storefront/app/(account)/wallet/page.tsx
-allow: frontend/apps/storefront/app/(shop)/page.tsx
-allow: .dispatch/reports/FE-47.md
-
----
-
 ## 生效中：FE-37　定稿七日鑑賞期 ＋ 隱私權政策
 
 使用者 2026-09-21 明確決定：本站所有商品適用七日鑑賞期，並立即新增隱私權政策。只改五個資訊頁檔案；不得捏造法定公司資料、聯絡資料、保存期限或安全承諾。
@@ -87,6 +65,33 @@ Leader 要明講。
 包名拼錯一律擋下（fail-closed）。
 
 ---
+
+<!--
+★ 2026-09-24 撤包：FE-46／47 已由 Leader 以 Playwright 真畫面驗收並整合提交 985e4e4。原文保留供追溯。
+
+## 已撤包：FE-46 結帳頁版面與付款錯誤出口
+
+(撤包) package: FE-46
+(撤包) doc: docs/48-結帳頁版面與付款出口派工書.md
+(撤包) allow: frontend/apps/storefront/app/(checkout)/checkout/page.tsx
+(撤包) allow: frontend/apps/storefront/app/(checkout)/_components/CheckoutOrderSummary.tsx
+(撤包) allow: frontend/apps/storefront/app/(checkout)/payment/[orderId]/page.tsx
+(撤包) allow: .dispatch/reports/FE-46.md
+
+---
+
+## 已撤包：FE-47 會員區寬度一致與首頁桌面標題
+
+(撤包) package: FE-47
+(撤包) doc: docs/49-會員區寬度一致與首頁標題派工書.md
+(撤包) allow: frontend/apps/storefront/app/(account)/me/page.tsx
+(撤包) allow: frontend/apps/storefront/app/(account)/wallet/page.tsx
+(撤包) allow: frontend/apps/storefront/app/(shop)/page.tsx
+(撤包) allow: .dispatch/reports/FE-47.md
+
+---
+
+-->
 
 <!--
 ★ 2026-09-24 撤包：FE-42／44／45 已由 Leader 以 Playwright 真畫面驗收並整合提交 9870cd2。原文保留供追溯。
