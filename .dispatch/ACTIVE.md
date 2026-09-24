@@ -17,17 +17,6 @@ allow: <相對 repo 根的路徑前綴，一行一個>
 
 ---
 
-## 生效中：FE-50 後台角色判斷對齊後端規則
-
-package: FE-50
-doc: docs/52-後台角色判斷對齊後端派工書.md
-allow: frontend/apps/admin/app/login/_lib/
-allow: frontend/apps/admin/app/(dash)/orders/page.tsx
-allow: frontend/apps/admin/app/(dash)/orders/[orderId]/page.tsx
-allow: .dispatch/reports/FE-50.md
-
----
-
 ## 生效中：FE-37　定稿七日鑑賞期 ＋ 隱私權政策
 
 使用者 2026-09-21 明確決定：本站所有商品適用七日鑑賞期，並立即新增隱私權政策。只改五個資訊頁檔案；不得捏造法定公司資料、聯絡資料、保存期限或安全承諾。
@@ -76,6 +65,22 @@ Leader 要明講。
 包名拼錯一律擋下（fail-closed）。
 
 ---
+
+<!--
+★ 2026-09-24 撤包：FE-50 已由 Leader 以 Playwright 四角色（Owner／營運／會計／唯讀）驗收，全站 0 個 403。原文保留供追溯。
+
+## 已撤包：FE-50 後台角色判斷對齊後端規則
+
+(撤包) package: FE-50
+(撤包) doc: docs/52-後台角色判斷對齊後端派工書.md
+(撤包) allow: frontend/apps/admin/app/login/_lib/
+(撤包) allow: frontend/apps/admin/app/(dash)/orders/page.tsx
+(撤包) allow: frontend/apps/admin/app/(dash)/orders/[orderId]/page.tsx
+(撤包) allow: .dispatch/reports/FE-50.md
+
+---
+
+-->
 
 <!--
 ★ 2026-09-24 撤包：FE-48／49 已由 Leader 以 Playwright（Owner／ReadOnly）驗收，整合提交 df6ecbc。原文保留供追溯。
