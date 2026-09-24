@@ -17,23 +17,14 @@ allow: <相對 repo 根的路徑前綴，一行一個>
 
 ---
 
-## 生效中：FE-48 後台登入狀態還原與手機導覽
+## 生效中：FE-50 後台角色判斷對齊後端規則
 
-package: FE-48
-doc: docs/50-後台登入還原與手機導覽派工書.md
-allow: frontend/apps/admin/app/(dash)/layout.tsx
-allow: frontend/packages/ui/src/admin/AppShell.tsx
-allow: .dispatch/reports/FE-48.md
-
----
-
-## 生效中：FE-49 後台依角色隱藏無權限區塊與訂單詳情數字對齊
-
-package: FE-49
-doc: docs/51-後台角色感知與數字對齊派工書.md
-allow: frontend/apps/admin/app/(dash)/page.tsx
+package: FE-50
+doc: docs/52-後台角色判斷對齊後端派工書.md
+allow: frontend/apps/admin/app/login/_lib/
+allow: frontend/apps/admin/app/(dash)/orders/page.tsx
 allow: frontend/apps/admin/app/(dash)/orders/[orderId]/page.tsx
-allow: .dispatch/reports/FE-49.md
+allow: .dispatch/reports/FE-50.md
 
 ---
 
@@ -85,6 +76,31 @@ Leader 要明講。
 包名拼錯一律擋下（fail-closed）。
 
 ---
+
+<!--
+★ 2026-09-24 撤包：FE-48／49 已由 Leader 以 Playwright（Owner／ReadOnly）驗收，整合提交 df6ecbc。原文保留供追溯。
+
+## 已撤包：FE-48 後台登入狀態還原與手機導覽
+
+(撤包) package: FE-48
+(撤包) doc: docs/50-後台登入還原與手機導覽派工書.md
+(撤包) allow: frontend/apps/admin/app/(dash)/layout.tsx
+(撤包) allow: frontend/packages/ui/src/admin/AppShell.tsx
+(撤包) allow: .dispatch/reports/FE-48.md
+
+---
+
+## 已撤包：FE-49 後台依角色隱藏無權限區塊與訂單詳情數字對齊
+
+(撤包) package: FE-49
+(撤包) doc: docs/51-後台角色感知與數字對齊派工書.md
+(撤包) allow: frontend/apps/admin/app/(dash)/page.tsx
+(撤包) allow: frontend/apps/admin/app/(dash)/orders/[orderId]/page.tsx
+(撤包) allow: .dispatch/reports/FE-49.md
+
+---
+
+-->
 
 <!--
 ★ 2026-09-24 撤包：FE-46／47 已由 Leader 以 Playwright 真畫面驗收並整合提交 985e4e4。原文保留供追溯。
