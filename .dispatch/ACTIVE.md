@@ -28,6 +28,7 @@ allow: frontend/apps/storefront/app/(info)/_content/privacy.ts
 allow: frontend/apps/storefront/app/(info)/privacy/page.tsx
 allow: frontend/apps/storefront/app/(info)/_components/InfoLinks.tsx
 allow: frontend/apps/storefront/app/(info)/__tests__/infoPages.test.ts
+allow: frontend/apps/storefront/app/(info)/_content/faq.ts
 allow: .dispatch/reports/FE-37.md
 
 ---
