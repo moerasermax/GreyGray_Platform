@@ -17,6 +17,7 @@ import {
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { browserApi } from '../../_lib/apiClient';
+import { getSession, hasRequiredRole } from '../../login/_lib/session';
 import { listShipments } from '../shipments/_lib/api';
 import { ShipmentProgressCell } from './_components/ShipmentProgressCell';
 import { orderStatusLabel, orderStatusTone } from './_lib/labels';
@@ -38,6 +39,11 @@ const ORDER_STATUS_OPTIONS: readonly S['OrderStatus'][] = [
 ];
 
 export default function OrdersPage() {
+  // 出貨單清單（`GET /v1/shipments`）後端掛 `StaffRoleFilter(Operator)`：不符合 Operator 的
+  // 角色（唯讀、會計）打了就 403。角色不符時不打，「出貨進度」欄顯示中性的「—」（FE-50）。
+  // `(dash)/layout.tsx` 拿到員工資料前不渲染子頁，所以 `getSession()` 這裡一定有值。
+  const canViewShipments = hasRequiredRole(getSession()?.role ?? 'ReadOnly', 'Operator');
+
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
   const [status, setStatus] = useState('');
@@ -66,6 +72,7 @@ export default function OrdersPage() {
   }, [q]);
 
   useEffect(() => {
+    if (!canViewShipments) return;
     let cancelled = false;
     void listShipments(browserApi(), { limit: 100 }).then(
       (page) => {
@@ -80,7 +87,7 @@ export default function OrdersPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [canViewShipments]);
 
   useEffect(() => {
     let cancelled = false;
@@ -176,14 +183,18 @@ export default function OrdersPage() {
     {
       key: 'shipmentProgress',
       header: '出貨進度',
-      renderCell: (row) => (
-        <ShipmentProgressCell
-          orderId={row.id}
-          orderStatus={row.status}
-          shipments={shipmentsFailed ? null : shipments}
-          truncated={shipmentsTruncated}
-        />
-      ),
+      renderCell: (row) =>
+        canViewShipments ? (
+          <ShipmentProgressCell
+            orderId={row.id}
+            orderStatus={row.status}
+            shipments={shipmentsFailed ? null : shipments}
+            truncated={shipmentsTruncated}
+          />
+        ) : (
+          // 沒有出貨單的讀取權限：不是「載入失敗」，也不是「未建立」，就是不知道。
+          <td className="px-3 py-2 text-fg-muted">—</td>
+        ),
     },
     {
       key: 'campaignId',

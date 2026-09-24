@@ -19,20 +19,22 @@ export type Staff = components['schemas']['Staff'];
 export type StaffRole = components['schemas']['StaffRole'];
 
 /**
- * 角色高低排序，對應 `openapi.admin.yaml` 裡 `StaffRole` 的說明：
- * `Owner > Accountant ≈ Operator > ReadOnly`。
- * **這只是前端選單顯示用的判斷，不是真正的授權**——後端的 Policy 才是最終防線，
- * 這裡判斷錯了畫面會多顯示或少顯示一個選單項目，不會讓人多拿到權限。
+ * 角色是否符合某個端點／畫面的要求。規則與後端 `IStaffRolePolicy.Allows`
+ * （Identity 模組 `IdentityServices.cs` 的 `StaffRolePolicy`）**逐字相同**：
+ *
+ * 1. `Owner` 什麼都能做；
+ * 2. 角色相同才通——**營運（Operator）與會計（Accountant）互不相通**；
+ * 3. 要求 `ReadOnly` 的端點誰都能進。
+ *
+ * 刻意**不用等級大小比較**：凍結契約明寫「權限判斷不要用 enum 大小比較」，
+ * 而 FE-50 之前的 `ROLE_RANK` 把營運與會計當同級，害會計看到出貨頁、營運看到帳務頁，
+ * 一按就 403（派工書 `docs/52` 的實測表）。
+ *
+ * **這只是前端顯示與「要不要發請求」的判斷，不是真正的授權**——後端的 Policy 才是
+ * 最終防線，這裡判斷錯了畫面會多顯示或少顯示一個東西，不會讓人多拿到權限。
  */
-const ROLE_RANK: Record<StaffRole, number> = {
-  ReadOnly: 0,
-  Operator: 1,
-  Accountant: 1,
-  Owner: 2,
-};
-
 export function hasRequiredRole(current: StaffRole, required: StaffRole): boolean {
-  return ROLE_RANK[current] >= ROLE_RANK[required];
+  return current === 'Owner' || current === required || required === 'ReadOnly';
 }
 
 export function roleLabel(role: StaffRole | (string & {})): string {

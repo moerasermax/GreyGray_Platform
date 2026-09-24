@@ -64,10 +64,14 @@ export default function OrderDetailPage() {
   const orderId = params.orderId;
   const toast = useToast();
   const idempotency = usePayloadIdempotency();
-  // 出貨單需要 Operator 以上（與側邊欄「出貨」的 `requiredRole` 一致）。角色不夠時
-  // 不打 `/v1/shipments`（唯讀帳號原本會撞 403），區塊改顯示一句中性說明（FE-49）。
+  // 出貨單需要符合 Operator（與側邊欄「出貨」的 `requiredRole` 一致）。角色不符時
+  // 不打 `/v1/shipments`（唯讀、會計原本會撞 403），區塊改顯示一句中性說明（FE-49）。
   // `(dash)/layout.tsx` 拿到員工資料前不渲染子頁，所以 `getSession()` 這裡一定有值。
   const canViewShipments = hasRequiredRole(getSession()?.role ?? 'ReadOnly', 'Operator');
+  // 這頁三個寫入端點後端都掛 `StaffRoleFilter(Operator)`（後端樹 Admin Host 的
+  // `M1aEndpoints.cs` 177–223 行、`M1bShortfallRefundEndpoints.cs`）：
+  // 取消整張訂單、取消此品項、退短缺款。角色不符時按鈕不渲染，不讓人按了才 403（FE-50）。
+  const canOperate = hasRequiredRole(getSession()?.role ?? 'ReadOnly', 'Operator');
 
   const [order, setOrder] = useState<S['AdminOrder'] | null>(null);
   const [campaignTitle, setCampaignTitle] = useState<string | null>(null);
@@ -197,6 +201,40 @@ export default function OrderDetailPage() {
     );
   }
 
+  const lineActionColumn: DataTableColumn<OrderLine> = {
+    key: 'action',
+    header: '操作',
+    renderCell: (line) => {
+      const canRefundShortfall = (line.quantityShortfall ?? 0) > 0 && line.refundedAmount == null;
+      return (
+        <td className="px-3 py-2">
+          <div className="flex flex-col items-start gap-1">
+            {line.status === 'Cancelled' || line.status === 'Unavailable' ? (
+              <span className="text-xs text-fg-muted">已處理</span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setCancelLine(line)}
+                className="rounded-full border border-danger/30 px-3 py-1 text-xs font-semibold text-danger hover:bg-danger-subtle"
+              >
+                取消此品項
+              </button>
+            )}
+            {canRefundShortfall ? (
+              <button
+                type="button"
+                onClick={() => setRefundShortfallLine(line)}
+                className="rounded-full border border-primary/30 px-3 py-1 text-xs font-semibold text-primary hover:bg-primary-subtle"
+              >
+                退短缺款
+              </button>
+            ) : null}
+          </div>
+        </td>
+      );
+    },
+  };
+
   const lineColumns: DataTableColumn<OrderLine>[] = [
     {
       key: 'name',
@@ -253,39 +291,9 @@ export default function OrderDetailPage() {
         </td>
       ),
     },
-    {
-      key: 'action',
-      header: '操作',
-      renderCell: (line) => {
-        const canRefundShortfall = (line.quantityShortfall ?? 0) > 0 && line.refundedAmount == null;
-        return (
-          <td className="px-3 py-2">
-            <div className="flex flex-col items-start gap-1">
-              {line.status === 'Cancelled' || line.status === 'Unavailable' ? (
-                <span className="text-xs text-fg-muted">已處理</span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setCancelLine(line)}
-                  className="rounded-full border border-danger/30 px-3 py-1 text-xs font-semibold text-danger hover:bg-danger-subtle"
-                >
-                  取消此品項
-                </button>
-              )}
-              {canRefundShortfall ? (
-                <button
-                  type="button"
-                  onClick={() => setRefundShortfallLine(line)}
-                  className="rounded-full border border-primary/30 px-3 py-1 text-xs font-semibold text-primary hover:bg-primary-subtle"
-                >
-                  退短缺款
-                </button>
-              ) : null}
-            </div>
-          </td>
-        );
-      },
-    },
+    // 「操作」欄整欄只給符合 Operator 的角色：欄裡兩個按鈕後端都要 Operator，
+    // 沒權限的人看到一欄全是「—」只是噪音，直接不放這一欄。
+    ...(canOperate ? [lineActionColumn] : []),
   ];
 
   return (
@@ -308,7 +316,7 @@ export default function OrderDetailPage() {
             </span>
           </div>
         </div>
-        {order.status !== 'Cancelled' ? (
+        {canOperate && order.status !== 'Cancelled' ? (
           <button
             type="button"
             onClick={() => setCancelOrderOpen(true)}
