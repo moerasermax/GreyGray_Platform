@@ -1,8 +1,8 @@
 import Link from 'next/link';
 
 /**
- * 三個資訊頁的入口清單。首頁頁尾、「我的」頁、以及三個資訊頁彼此的出口
- * 都用同一份清單，不各寫一份——新增第四個資訊頁只要改這裡。
+ * 資訊頁的入口清單。首頁頁尾、「我的」頁、以及資訊頁彼此的出口
+ * 都用同一份清單，不各寫一份——新增資訊頁只要改這裡。
  */
 export interface InfoLinkItem {
   readonly href: string;
@@ -14,6 +14,7 @@ export const INFO_LINKS: readonly InfoLinkItem[] = [
   { href: '/guide', label: '購買流程' },
   { href: '/about', label: '關於我們' },
   { href: '/terms', label: '服務條款' },
+  { href: '/privacy', label: '隱私權政策' },
 ];
 
 export interface InfoLinksProps {
