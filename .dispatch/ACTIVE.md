@@ -17,22 +17,6 @@ allow: <相對 repo 根的路徑前綴，一行一個>
 
 ---
 
-## 生效中：FE-37　定稿七日鑑賞期 ＋ 隱私權政策
-
-使用者 2026-09-21 明確決定：本站所有商品適用七日鑑賞期，並立即新增隱私權政策。只改五個資訊頁檔案；不得捏造法定公司資料、聯絡資料、保存期限或安全承諾。
-
-package: FE-37
-doc: docs/39-前端第二十三波派工書.md
-allow: frontend/apps/storefront/app/(info)/_content/terms.ts
-allow: frontend/apps/storefront/app/(info)/_content/privacy.ts
-allow: frontend/apps/storefront/app/(info)/privacy/page.tsx
-allow: frontend/apps/storefront/app/(info)/_components/InfoLinks.tsx
-allow: frontend/apps/storefront/app/(info)/__tests__/infoPages.test.ts
-allow: frontend/apps/storefront/app/(info)/_content/faq.ts
-allow: .dispatch/reports/FE-37.md
-
----
-
 ## 開工：你只開一個 terminal
 
 **Leader 模型。** 使用者開一個 terminal 當 Leader，Leader 用 ai-cli fan out 子代理，
@@ -66,6 +50,27 @@ Leader 要明講。
 包名拼錯一律擋下（fail-closed）。
 
 ---
+
+<!--
+★ 2026-09-24 撤包：FE-37（第六輪：條款保留法定例外清單、隱私權政策頁）已由 Leader 以 Playwright 驗收並整合提交。原文保留供追溯。
+
+## 已撤包：FE-37　定稿七日鑑賞期 ＋ 隱私權政策
+
+使用者 2026-09-21 明確決定：本站所有商品適用七日鑑賞期，並立即新增隱私權政策。只改五個資訊頁檔案；不得捏造法定公司資料、聯絡資料、保存期限或安全承諾。
+
+(撤包) package: FE-37
+(撤包) doc: docs/39-前端第二十三波派工書.md
+(撤包) allow: frontend/apps/storefront/app/(info)/_content/terms.ts
+(撤包) allow: frontend/apps/storefront/app/(info)/_content/privacy.ts
+(撤包) allow: frontend/apps/storefront/app/(info)/privacy/page.tsx
+(撤包) allow: frontend/apps/storefront/app/(info)/_components/InfoLinks.tsx
+(撤包) allow: frontend/apps/storefront/app/(info)/__tests__/infoPages.test.ts
+(撤包) allow: frontend/apps/storefront/app/(info)/_content/faq.ts
+(撤包) allow: .dispatch/reports/FE-37.md
+
+---
+
+-->
 
 <!--
 ★ 2026-09-24 撤包：FE-50 已由 Leader 以 Playwright 四角色（Owner／營運／會計／唯讀）驗收，全站 0 個 403。原文保留供追溯。
