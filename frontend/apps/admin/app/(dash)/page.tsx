@@ -19,6 +19,7 @@ import {
 } from '@greygray/ui/admin';
 import { useEffect, useMemo, useState } from 'react';
 import { browserApi } from '../_lib/apiClient';
+import { getSession, hasRequiredRole } from '../login/_lib/session';
 import { LiabilityVsCashSection } from './_components/LiabilityVsCashCard';
 import { DASHBOARD_KPIS } from './_lib/dashboardMock';
 import {
@@ -47,8 +48,16 @@ import {
  *
  * 四個 KPI 卡維持「尚未提供」：契約裡沒有彙總端點，而列表 API 有分頁，
  * 在前端加總只會得到「這一頁的合計」（理由見 `_lib/dashboardMock.ts`）。
+ *
+ * ★ 帳務兩區（負債 vs 現金、最近分錄）需要 Accountant 以上（與側邊欄「帳務」的
+ *   `requiredRole` 一致）。角色不夠時**不發那兩支請求、也不渲染那兩區**——
+ *   唯讀帳號原本會撞到 403 與一顆永遠不會成功的「重試」（FE-49）。
+ *   角色從 `getSession()` 讀：`(dash)/layout.tsx` 拿到員工資料前不渲染子頁，
+ *   所以這裡渲染時一定有值；真正的授權仍在後端 Policy。
  */
 export default function DashboardPage() {
+  const canViewLedger = hasRequiredRole(getSession()?.role ?? 'ReadOnly', 'Accountant');
+
   const [sourceModule, setSourceModule] = useState('');
   const [dateRange, setDateRange] = useState<DateRange>({ from: null, to: null });
   const [sortKey, setSortKey] = useState<LedgerSortKey>('postedAt');
@@ -62,6 +71,7 @@ export default function DashboardPage() {
   const [related, setRelated] = useState<LoadState<readonly JournalEntry[]>>(LOADING);
 
   useEffect(() => {
+    if (!canViewLedger) return;
     let cancelled = false;
     setLiability(LOADING);
     void loadLiabilityVsCash(browserApi()).then((state) => {
@@ -70,9 +80,10 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [reloadKey]);
+  }, [canViewLedger, reloadKey]);
 
   useEffect(() => {
+    if (!canViewLedger) return;
     let cancelled = false;
     setEntries(LOADING);
     void loadRecentLedgerEntries(browserApi(), {
@@ -85,7 +96,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [sourceModule, dateRange, reloadKey]);
+  }, [canViewLedger, sourceModule, dateRange, reloadKey]);
 
   // 「相關分錄」：同一張單可能不只一筆分錄（付款、退款、沖銷），用 sourceRef 反查端點。
   useEffect(() => {
@@ -112,7 +123,7 @@ export default function DashboardPage() {
     [related],
   );
 
-  const busy = liability.status === 'loading' || entries.status === 'loading';
+  const busy = canViewLedger && (liability.status === 'loading' || entries.status === 'loading');
 
   function handleSortChange(key: string) {
     if (!isLedgerSortKey(key)) return;
@@ -189,7 +200,7 @@ export default function DashboardPage() {
         </button>
       </div>
 
-      <LiabilityVsCashSection state={liability} onRetry={reload} />
+      {canViewLedger ? <LiabilityVsCashSection state={liability} onRetry={reload} /> : null}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {DASHBOARD_KPIS.map((kpi) => (
@@ -197,42 +208,44 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-fg-muted">最近分錄</h2>
-          <p className="text-xs text-fg-muted">
-            最多顯示端點回傳的前 {RECENT_ENTRIES_LIMIT} 筆，完整查詢與分頁在「帳務」頁
-          </p>
-        </div>
-        <FilterBar>
-          <Field label="來源模組" htmlFor="filter-source-module">
-            <Input
-              id="filter-source-module"
-              placeholder="例如 Ordering"
-              value={sourceModule}
-              onChange={(event) => setSourceModule(event.target.value)}
+      {canViewLedger ? (
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-fg-muted">最近分錄</h2>
+            <p className="text-xs text-fg-muted">
+              最多顯示端點回傳的前 {RECENT_ENTRIES_LIMIT} 筆，完整查詢與分頁在「帳務」頁
+            </p>
+          </div>
+          <FilterBar>
+            <Field label="來源模組" htmlFor="filter-source-module">
+              <Input
+                id="filter-source-module"
+                placeholder="例如 Ordering"
+                value={sourceModule}
+                onChange={(event) => setSourceModule(event.target.value)}
+              />
+            </Field>
+            <DateRangePicker idPrefix="filter-posted" label="過帳日期" value={dateRange} onChange={setDateRange} />
+          </FilterBar>
+  
+          {entries.status === 'error' ? (
+            <ErrorState title={entries.title} traceId={entries.traceId} onRetry={reload} />
+          ) : (
+            <DataTable
+              columns={columns}
+              rows={rows}
+              getRowKey={(row) => row.key}
+              loading={entries.status === 'loading'}
+              sortKey={sortKey}
+              sortDirection={sortDirection}
+              onSortChange={handleSortChange}
+              onRowClick={(row) => setSelectedEntry(row.entry)}
+              emptyTitle="這段期間沒有分錄"
+              emptyDescription="換個日期範圍或清空來源模組篩選看看。"
             />
-          </Field>
-          <DateRangePicker idPrefix="filter-posted" label="過帳日期" value={dateRange} onChange={setDateRange} />
-        </FilterBar>
-
-        {entries.status === 'error' ? (
-          <ErrorState title={entries.title} traceId={entries.traceId} onRetry={reload} />
-        ) : (
-          <DataTable
-            columns={columns}
-            rows={rows}
-            getRowKey={(row) => row.key}
-            loading={entries.status === 'loading'}
-            sortKey={sortKey}
-            sortDirection={sortDirection}
-            onSortChange={handleSortChange}
-            onRowClick={(row) => setSelectedEntry(row.entry)}
-            emptyTitle="這段期間沒有分錄"
-            emptyDescription="換個日期範圍或清空來源模組篩選看看。"
-          />
-        )}
-      </div>
+          )}
+        </div>
+      ) : null}
 
       <Drawer
         open={selectedEntry !== null}

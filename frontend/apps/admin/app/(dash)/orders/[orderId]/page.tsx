@@ -22,6 +22,7 @@ import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { browserApi } from '../../../_lib/apiClient';
 import { usePayloadIdempotency } from '../../../_lib/usePayloadIdempotency';
+import { getSession, hasRequiredRole } from '../../../login/_lib/session';
 import { listShipments } from '../../shipments/_lib/api';
 import { CancelOrderDialog } from '../_components/CancelOrderDialog';
 import { CancelOrderLineDialog } from '../_components/CancelOrderLineDialog';
@@ -63,6 +64,10 @@ export default function OrderDetailPage() {
   const orderId = params.orderId;
   const toast = useToast();
   const idempotency = usePayloadIdempotency();
+  // 出貨單需要 Operator 以上（與側邊欄「出貨」的 `requiredRole` 一致）。角色不夠時
+  // 不打 `/v1/shipments`（唯讀帳號原本會撞 403），區塊改顯示一句中性說明（FE-49）。
+  // `(dash)/layout.tsx` 拿到員工資料前不渲染子頁，所以 `getSession()` 這裡一定有值。
+  const canViewShipments = hasRequiredRole(getSession()?.role ?? 'ReadOnly', 'Operator');
 
   const [order, setOrder] = useState<S['AdminOrder'] | null>(null);
   const [campaignTitle, setCampaignTitle] = useState<string | null>(null);
@@ -125,6 +130,7 @@ export default function OrderDetailPage() {
   // 讀失敗不擋整頁：訂單本身已經在上面那個 effect 讀到了，出貨單拿不到只讓
   // 這一區塊自己顯示錯誤（理由同第 91-93 行 `getCampaign` 那段）。
   useEffect(() => {
+    if (!canViewShipments) return;
     let cancelled = false;
     setShipmentsLoading(true);
     setShipmentsFailed(false);
@@ -143,7 +149,7 @@ export default function OrderDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [orderId, shipmentsReloadKey]);
+  }, [canViewShipments, orderId, shipmentsReloadKey]);
 
   async function handleCancelOrder(input: { reason: string; refundTo: S['RefundDestination'] }) {
     const payload = { orderId, kind: 'order', input };
@@ -289,7 +295,9 @@ export default function OrderDetailPage() {
           <Link href="/orders" className="text-sm text-primary hover:underline">
             ← 回訂單列表
           </Link>
-          <h1 className="mt-1 gg-numeric text-xl font-semibold text-fg">{order.orderNumber}</h1>
+          {/* 不用 `.gg-numeric`：它含 `text-align: right` 且不在 cascade layer 裡，
+              Tailwind 的 `text-left` 蓋不過；標題與下方資訊區只要等寬數字，靠左（FE-49）。 */}
+          <h1 className="mt-1 font-mono text-xl font-semibold tabular-nums text-fg">{order.orderNumber}</h1>
           <div className="mt-1 flex items-center gap-2">
             <StatusPill label={orderStatusLabel(order.status)} tone={orderStatusTone(order.status)} />
             <span className="text-sm text-fg-muted">
@@ -322,7 +330,7 @@ export default function OrderDetailPage() {
         </div>
         <div>
           <p className="text-xs text-fg-muted">收件人手機</p>
-          <p className="gg-numeric mt-1 select-all text-sm font-medium text-fg">{order.recipientPhone ?? '—'}</p>
+          <p className="mt-1 select-all font-mono text-sm font-medium tabular-nums text-fg">{order.recipientPhone ?? '—'}</p>
         </div>
         {recipientAddressOf(order) ? (
           <div>
@@ -341,15 +349,15 @@ export default function OrderDetailPage() {
         {order.deliveryMethod === 'ConvenienceStore' ? <ConvenienceStoreCell order={order} /> : null}
         <div>
           <p className="text-xs text-fg-muted">商品小計</p>
-          <p className="gg-numeric mt-1 text-sm font-semibold text-fg">{formatMoney(order.goodsTotal)}</p>
+          <p className="mt-1 font-mono text-sm font-semibold tabular-nums text-fg">{formatMoney(order.goodsTotal)}</p>
         </div>
         <div>
           <p className="text-xs text-fg-muted">運費</p>
-          <p className="gg-numeric mt-1 text-sm font-semibold text-fg">{formatMoney(order.shippingFee)}</p>
+          <p className="mt-1 font-mono text-sm font-semibold tabular-nums text-fg">{formatMoney(order.shippingFee)}</p>
         </div>
         <div>
           <p className="text-xs text-fg-muted">含運總額</p>
-          <p className="gg-numeric mt-1 text-base font-semibold text-fg">{formatMoney(order.grandTotal)}</p>
+          <p className="mt-1 font-mono text-base font-semibold tabular-nums text-fg">{formatMoney(order.grandTotal)}</p>
         </div>
         {order.campaignId ? (
           <div>
@@ -383,14 +391,23 @@ export default function OrderDetailPage() {
         />
       </section>
 
-      <OrderShipmentsSection
-        orderId={orderId}
-        shipments={shipments}
-        loading={shipmentsLoading}
-        loadFailed={shipmentsFailed}
-        truncated={shipmentsTruncated}
-        onRetry={() => setShipmentsReloadKey((current) => current + 1)}
-      />
+      {canViewShipments ? (
+        <OrderShipmentsSection
+          orderId={orderId}
+          shipments={shipments}
+          loading={shipmentsLoading}
+          loadFailed={shipmentsFailed}
+          truncated={shipmentsTruncated}
+          onRetry={() => setShipmentsReloadKey((current) => current + 1)}
+        />
+      ) : (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold text-fg-muted">出貨單</h2>
+          <p className="rounded-card border border-border-soft bg-surface px-4 py-3 text-sm text-fg-muted">
+            出貨單需要營運以上權限才能查看。
+          </p>
+        </section>
+      )}
 
       {order.payments && order.payments.length > 0 ? (
         <section className="flex flex-col gap-3">

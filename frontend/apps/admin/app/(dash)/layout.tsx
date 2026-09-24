@@ -1,10 +1,12 @@
 'use client';
 
+import { ApiError } from '@greygray/api-client';
 import {
   CatalogIcon,
   CampaignIcon,
   DashboardIcon,
   Dialog,
+  ErrorState,
   LedgerIcon,
   MessageIcon,
   OrderIcon,
@@ -20,6 +22,7 @@ import {
   getSession,
   hasRequiredRole,
   logout,
+  refreshSession,
   roleLabel,
   type Staff,
   type StaffRole,
@@ -95,21 +98,64 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/**
+ * 未登入時要導去的登入頁網址。`from` 帶「目前路徑＋查詢字串」，登入頁既有的
+ * `from` 處理（`login/page.tsx`）會在登入成功後導回來。登出走的是另一條路、不帶 `from`。
+ */
+function loginRedirectUrl(pathname: string, search: string): string {
+  return `/login?from=${encodeURIComponent(`${pathname}${search}`)}`;
+}
+
+/** 問後端時非 401 的失敗——不是「未登入」，要顯示錯誤讓人重試，不能把人踢去登入頁。 */
+interface SessionFailure {
+  readonly title: string;
+  readonly traceId: string | null;
+}
+
+function toSessionFailure(cause: unknown): SessionFailure {
+  if (cause instanceof ApiError) {
+    return { title: cause.problem.title || '無法確認登入狀態', traceId: cause.shortTraceId };
+  }
+  return { title: '無法確認登入狀態，請檢查網路後重試', traceId: null };
+}
+
 export default function DashLayout({ children }: { readonly children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [staff, setStaff] = useState<Staff | null | undefined>(undefined);
+  const [sessionFailure, setSessionFailure] = useState<SessionFailure | null>(null);
+  const [sessionAttempt, setSessionAttempt] = useState(0);
   const [theme, setTheme] = useState<Theme>('light');
   const [logoutOpen, setLogoutOpen] = useState(false);
 
+  // 快取有就直接用；硬重新整理後快取是空的，但 cookie 可能還有效，要先問後端再決定。
+  // 只有後端明確回 401（refreshSession 回 null）才導去登入頁，並帶上原本要去的路徑。
   useEffect(() => {
-    const session = getSession();
-    if (!session) {
-      router.replace('/login');
+    const cached = getSession();
+    if (cached) {
+      setStaff(cached);
       return;
     }
-    setStaff(session);
-  }, [router]);
+
+    let cancelled = false;
+    setSessionFailure(null);
+    refreshSession()
+      .then((session) => {
+        if (cancelled) return;
+        if (!session) {
+          router.replace(loginRedirectUrl(window.location.pathname, window.location.search));
+          return;
+        }
+        setStaff(session);
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) return;
+        setSessionFailure(toSessionFailure(cause));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [router, sessionAttempt]);
 
   useEffect(() => {
     const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
@@ -127,6 +173,19 @@ export default function DashLayout({ children }: { readonly children: ReactNode 
     await logout();
     setLogoutOpen(false);
     router.replace('/login');
+  }
+
+  // 問後端失敗（非 401）：不知道有沒有登入，顯示錯誤讓人重試，不猜。
+  if (!staff && sessionFailure) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-bg">
+        <ErrorState
+          title={sessionFailure.title}
+          traceId={sessionFailure.traceId}
+          onRetry={() => setSessionAttempt((attempt) => attempt + 1)}
+        />
+      </div>
+    );
   }
 
   // 還在確認 session 或已經被導去登入頁的路上——不要閃一下受保護的畫面再跳轉。
@@ -162,6 +221,7 @@ export default function DashLayout({ children }: { readonly children: ReactNode 
             theme={theme}
             onToggleTheme={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
             onLogout={() => setLogoutOpen(true)}
+            mobileNav={{ items: navItems, LinkComponent: Link }}
           />
           <main className="mx-auto w-full max-w-[var(--ga-container-max)] flex-1 p-6">{children}</main>
         </div>
