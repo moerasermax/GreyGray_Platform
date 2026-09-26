@@ -1,28 +1,30 @@
 /*
- * Soft Seoul —— GreyGray 前台的設計 token（ADR-009；2026-09-21 FE-38 視覺演進）
+ * Soft Seoul —— GreyGray 前台的設計 token（ADR-009；2026-09-21 FE-38 視覺演進；2026-09-26 品牌配色改版）
  *
  * 這個檔案是**前台所有顏色、圓角、間距、動態的唯一來源**。
  * 元件裡不准出現任何 raw hex、任何 px 圓角——一律用這裡的變數。
- * 平行開發時這條特別重要：四個人各自挑一個粉紅色，出來就是四個產品。
+ * 平行開發時這條特別重要：四個人各自挑一個顏色，出來就是四個產品。
  *
- * ── FE-38：不再整頁粉底粉字 ──
- * 原本背景、文字、邊框、陰影全部是粉色，缺圖的地方就變成一整片粉塊，層級讀不出來。
- * 現在是**暖白背景、深灰正文、低彩度邊框**，粉紅只留給互動與品牌識別
- * （按鈕、連結、選中態、品牌標記）。圓角與 mobile first 不變。
+ * ── 2026-09-26：奶茶大地色系 ──
+ * 團隊回饋粉色／馬卡龍偏彩妝風格，與「灰灰人」品牌不搭。改成溫暖沉穩的奶茶大地色：
+ * 米白底（#FBF9F7）、奶茶米卡片（#F5F2EB）、深可可文字（#3C3633），
+ * 淺奶茶（#D8C5B2）當按鈕、標籤、選中態的強調色。粉紅與紫色已全部移除。
  *
  * ── 對比度都實際量過（WCAG 2.1 相對亮度公式），不是憑感覺 ──
- * 工具建議的 #EC4899 拿來當白字按鈕底色只有 3.53:1，**過不了 AA 的 4.5:1**。
- * 所以粉紅色拆成三個角色，用途不可以互換：
+ * 淺奶茶 #D8C5B2 很淺，**上面只能放深色字、它本身也不能當文字或焦點框**。
+ * 所以「品牌色」拆成三個角色，用途不可以互換：
  *
- *   --gg-pink-decor   #EC4899  只給漸層、裝飾、圖示描邊。上面不可以放小字。
- *   --gg-primary      #DB2777  互動元件底色（按鈕、選中態），白字 4.60:1 ✓
- *   --gg-primary-text #BE185D  淺底上的粉紅文字與連結，在 --gg-bg 上 5.70:1 ✓
+ *   --gg-primary        #D8C5B2  按鈕、標籤、選中態的底色。上面放 --gg-on-primary 深字 7.10:1 ✓
+ *   --gg-primary-text   #5A4D41  淺底上的強調文字與連結，在 --gg-bg 上 7.77:1 ✓
+ *   --gg-primary-strong #5A4D41  焦點框、選中框線、checkbox——非文字元件要 3:1，這裡 ≥ 6.87:1 ✓
  *
- * 2026-09-21 重量（node 依 WCAG 公式計算，最低的那一格才算數）：
- *   內文     #26221F：--gg-bg 14.89 · surface 15.78 · surface-sunken 14.02 · primary-subtle 14.25 · banner 最深處 13.27
- *   次要文字 #6B625C：--gg-bg  5.62 · surface  5.95 · surface-sunken  5.29 · primary-subtle  5.38 · banner 最深處  5.01
- *   粉紅文字 #BE185D：--gg-bg  5.70 · surface  6.04 · surface-sunken  5.37 · primary-subtle  5.45 · banner 最深處  5.08
- * 「banner 最深處」是 --gg-gradient-banner 三個色標裡最深的 #FBE6EF。
+ * 2026-09-26 重量（最低的那一格才算數）：
+ *   內文     #3C3633：bg 11.31 · surface 10.63 · surface-sunken 10.00 · primary-subtle 9.48 · banner 最深處 9.04
+ *   次要文字 #5A4D41：bg  7.77 · surface  7.30 · surface-sunken  6.87 · primary-subtle 6.51 · banner 最深處 6.21
+ *   按鈕字   #3C3633 在 primary #D8C5B2 上 7.10、在 primary-hover #CDB7A1 上 6.16
+ *   狀態色（在 bg／surface／自己的 subtle 上）：success ≥ 5.25 · warning ≥ 5.12 · warning-text ≥ 6.73
+ *                                              danger ≥ 5.38 · info ≥ 5.37 · on-danger 在 danger 上 6.25
+ * 「banner 最深處」是 --gg-gradient-banner 三個色標裡最深的 #EADFD2。
  *
  * ── 全站沒有一個直角（ADR-009）──
  * 最小圓角是 --gg-radius-sm（10px）。要用 0 請先說明理由。
@@ -30,61 +32,66 @@
  */
 
 :root {
-  /* ── 品牌色 ────────────────────────────────────────────────────────── */
-  --gg-pink-decor: #ec4899;
-  --gg-primary: #db2777;
-  --gg-primary-hover: #be185d;
-  --gg-primary-text: #be185d;
-  --gg-on-primary: #ffffff;
+  /* ── 品牌色：淺奶茶 ────────────────────────────────────────────────── */
+  /* 只給漸層、裝飾色塊、圖示描邊。上面不可以放淺色字。 */
+  --gg-decor: #d8c5b2;
+  --gg-primary: #d8c5b2;
+  --gg-primary-hover: #cdb7a1;
+  --gg-primary-text: #5a4d41;
+  --gg-primary-strong: #5a4d41;
+  --gg-on-primary: #3c3633;
 
-  --gg-secondary: #f9a8d4;
-  --gg-accent: #8b5cf6;
-  --gg-accent-text: #6d28d9;
+  --gg-secondary: #d8c5b2;
+  --gg-accent: #d8c5b2;
+  --gg-accent-text: #5a4d41;
 
-  /* ── 表面。暖白與暖灰，不帶粉 ─────────────────────────────────────── */
-  --gg-bg: #faf8f6;
-  --gg-surface: #ffffff;
-  --gg-surface-sunken: #f4f1ee;
-  --gg-border: #e8e2dd;
-  --gg-border-strong: #d2c9c2;
+  /* ── 表面。米白頁面、奶茶米卡片 ─────────────────────────────────────── */
+  --gg-bg: #fbf9f7;
+  --gg-surface: #f5f2eb;
+  /* 卡片裡再往下一層（hover、圖片佔位、Skeleton）。比 surface 深一階，同色系。 */
+  --gg-surface-sunken: #efebe4;
+  --gg-border: #e0e0e0;
+  /* 輸入框、次要按鈕的框線。比分隔線明顯一階，帶一點奶茶。 */
+  --gg-border-strong: #d8c5b2;
 
-  /* ── 文字。深暖灰，不是粉紅也不是純黑 ─────────────────────────────── */
-  --gg-fg: #26221f;
-  --gg-fg-muted: #6b625c;
-  --gg-fg-on-dark: #ffffff;
+  /* ── 文字。深可可，不是純黑 ─────────────────────────────────────────── */
+  --gg-fg: #3c3633;
+  --gg-fg-muted: #5a4d41;
+  --gg-fg-on-dark: #fbf9f7;
 
-  /* ── 狀態 ─────────────────────────────────────────────────────────── */
-  --gg-success: #15803d;
-  --gg-warning: #b45309;
-  --gg-danger: #be123c;
-  --gg-info: #6d28d9;
+  /* ── 狀態。全部壓低彩度，跟大地色放在一起不跳；仍然分得出紅綠黃藍 ─── */
+  --gg-success: #4f6b3a;
+  --gg-warning: #8a5a1f;
+  --gg-danger: #a23b2c;
+  --gg-info: #4d6273;
+  /* 實心 danger 底（刪除按鈕）上的字。on-primary 是深字，放在磚紅上過不了。 */
+  --gg-on-danger: #fbf9f7;
 
   /*
    * 狀態色的淺底，**一定要不透明**。
    * 用 `bg-warning/10` 這種半透明疊色的話，實際對比度取決於它疊在什麼上面——
    * Badge 疊到商品圖的有色底時實測只剩 3.42:1，過不了 AA。不透明才算得準。
    */
-  --gg-success-subtle: #f0fdf4;
-  --gg-warning-subtle: #fffbeb;
-  --gg-danger-subtle: #fff1f2;
-  --gg-info-subtle: #f5f3ff;
-  /* 粉紅淺底只給「選中／品牌提示」這種小面積用，不要拿來鋪整塊版面。 */
-  --gg-primary-subtle: #fdf0f6;
+  --gg-success-subtle: #eef1e6;
+  --gg-warning-subtle: #f7eedf;
+  --gg-danger-subtle: #f6e5e0;
+  --gg-info-subtle: #e8edef;
+  /* 奶茶淺底只給「選中／品牌提示」這種小面積用，不要拿來鋪整塊版面。 */
+  --gg-primary-subtle: #efe4d8;
 
   /*
-   * 琥珀色放在淺底上當文字時要再深一階。
-   * --gg-warning (#b45309) 在 #fffbeb 上是 4.90:1，勉強過但沒有餘裕；
-   * 這個 #92400e 是 6.90:1。色塊、圖示仍然用 --gg-warning。
+   * 琥珀棕放在淺底上當文字時要再深一階，留餘裕。
+   * 色塊、圖示仍然用 --gg-warning。
    */
-  --gg-warning-text: #92400e;
+  --gg-warning-text: #74491a;
 
   /*
    * ── 主視覺底色 ──
-   * 以前是高彩度的粉→紫漸層，上面只能放深粉字。現在是接近暖白的極淺粉霧，
-   * 粉紅只在角落透出來；上面放的是 --gg-fg／--gg-fg-muted（最深色標上 13.27／5.01）。
+   * 米白 → 奶茶米 → 淡奶茶的暖色漸層，角落透一點奶茶色，活潑但不甜。
+   * 上面放的是 --gg-fg／--gg-fg-muted（最深色標上 9.04／6.21）。
    */
-  --gg-gradient-banner: linear-gradient(135deg, #fffafc 0%, #fbe6ef 58%, #f1ecf9 100%);
-  --gg-gradient-cta: linear-gradient(135deg, #db2777 0%, #8b5cf6 100%);
+  --gg-gradient-banner: linear-gradient(135deg, #fbf9f7 0%, #f5f2eb 55%, #eadfd2 100%);
+  --gg-gradient-cta: linear-gradient(135deg, #d8c5b2 0%, #cdb7a1 100%);
 
   /* ── 圓角。全站沒有直角 ───────────────────────────────────────────── */
   --gg-radius-sm: 10px;
@@ -106,10 +113,10 @@
   --gg-space-7: 48px;
   --gg-space-8: 64px;
 
-  /* ── 陰影。中性暖灰、比以前輕；層級主要靠邊框與留白，不靠陰影 ────── */
-  --gg-shadow-card: 0 1px 2px rgba(38, 34, 31, 0.04), 0 4px 16px rgba(38, 34, 31, 0.05);
-  --gg-shadow-raised: 0 2px 4px rgba(38, 34, 31, 0.05), 0 12px 32px rgba(38, 34, 31, 0.08);
-  --gg-shadow-bottom-bar: 0 -2px 16px rgba(38, 34, 31, 0.06);
+  /* ── 陰影。深可可色、很輕；層級主要靠邊框與留白，不靠陰影 ────── */
+  --gg-shadow-card: 0 1px 2px rgba(60, 54, 51, 0.04), 0 4px 16px rgba(60, 54, 51, 0.05);
+  --gg-shadow-raised: 0 2px 4px rgba(60, 54, 51, 0.05), 0 12px 32px rgba(60, 54, 51, 0.08);
+  --gg-shadow-bottom-bar: 0 -2px 16px rgba(60, 54, 51, 0.06);
 
   /* ── 字體 ─────────────────────────────────────────────────────────── */
   /*
@@ -167,7 +174,7 @@
 
 /*
  * 前台**刻意不做深色模式**。
- * 理由：Soft Seoul 的整套調性建立在淺色暖白底上，硬翻深色會變成完全不同的產品，
+ * 理由：前台的整套調性建立在米白暖色底上，硬翻深色會變成完全不同的產品，
  * 而工時要多一倍。後台有深色模式（見 admin.css），因為那是每天盯八小時的畫面。
  * 這裡明確宣告，免得有人以為是漏掉的。
  */

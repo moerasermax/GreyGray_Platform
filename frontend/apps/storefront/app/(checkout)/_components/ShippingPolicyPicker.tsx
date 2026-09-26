@@ -35,7 +35,7 @@ export function ShippingPolicyPicker({ value, onChange }: ShippingPolicyPickerPr
             className={cn(
               'flex flex-col gap-[var(--gg-space-1)] rounded-card border p-[var(--gg-space-4)] text-left',
               'transition-colors duration-[var(--gg-duration-fast)] ease-out-soft',
-              selected ? 'border-primary bg-primary-subtle' : 'border-border-soft bg-surface hover:bg-surface-sunken',
+              selected ? 'border-primary-strong bg-primary-subtle' : 'border-border-soft bg-surface hover:bg-surface-sunken',
             )}
           >
             <span className="font-display text-[length:var(--gg-text-base)] font-bold text-fg">

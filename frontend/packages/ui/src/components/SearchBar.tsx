@@ -30,7 +30,7 @@ export function SearchBar({
       className={cn(
         'flex items-center gap-[var(--gg-space-2)] rounded-pill border border-border-soft',
         'bg-surface px-[var(--gg-space-4)] py-[var(--gg-space-2)] shadow-card',
-        'focus-within:border-primary',
+        'focus-within:border-primary-strong',
         className,
       )}
     >

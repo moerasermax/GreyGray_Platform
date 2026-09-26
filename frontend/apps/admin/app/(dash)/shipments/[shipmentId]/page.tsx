@@ -121,7 +121,7 @@ export default function ShipmentDetailPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <Link href="/shipments" className="text-sm text-primary hover:underline">
+          <Link href="/shipments" className="text-sm text-primary-text hover:underline">
             ← 回出貨單列表
           </Link>
           <h1 className="mt-1 gg-numeric text-xl font-semibold text-fg">{shipment.id.slice(0, 8)}</h1>
@@ -186,7 +186,7 @@ export default function ShipmentDetailPage() {
               key={orderId}
               className="flex items-center justify-between rounded-card border border-border-soft bg-surface px-4 py-2.5 shadow-card"
             >
-              <Link href={`/orders/${orderId}`} className="gg-numeric font-medium text-primary hover:underline">
+              <Link href={`/orders/${orderId}`} className="gg-numeric font-medium text-primary-text hover:underline">
                 {orderNumbers.get(orderId) ?? orderId}
               </Link>
             </li>

@@ -18,12 +18,14 @@
  * 攤平之後 `prefers-reduced-motion` 那類的覆寫就失效了。
  *
  * **元件裡一律用這裡的 utility（bg-primary、rounded-card…），
- * 不要寫 bg-[#db2777] 這種任意值。** 平行開發時這條是分水嶺。
+ * 不要寫 bg-[#d8c5b2] 這種任意值。** 平行開發時這條是分水嶺。
  */
 @theme inline {
   --color-primary: var(--gg-primary);
   --color-primary-hover: var(--gg-primary-hover);
   --color-primary-text: var(--gg-primary-text);
+  /* 焦點框、選中框線、checkbox。淺奶茶當非文字元件對比不夠，這個是深奶茶棕。 */
+  --color-primary-strong: var(--gg-primary-strong);
   --color-on-primary: var(--gg-on-primary);
   --color-secondary: var(--gg-secondary);
   --color-accent: var(--gg-accent);
@@ -42,6 +44,7 @@
   --color-warning: var(--gg-warning);
   --color-warning-text: var(--gg-warning-text);
   --color-danger: var(--gg-danger);
+  --color-on-danger: var(--gg-on-danger);
   --color-info: var(--gg-info);
 
   /* 狀態色的不透明淺底。半透明疊色的對比度取決於底下是什麼，算不準。 */
@@ -90,7 +93,7 @@
 
   /* 焦點框不可以拿掉。鍵盤使用者沒有它就完全不知道自己在哪裡。 */
   :focus-visible {
-    outline: 2px solid var(--gg-primary);
+    outline: 2px solid var(--gg-primary-strong);
     outline-offset: 2px;
     border-radius: var(--gg-radius-sm);
   }

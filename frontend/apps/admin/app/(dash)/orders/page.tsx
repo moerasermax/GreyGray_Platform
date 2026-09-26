@@ -160,7 +160,7 @@ export default function OrdersPage() {
       header: '訂單編號',
       renderCell: (row) => (
         <td className="px-3 py-2">
-          <Link href={`/orders/${row.id}`} className="gg-numeric font-medium text-primary hover:underline">
+          <Link href={`/orders/${row.id}`} className="gg-numeric font-medium text-primary-text hover:underline">
             {row.orderNumber}
           </Link>
         </td>

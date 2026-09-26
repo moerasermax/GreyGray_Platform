@@ -92,7 +92,7 @@ export function StorefrontTabBar() {
               'flex flex-1 flex-col items-center justify-center gap-[var(--gg-space-1)] ' +
               'py-[var(--gg-space-2)] text-[length:var(--gg-text-xs)] font-bold no-underline ' +
               'transition-colors duration-[var(--gg-duration-base)] ease-out-soft ' +
-              'rounded-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ' +
+              'rounded-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-strong ' +
               'md:my-[var(--gg-space-2)] md:flex-row md:gap-[var(--gg-space-3)] md:text-[length:var(--gg-text-sm)] ' +
               (isActive ? 'text-primary-text md:bg-surface-sunken' : 'text-fg-muted hover:text-fg')
             }

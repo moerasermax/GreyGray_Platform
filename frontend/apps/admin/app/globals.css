@@ -11,7 +11,7 @@
 
 
 /*
- * 後台的 theme。與前台是兄弟不是雙胞胎——共用同一支粉紅當品牌記號，其餘完全不同。
+ * 後台的 theme。與前台是兄弟不是雙胞胎——共用同一組奶茶大地色當品牌記號，其餘完全不同。
  * 密、中性、有深色模式。理由寫在 `@greygray/ui/tokens/admin.css` 的檔頭。
  */
 @theme inline {
@@ -30,6 +30,7 @@
   --color-primary: var(--ga-primary);
   --color-primary-hover: var(--ga-primary-hover);
   --color-primary-text: var(--ga-primary-text);
+  --color-primary-strong: var(--ga-primary-strong);
   --color-on-primary: var(--ga-on-primary);
   --color-primary-subtle: var(--ga-primary-subtle);
 
@@ -38,6 +39,7 @@
   --color-warning: var(--ga-warning);
   --color-warning-subtle: var(--ga-warning-subtle);
   --color-danger: var(--ga-danger);
+  --color-on-danger: var(--ga-on-danger);
   --color-danger-subtle: var(--ga-danger-subtle);
   --color-info: var(--ga-info);
   --color-info-subtle: var(--ga-info-subtle);
@@ -67,7 +69,7 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--ga-primary);
+    outline: 2px solid var(--ga-primary-strong);
     outline-offset: 2px;
     border-radius: var(--ga-radius-sm);
   }

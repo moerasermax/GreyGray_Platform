@@ -2,7 +2,7 @@
  * `@greygray/ui` —— 兩個 app 共用的設計層。
  *
  * **token 是唯一的顏色與尺寸來源。** 元件裡不准出現 raw hex、不准出現硬寫的 px 圓角。
- * 平行開發時這條特別要緊：四個人各自挑一個粉紅色，出來就是四個產品。
+ * 平行開發時這條特別要緊：四個人各自挑一個顏色，出來就是四個產品。
  *
  * - `tokens/soft-seoul.css` —— 前台（ADR-009）。全站沒有一個直角。
  * - `tokens/admin.css` —— 後台。中性、密、有深色模式、金額欄位 tabular-nums。
@@ -16,12 +16,14 @@ export type ThemeName = 'soft-seoul' | 'admin';
 
 /** 對比度都實際量過（WCAG 2.1）。細節與用途分工見 `tokens/soft-seoul.css` 的檔頭。 */
 export const SoftSeoulPalette = {
-  /** 只給漸層與裝飾。上面不可以放小字（白字只有 3.53:1）。 */
-  pinkDecor: 'var(--gg-pink-decor)',
-  /** 互動元件底色，白字 4.60:1 ✓ */
+  /** 淺奶茶，只給漸層與裝飾。上面不可以放淺色字。 */
+  decor: 'var(--gg-decor)',
+  /** 按鈕、標籤、選中態底色。上面放深字（--gg-on-primary）7.10:1 ✓ */
   primary: 'var(--gg-primary)',
-  /** 淺底上的粉紅文字與連結，6.04:1 ✓ */
+  /** 淺底上的強調文字與連結，7.77:1 ✓ */
   primaryText: 'var(--gg-primary-text)',
+  /** 焦點框、選中框線。非文字元件 ≥ 3:1 ✓ */
+  primaryStrong: 'var(--gg-primary-strong)',
 } as const;
 
 // ── FE-2：Soft Seoul 元件庫 ──────────────────────────────────────────────

@@ -1,11 +1,11 @@
 /*
  * GreyGray 後台的設計 token
  *
- * 跟前台是**兄弟不是雙胞胎**：共用同一支粉紅當品牌記號，其餘完全不同。
+ * 跟前台是**兄弟不是雙胞胎**：共用同一組奶茶大地色當品牌記號，其餘完全不同。
  * 前台是逛街，後台是一天盯八小時的工作台，兩者的目標本來就相反：
  *
  *   前台        後台
- *   柔粉底      中性底，資訊不跟背景搶
+ *   米白暖底    同一組米白，但文字用中性深灰，資訊不跟背景搶
  *   寬鬆        密（density 8/10，8–32px 尺度）
  *   圓潤        中等圓角（8–12px），表格要能對齊
  *   無深色      **有深色**，因為對帳常常是晚上做的
@@ -17,51 +17,52 @@
  */
 
 :root {
-  /* ── 中性底 ───────────────────────────────────────────────────────── */
-  --ga-bg: #f8fafc;
-  --ga-surface: #ffffff;
-  --ga-surface-sunken: #f1f5f9;
-  --ga-border: #e2e8f0;
-  --ga-border-strong: #cbd5e1;
+  /* ── 底：跟前台同一組米白／奶茶米（2026-09-26 品牌配色改版）──────── */
+  --ga-bg: #fbf9f7;
+  --ga-surface: #f5f2eb;
+  --ga-surface-sunken: #efebe4;
+  --ga-border: #e0e0e0;
+  --ga-border-strong: #d8c5b2;
 
-  --ga-fg: #0f172a;
-  --ga-fg-muted: #64748b;   /* 只保證在 --ga-bg (#f8fafc) 上 4.76:1 ✓ */
-  --ga-fg-subtle: #94a3b8;  /* 只給非文字的圖示與分隔線，不要放文字 */
+  --ga-fg: #222222;         /* 在 bg 15.15 · surface 14.23 ✓ */
+  --ga-fg-muted: #4a4a4a;   /* 在 bg 8.44 · surface-sunken 7.46 · 各 *-subtle ≥ 7.07 ✓ */
+  --ga-fg-subtle: #8c8279;  /* 只給非文字的圖示與分隔線，不要放文字（3.36:1，夠非文字的 3:1）*/
 
   /*
-   * 疊在任何 *-subtle 有色底上的文字**一律用這個**。
-   * --ga-fg-muted 只在 --ga-bg 上被量過；放到 surface-sunken 上是 4.34:1、
-   * 放到 danger-subtle 上是 3.90:1，兩個都不到 4.5。這個實測：
-   *   在 --ga-surface-sunken (#f1f5f9) 上 9.45:1 ✓
-   *   在 --ga-danger-subtle  (#fee2e2) 上 8.47:1 ✓
-   *   在 --ga-primary-subtle (#fce7f3) 上 8.80:1 ✓
+   * 疊在任何 *-subtle 有色底上的文字**一律用這個**。實測：
+   *   在 --ga-surface-sunken (#efebe4) 上 10.63:1 ✓
+   *   在 --ga-danger-subtle  (#f6e5e0) 上 10.35:1 ✓
+   *   在 --ga-primary-subtle (#efe4d8) 上 10.08:1 ✓
    */
-  --ga-fg-on-tint: #334155;
+  --ga-fg-on-tint: #333333;
 
-  /* ── 品牌記號。後台只用一點點，讓兩個 app 認得出是同一個產品 ────── */
-  --ga-primary: #db2777;
-  --ga-primary-hover: #be185d;
-  --ga-on-primary: #ffffff;
-  --ga-primary-subtle: #fce7f3;
+  /* ── 品牌記號：淺奶茶。後台只用一點點，讓兩個 app 認得出是同一個產品 ── */
+  --ga-primary: #d8c5b2;
+  --ga-primary-hover: #cdb7a1;
+  --ga-on-primary: #222222;   /* 在 primary 上 9.51 · 在 hover 上 8.25 ✓ */
+  --ga-primary-subtle: #efe4d8;
   /*
-   * 淺底上的粉紅文字（側邊選單作用中那一項）。跟前台的 --gg-primary-text 同一個道理：
-   * --ga-primary 直接放在 --ga-primary-subtle 上只有 3.91:1，這個是 5.14:1 ✓
+   * 淺底上的品牌色文字與連結（側邊選單作用中那一項、表格裡的單號連結）。
+   * 淺奶茶本身當文字只有 1.6:1，所以文字一律用這個深奶茶棕：在 bg 上 7.77、primary-subtle 上 6.51 ✓
    */
-  --ga-primary-text: #be185d;
+  --ga-primary-text: #5a4d41;
+  /* 焦點框、選中框線、checkbox。非文字元件要 3:1，這個在 surface 上 7.30 ✓ */
+  --ga-primary-strong: #5a4d41;
 
-  /* ── 狀態燈。訂單狀態、對帳差異、庫存水位都吃這組 ───────────────── */
-  --ga-success: #15803d;
-  --ga-success-subtle: #dcfce7;
-  --ga-warning: #b45309;
-  --ga-warning-subtle: #fef3c7;
-  --ga-danger: #b91c1c;
-  --ga-danger-subtle: #fee2e2;
-  --ga-info: #1d4ed8;
-  --ga-info-subtle: #dbeafe;
+  /* ── 狀態燈。訂單狀態、對帳差異、庫存水位都吃這組。彩度壓低、配大地色 ── */
+  --ga-success: #4f6b3a;
+  --ga-success-subtle: #eef1e6;
+  --ga-warning: #8a5a1f;
+  --ga-warning-subtle: #f7eedf;
+  --ga-danger: #a23b2c;
+  --ga-danger-subtle: #f6e5e0;
+  --ga-info: #4d6273;
+  --ga-info-subtle: #e8edef;
+  --ga-on-danger: #fbf9f7;
 
   /* ── 會計方向。借貸兩色不可以只靠顏色分辨，一定要同時有文字 ────── */
-  --ga-debit: #1d4ed8;
-  --ga-credit: #b45309;
+  --ga-debit: #4d6273;
+  --ga-credit: #8a5a1f;
 
   /* ── 圓角。比前台收斂，表格才對得齊 ─────────────────────────────── */
   --ga-radius-sm: 6px;
@@ -84,8 +85,8 @@
   --ga-row-height: 40px;
   --ga-row-height-dense: 32px;
 
-  --ga-shadow-card: 0 1px 2px rgba(15, 23, 42, 0.05), 0 1px 3px rgba(15, 23, 42, 0.06);
-  --ga-shadow-popover: 0 4px 6px rgba(15, 23, 42, 0.05), 0 12px 32px rgba(15, 23, 42, 0.12);
+  --ga-shadow-card: 0 1px 2px rgba(60, 54, 51, 0.05), 0 1px 3px rgba(60, 54, 51, 0.06);
+  --ga-shadow-popover: 0 4px 6px rgba(60, 54, 51, 0.05), 0 12px 32px rgba(60, 54, 51, 0.12);
 
   /* ── 字體 ─────────────────────────────────────────────────────────── */
   --ga-font-sans: 'Inter', 'Noto Sans TC', -apple-system, BlinkMacSystemFont,
@@ -123,34 +124,36 @@
 :root[data-theme='dark'],
 :root:not([data-theme='light']) {
   @media (prefers-color-scheme: dark) {
-    --ga-bg: #0b1120;
-    --ga-surface: #111827;
-    --ga-surface-sunken: #0f172a;
-    --ga-border: #1f2937;
-    --ga-border-strong: #334155;
+    --ga-bg: #1c1917;
+    --ga-surface: #26221f;
+    --ga-surface-sunken: #211d1b;
+    --ga-border: #3c3633;
+    --ga-border-strong: #5a4d41;
 
-    --ga-fg: #e2e8f0;
-    --ga-fg-muted: #94a3b8;
-    --ga-fg-subtle: #64748b;
-    --ga-fg-on-tint: #cbd5e1;  /* 在 #450a0a 上 10.79:1 ✓ */
+    --ga-fg: #f5f2eb;
+    --ga-fg-muted: #c2b6a9;
+    --ga-fg-subtle: #8f847a;
+    --ga-fg-on-tint: #e0e0e0;  /* 在各 *-subtle 深底上 ≥ 9.41:1 ✓ */
 
-    --ga-primary: #f472b6;
-    --ga-primary-hover: #f9a8d4;
-    --ga-on-primary: #500724;
-    --ga-primary-subtle: #4c0519;
-    --ga-primary-text: #f472b6;  /* 在 #4c0519 上 5.88:1 ✓ */
+    --ga-primary: #d8c5b2;
+    --ga-primary-hover: #e6d8ca;
+    --ga-on-primary: #222222;
+    --ga-primary-subtle: #3a3129;
+    --ga-primary-text: #d8c5b2;  /* 在 #3a3129 上 7.60:1 ✓ */
+    --ga-primary-strong: #d8c5b2;
 
-    --ga-success: #4ade80;
-    --ga-success-subtle: #052e16;
-    --ga-warning: #fbbf24;
-    --ga-warning-subtle: #451a03;
-    --ga-danger: #f87171;
-    --ga-danger-subtle: #450a0a;
-    --ga-info: #60a5fa;
-    --ga-info-subtle: #172554;
+    --ga-success: #a9c28f;
+    --ga-success-subtle: #2e3726;
+    --ga-warning: #e2b97a;
+    --ga-warning-subtle: #3b2e1d;
+    --ga-danger: #ee9e8e;
+    --ga-danger-subtle: #3f2622;
+    --ga-info: #a3b8c8;
+    --ga-info-subtle: #263038;
+    --ga-on-danger: #1c1917;
 
-    --ga-debit: #60a5fa;
-    --ga-credit: #fbbf24;
+    --ga-debit: #a3b8c8;
+    --ga-credit: #e2b97a;
 
     --ga-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
     --ga-shadow-popover: 0 12px 32px rgba(0, 0, 0, 0.6);
@@ -158,34 +161,36 @@
 }
 
 :root[data-theme='dark'] {
-  --ga-bg: #0b1120;
-  --ga-surface: #111827;
-  --ga-surface-sunken: #0f172a;
-  --ga-border: #1f2937;
-  --ga-border-strong: #334155;
+  --ga-bg: #1c1917;
+  --ga-surface: #26221f;
+  --ga-surface-sunken: #211d1b;
+  --ga-border: #3c3633;
+  --ga-border-strong: #5a4d41;
 
-  --ga-fg: #e2e8f0;
-  --ga-fg-muted: #94a3b8;
-  --ga-fg-subtle: #64748b;
-  --ga-fg-on-tint: #cbd5e1;  /* 在 #450a0a 上 10.79:1 ✓ */
+  --ga-fg: #f5f2eb;
+  --ga-fg-muted: #c2b6a9;
+  --ga-fg-subtle: #8f847a;
+  --ga-fg-on-tint: #e0e0e0;  /* 在各 *-subtle 深底上 ≥ 9.41:1 ✓ */
 
-  --ga-primary: #f472b6;
-  --ga-primary-hover: #f9a8d4;
-  --ga-on-primary: #500724;
-  --ga-primary-subtle: #4c0519;
-  --ga-primary-text: #f472b6;  /* 在 #4c0519 上 5.88:1 ✓ */
+  --ga-primary: #d8c5b2;
+  --ga-primary-hover: #e6d8ca;
+  --ga-on-primary: #222222;
+  --ga-primary-subtle: #3a3129;
+  --ga-primary-text: #d8c5b2;  /* 在 #3a3129 上 7.60:1 ✓ */
+  --ga-primary-strong: #d8c5b2;
 
-  --ga-success: #4ade80;
-  --ga-success-subtle: #052e16;
-  --ga-warning: #fbbf24;
-  --ga-warning-subtle: #451a03;
-  --ga-danger: #f87171;
-  --ga-danger-subtle: #450a0a;
-  --ga-info: #60a5fa;
-  --ga-info-subtle: #172554;
+  --ga-success: #a9c28f;
+  --ga-success-subtle: #2e3726;
+  --ga-warning: #e2b97a;
+  --ga-warning-subtle: #3b2e1d;
+  --ga-danger: #ee9e8e;
+  --ga-danger-subtle: #3f2622;
+  --ga-info: #a3b8c8;
+  --ga-info-subtle: #263038;
+  --ga-on-danger: #1c1917;
 
-  --ga-debit: #60a5fa;
-  --ga-credit: #fbbf24;
+  --ga-debit: #a3b8c8;
+  --ga-credit: #e2b97a;
 
   --ga-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
   --ga-shadow-popover: 0 12px 32px rgba(0, 0, 0, 0.6);

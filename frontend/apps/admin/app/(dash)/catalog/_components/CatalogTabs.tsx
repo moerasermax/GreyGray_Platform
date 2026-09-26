@@ -24,7 +24,7 @@ export function CatalogTabs() {
             key={tab.href}
             href={tab.href}
             className={`px-3 py-2 text-sm font-medium ${
-              active ? 'border-b-2 border-primary text-primary-text' : 'text-fg-muted hover:text-fg'
+              active ? 'border-b-2 border-primary-strong text-primary-text' : 'text-fg-muted hover:text-fg'
             }`}
           >
             {tab.label}

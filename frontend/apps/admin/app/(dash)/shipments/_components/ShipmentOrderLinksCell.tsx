@@ -38,7 +38,7 @@ export function ShipmentOrderLinksCell({
         {orderIds.map((orderId, index) => (
           <span key={orderId} className="flex items-center">
             {index > 0 ? <span className="mr-1 text-fg-muted">、</span> : null}
-            <Link href={`/orders/${orderId}`} className="gg-numeric font-medium text-primary hover:underline">
+            <Link href={`/orders/${orderId}`} className="gg-numeric font-medium text-primary-text hover:underline">
               {orderNumberByOrderId.get(orderId) ?? orderId.slice(0, 8)}
             </Link>
           </span>

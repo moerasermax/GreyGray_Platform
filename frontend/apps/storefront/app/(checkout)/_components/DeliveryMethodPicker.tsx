@@ -36,7 +36,7 @@ export function DeliveryMethodPicker({ open, onClose, value, onSelect, quoting }
               className={cn(
                 'flex items-center justify-between gap-[var(--gg-space-3)] rounded-card border p-[var(--gg-space-4)] text-left',
                 'transition-colors duration-[var(--gg-duration-fast)] ease-out-soft disabled:opacity-60',
-                selected ? 'border-primary bg-primary-subtle' : 'border-border-soft bg-surface hover:bg-surface-sunken',
+                selected ? 'border-primary-strong bg-primary-subtle' : 'border-border-soft bg-surface hover:bg-surface-sunken',
               )}
             >
               <span className="flex flex-col gap-[var(--gg-space-1)]">

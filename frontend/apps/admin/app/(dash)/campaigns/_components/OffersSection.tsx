@@ -126,7 +126,7 @@ export function OffersSection({ campaignId, offers, loading, onChanged }: Offers
       header: '商品',
       renderCell: (row) => (
         <td className="px-3 py-2">
-          <button type="button" className="font-medium text-primary hover:underline" onClick={() => setViewingOffer(row)}>
+          <button type="button" className="font-medium text-primary-text hover:underline" onClick={() => setViewingOffer(row)}>
             {row.name}
           </button>
           {row.variantName ? <div className="text-xs text-fg-muted">{row.variantName}</div> : null}

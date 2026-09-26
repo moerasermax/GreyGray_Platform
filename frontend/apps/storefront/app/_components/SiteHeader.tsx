@@ -30,7 +30,7 @@ import { activeTabHref, normalizePathname, tabBarRuleFor } from '../_lib/tabs';
 import { useCartItemCount } from '../_lib/useCartItemCount';
 
 const FOCUS_RING =
-  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-strong';
 
 /** 頁首的瀏覽入口。與首頁 `HomeSearchHeader` 同一份清單：都是站上既有的頁面，不在這裡發明新路由。 */
 const NAV_LINKS = [

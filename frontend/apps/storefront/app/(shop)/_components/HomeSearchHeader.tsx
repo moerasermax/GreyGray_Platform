@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Avatar, SearchBar } from '@greygray/ui';
 
 const FOCUS_RING =
-  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-strong';
 
 /** 首頁標頭的瀏覽入口。都是站上既有的頁面，不在這裡發明新路由。 */
 const NAV_LINKS = [

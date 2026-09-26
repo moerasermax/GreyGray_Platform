@@ -35,7 +35,7 @@ export function RefundDestinationFields({ name, value, onChange }: RefundDestina
             className={`flex flex-col gap-0.5 rounded-card border px-3 py-2 text-sm ${
               disabled
                 ? 'cursor-not-allowed border-border-soft bg-surface-sunken opacity-60'
-                : `cursor-pointer ${checked ? 'border-primary bg-primary-subtle' : 'border-border-soft bg-surface hover:bg-surface-sunken'}`
+                : `cursor-pointer ${checked ? 'border-primary-strong bg-primary-subtle' : 'border-border-soft bg-surface hover:bg-surface-sunken'}`
             }`}
           >
             <span className="flex items-center gap-2 font-medium text-fg">
@@ -48,7 +48,7 @@ export function RefundDestinationFields({ name, value, onChange }: RefundDestina
                 disabled={disabled}
                 required
                 onChange={() => onChange(option)}
-                className="h-4 w-4 accent-[var(--color-primary)]"
+                className="h-4 w-4 accent-primary-strong"
               />
               {refundDestinationLabel(option)}
               {disabled ? (

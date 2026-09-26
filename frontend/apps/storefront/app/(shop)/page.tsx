@@ -89,7 +89,7 @@ function HomeSection({
           <Link
             href={allHref}
             aria-label={allLabel}
-            className="flex min-h-[var(--gg-touch-min)] shrink-0 items-center rounded-pill px-[var(--gg-space-3)] text-[length:var(--gg-text-sm)] font-bold text-primary-text transition-colors duration-[var(--gg-duration-fast)] hover:bg-primary-subtle focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            className="flex min-h-[var(--gg-touch-min)] shrink-0 items-center rounded-pill px-[var(--gg-space-3)] text-[length:var(--gg-text-sm)] font-bold text-primary-text transition-colors duration-[var(--gg-duration-fast)] hover:bg-primary-subtle focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-strong"
           >
             查看全部
             <span aria-hidden="true" className="pl-[var(--gg-space-1)]">

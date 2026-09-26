@@ -193,7 +193,7 @@ export function CreateShipmentDialog({ open, onClose, onConfirm }: CreateShipmen
                           type="checkbox"
                           checked={checked}
                           onChange={() => toggleOrder(order.id)}
-                          className="h-4 w-4 accent-[var(--color-primary)]"
+                          className="h-4 w-4 accent-primary-strong"
                         />
                         <span>
                           <span className="gg-numeric font-medium text-fg">{order.orderNumber}</span>

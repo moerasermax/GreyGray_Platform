@@ -153,7 +153,7 @@ export default function ProcurementCampaignPage() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <Link href="/procurement" className="text-sm text-primary hover:underline">
+        <Link href="/procurement" className="text-sm text-primary-text hover:underline">
           ← 回選團
         </Link>
         <h1 className="mt-1 text-xl font-semibold text-fg">{campaignTitle ?? campaignId}</h1>

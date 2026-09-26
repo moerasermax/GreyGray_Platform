@@ -17,7 +17,7 @@ export function Badge({ variant, label, className, ...rest }: BadgeProps) {
       case 'New':
         return 'border border-info/20 bg-info-subtle text-info';
       case 'Popular':
-        return 'border border-primary/20 bg-primary-subtle text-primary-text';
+        return 'border border-primary bg-primary-subtle text-primary-text';
       case 'LastCall':
         return 'border border-warning/20 bg-warning-subtle text-warning-text';
       default:
