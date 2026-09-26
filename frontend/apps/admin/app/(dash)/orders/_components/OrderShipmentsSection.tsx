@@ -64,7 +64,7 @@ export function OrderShipmentsSection({
           <button
             type="button"
             onClick={onRetry}
-            className="rounded-full border border-primary/30 px-3 py-1 text-xs font-semibold text-primary hover:bg-primary-subtle"
+            className="rounded-full border border-primary px-3 py-1 text-xs font-semibold text-primary-text hover:bg-primary-subtle"
           >
             重試
           </button>
@@ -89,7 +89,7 @@ export function OrderShipmentsSection({
                   <span className="flex flex-wrap items-center gap-3">
                     <Link
                       href={`/shipments/${shipment.id}`}
-                      className="gg-numeric font-medium text-primary hover:underline"
+                      className="gg-numeric font-medium text-primary-text hover:underline"
                     >
                       {shipment.id.slice(0, 8)}
                     </Link>

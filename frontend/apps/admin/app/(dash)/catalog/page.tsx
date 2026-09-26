@@ -108,7 +108,7 @@ export default function CatalogProductsPage() {
       header: '商品名稱',
       renderCell: (row) => (
         <td className="px-3 py-2">
-          <Link href={`/catalog/products/${row.id}`} className="font-medium text-primary hover:underline">
+          <Link href={`/catalog/products/${row.id}`} className="font-medium text-primary-text hover:underline">
             {row.name}
           </Link>
           {row.shortDescription ? <div className="text-xs text-fg-muted">{row.shortDescription}</div> : null}

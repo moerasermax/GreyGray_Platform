@@ -72,7 +72,7 @@ export function Tabs({ items, value, onChange, className }: TabsProps) {
               'transition-colors duration-[var(--gg-duration-fast)] ease-out-soft',
               'disabled:opacity-50',
               selected
-                ? 'border-primary text-primary-text'
+                ? 'border-primary-strong text-primary-text'
                 : 'border-transparent text-fg-muted hover:text-fg',
             )}
           >

@@ -5,11 +5,11 @@ import { Thumbnail } from '@greygray/ui';
 type S = components['schemas'];
 
 const FOCUS_RING =
-  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-strong';
 
 const CTA_BASE = `inline-flex min-h-[var(--gg-touch-min)] items-center justify-center rounded-pill px-[var(--gg-space-5)] text-[length:var(--gg-text-sm)] font-bold transition-colors duration-[var(--gg-duration-fast)] ${FOCUS_RING}`;
 const CTA_PRIMARY = `${CTA_BASE} bg-primary text-on-primary hover:bg-primary-hover`;
-const CTA_SECONDARY = `${CTA_BASE} border border-border-strong bg-surface text-fg hover:border-primary hover:text-primary-text`;
+const CTA_SECONDARY = `${CTA_BASE} border border-border-strong bg-surface text-fg hover:border-primary-strong hover:text-primary-text`;
 
 /**
  * 首頁主視覺（ADR-009 首頁切版第二段；FE-38 改版）。

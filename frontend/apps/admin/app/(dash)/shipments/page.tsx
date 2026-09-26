@@ -133,7 +133,7 @@ export default function ShipmentsPage() {
       header: '出貨單',
       renderCell: (row) => (
         <td className="px-3 py-2">
-          <Link href={`/shipments/${row.id}`} className="gg-numeric font-medium text-primary hover:underline">
+          <Link href={`/shipments/${row.id}`} className="gg-numeric font-medium text-primary-text hover:underline">
             {row.id.slice(0, 8)}
           </Link>
         </td>

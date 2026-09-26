@@ -81,7 +81,7 @@ export default function ProcurementEntryPage() {
             <Link
               key={campaign.id}
               href={`/procurement/${campaign.id}`}
-              className="flex min-h-11 flex-col gap-2 rounded-card border border-border-soft bg-surface p-4 shadow-card hover:border-primary"
+              className="flex min-h-11 flex-col gap-2 rounded-card border border-border-soft bg-surface p-4 shadow-card hover:border-primary-strong"
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium text-fg">{campaign.title}</span>

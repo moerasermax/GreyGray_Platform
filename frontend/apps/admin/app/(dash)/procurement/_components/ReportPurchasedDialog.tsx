@@ -130,7 +130,7 @@ export function ReportPurchasedDialog({ open, item, onClose, onConfirm }: Report
                 step="any"
                 value={originalMajor}
                 onChange={(event) => setOriginalMajor(event.target.value)}
-                className="min-h-11 w-full rounded-sm border border-border-strong bg-surface px-3 py-1.5 text-base text-fg focus-visible:outline-2 focus-visible:outline-primary"
+                className="min-h-11 w-full rounded-sm border border-border-strong bg-surface px-3 py-1.5 text-base text-fg focus-visible:outline-2 focus-visible:outline-primary-strong"
               />
             </Field>
           </div>
@@ -149,7 +149,7 @@ export function ReportPurchasedDialog({ open, item, onClose, onConfirm }: Report
               step="any"
               value={bookingMajor}
               onChange={(event) => setBookingMajor(event.target.value)}
-              className="min-h-11 w-full rounded-sm border border-border-strong bg-surface px-3 py-1.5 text-base text-fg focus-visible:outline-2 focus-visible:outline-primary"
+              className="min-h-11 w-full rounded-sm border border-border-strong bg-surface px-3 py-1.5 text-base text-fg focus-visible:outline-2 focus-visible:outline-primary-strong"
             />
           </Field>
         </div>

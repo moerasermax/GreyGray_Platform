@@ -75,7 +75,7 @@ export function AddressForm({ values, errors, onChange }: AddressFormProps) {
       <label className="flex items-center gap-[var(--gg-space-2)] text-[length:var(--gg-text-sm)] text-fg">
         <input
           type="checkbox"
-          className="h-[var(--gg-space-4)] w-[var(--gg-space-4)] accent-[var(--gg-primary)]"
+          className="h-[var(--gg-space-4)] w-[var(--gg-space-4)] accent-primary-strong"
           checked={values.isDefault}
           onChange={(e) => setField('isDefault', e.target.checked)}
         />

@@ -224,7 +224,7 @@ export default function OrderDetailPage() {
               <button
                 type="button"
                 onClick={() => setRefundShortfallLine(line)}
-                className="rounded-full border border-primary/30 px-3 py-1 text-xs font-semibold text-primary hover:bg-primary-subtle"
+                className="rounded-full border border-primary px-3 py-1 text-xs font-semibold text-primary-text hover:bg-primary-subtle"
               >
                 退短缺款
               </button>
@@ -300,7 +300,7 @@ export default function OrderDetailPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <Link href="/orders" className="text-sm text-primary hover:underline">
+          <Link href="/orders" className="text-sm text-primary-text hover:underline">
             ← 回訂單列表
           </Link>
           {/* 不用 `.gg-numeric`：它含 `text-align: right` 且不在 cascade layer 裡，

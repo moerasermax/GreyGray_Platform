@@ -9,7 +9,7 @@ const VARIANT_CLASS: Record<ButtonVariant, string> = {
   secondary:
     'border border-border-strong bg-surface text-primary-text hover:bg-surface-sunken',
   ghost: 'bg-transparent text-primary-text hover:bg-surface-sunken',
-  danger: 'bg-danger text-on-primary hover:opacity-90',
+  danger: 'bg-danger text-on-danger hover:opacity-90',
 };
 
 const SIZE_CLASS: Record<ButtonSize, string> = {

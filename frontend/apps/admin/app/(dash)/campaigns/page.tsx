@@ -82,7 +82,7 @@ export default function CampaignsPage() {
       header: '團名',
       renderCell: (row) => (
         <td className="px-3 py-2">
-          <Link href={`/campaigns/${row.id}`} className="font-medium text-primary hover:underline">
+          <Link href={`/campaigns/${row.id}`} className="font-medium text-primary-text hover:underline">
             {row.title}
           </Link>
           <div className="text-xs text-fg-muted">{row.destination}</div>

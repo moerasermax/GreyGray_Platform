@@ -116,7 +116,7 @@ export function ReportPriceChangeDialog({ open, item, onClose, onConfirm }: Repo
                 step="any"
                 value={major}
                 onChange={(event) => setMajor(event.target.value)}
-                className="min-h-11 w-full rounded-sm border border-border-strong bg-surface px-3 py-1.5 text-base text-fg focus-visible:outline-2 focus-visible:outline-primary"
+                className="min-h-11 w-full rounded-sm border border-border-strong bg-surface px-3 py-1.5 text-base text-fg focus-visible:outline-2 focus-visible:outline-primary-strong"
               />
             </Field>
           </div>

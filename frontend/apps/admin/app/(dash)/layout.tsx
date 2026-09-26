@@ -211,7 +211,7 @@ export default function DashLayout({ children }: { readonly children: ReactNode 
         <Sidebar
           items={navItems}
           LinkComponent={Link}
-          header={<span className="text-base font-semibold text-primary">GreyGray 後台</span>}
+          header={<span className="text-base font-semibold text-primary-text">GreyGray 後台</span>}
         />
         <div className="flex min-w-0 flex-1 flex-col">
           <Topbar

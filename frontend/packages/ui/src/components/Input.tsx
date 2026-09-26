@@ -17,7 +17,7 @@ export function Input({ invalid, className, ref, ...rest }: InputProps) {
         'text-[length:var(--gg-text-base)] text-fg placeholder:text-fg-muted',
         'transition-colors duration-[var(--gg-duration-fast)] ease-out-soft',
         'disabled:opacity-50',
-        invalid ? 'border-danger' : 'border-border-soft focus:border-primary',
+        invalid ? 'border-danger' : 'border-border-soft focus:border-primary-strong',
         className,
       )}
       {...rest}

@@ -43,8 +43,8 @@ export function CategoryChip({
           'relative flex aspect-square w-full items-center justify-center overflow-hidden',
           'rounded-pill border border-border-soft bg-surface-sunken',
           'transition-colors duration-[var(--gg-duration-base)] ease-out-soft',
-          'group-focus-visible:ring-2 group-focus-visible:ring-primary group-focus-visible:ring-offset-2',
-          selected && 'border-primary ring-2 ring-primary',
+          'group-focus-visible:ring-2 group-focus-visible:ring-primary-strong group-focus-visible:ring-offset-2',
+          selected && 'border-primary-strong ring-2 ring-primary-strong',
         )}
       >
         {imageSrc ? (

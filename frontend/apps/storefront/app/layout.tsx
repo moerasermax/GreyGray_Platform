@@ -40,8 +40,8 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   // 不要設 maximumScale 或 userScalable: false——那會擋掉視力不佳的人放大。
-  // FE-38 定案的暖白 `--gg-bg`。這是 metadata 字串，引用不了 CSS 變數，只能寫死同一個值。
-  themeColor: '#faf8f6',
+  // 2026-09-26 品牌配色的米白 `--gg-bg`。這是 metadata 字串，引用不了 CSS 變數，只能寫死同一個值。
+  themeColor: '#fbf9f7',
 };
 
 export default function RootLayout({

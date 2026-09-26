@@ -142,7 +142,7 @@ export function AddToCartPanel({ product }: AddToCartPanelProps) {
                 aria-pressed={sku.id === selectedSku.id}
                 className={`rounded-pill border px-[var(--gg-space-4)] py-[var(--gg-space-2)] text-[length:var(--gg-text-sm)] font-bold transition-colors duration-[var(--gg-duration-base)] ease-out-soft ${
                   sku.id === selectedSku.id
-                    ? 'border-primary bg-primary-subtle text-primary-text'
+                    ? 'border-primary-strong bg-primary-subtle text-primary-text'
                     : 'border-border-soft bg-surface text-fg-muted hover:bg-surface-sunken'
                 }`}
               >

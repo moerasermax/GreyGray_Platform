@@ -33,7 +33,7 @@ export default function FaqPage() {
             {group.items.map((item) => (
               <Card key={item.question} padding="md">
                 <details>
-                  <summary className="cursor-pointer rounded-card text-[length:var(--gg-text-base)] font-bold leading-[var(--gg-leading-normal)] text-fg [overflow-wrap:anywhere] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+                  <summary className="cursor-pointer rounded-card text-[length:var(--gg-text-base)] font-bold leading-[var(--gg-leading-normal)] text-fg [overflow-wrap:anywhere] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-strong">
                     {item.question}
                   </summary>
                   <p className="mt-[var(--gg-space-3)] text-[length:var(--gg-text-base)] leading-[var(--gg-leading-normal)] text-fg-muted [overflow-wrap:anywhere]">
