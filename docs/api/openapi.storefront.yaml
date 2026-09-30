@@ -841,8 +841,10 @@ paths:
       description: |
         **不是給前端的端點。** 列在這裡是因為它屬於 Storefront 行程的路由表。
 
-        三件事缺一不可：驗簽（`CheckMacValue`）、時戳容忍窗、`MerchantTradeNo` 去重。
+        三件事缺一不可：驗簽（`CheckMacValue`）、時戳容忍窗、去重。
         綠界會重送，所以這個端點必須冪等——去重走 `platform.idempotency_key`。
+        **先驗簽、再去重**（ADR-044）：驗簽失敗回 `422`，冪等表不寫任何資料；
+        驗簽通過後才以 `MerchantTradeNo`＋`TradeNo`＋`RtnCode` 為鍵去重（scope 依事件類型分開）。
       security: []
       requestBody:
         required: true
