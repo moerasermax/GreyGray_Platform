@@ -89,7 +89,10 @@ FE-53 在本包撤包後才派，但它的 allow 已生效：**本包不准改�
 
 -->
 
-## 生效中：FE-53　付款確認頁內容補齊＋商品描述保留換行（第四十二波第 2 輪，2026-09-30）
+<!--
+★ 2026-09-30 撤包：FE-53 機械驗收通過——Leader 重跑 ui／storefront／admin typecheck（exit 0）與 storefront 619、admin 203 全過；依使用者指示，真瀏覽器走查併入第四十二波最後的整體驗證。原文保留供追溯。
+
+## 已撤包：FE-53　付款確認頁內容補齊＋商品描述保留換行（第四十二波第 2 輪，2026-09-30）
 
 團隊原話「可以加上商品描述及購物後完成訂單的反饋」。無契約、純 UI；不送外部覆驗是 Leader 的明文裁量（已由唯讀查證代理逐行核對）。
 **FE-52 撤包之後才派**；allow 與 FE-52 逐檔切開：**本包不准碰 `frontend/packages/ui` 與任何殼元件**。待付款／確認中／已取消分支這次不動（等 BE-59）。
@@ -100,22 +103,24 @@ FE-53 在本包撤包後才派，但它的 allow 已生效：**本包不准改�
 ③ 下單時間明確指定 `Asia/Taipei`；複製鈕用行內文字回饋，**不用 Toast**；
 ④ isPaid 以外三個分支的畫面輸出不准變；`description` 不加 `maxLength`（資料庫是 `text`）。
 
-package: FE-53
-doc: docs/63-第四十二波FE-53付款確認頁與商品描述派工書.md
-allow: frontend/apps/storefront/app/(account)/orders/[orderId]/page.tsx
-allow: frontend/apps/storefront/app/(account)/orders/_components/
-allow: frontend/apps/storefront/app/(account)/orders/__tests__/
-allow: frontend/apps/storefront/app/(checkout)/payment/result/page.tsx
-allow: frontend/apps/storefront/app/(checkout)/_lib/paymentResultSummary.ts
-allow: frontend/apps/storefront/app/(checkout)/_lib/__tests__/
-allow: frontend/apps/storefront/app/(shop)/products/[productId]/page.tsx
-allow: frontend/apps/storefront/app/(shop)/products/[productId]/__tests__/
-allow: frontend/apps/admin/app/(dash)/catalog/_components/ProductForm.tsx
-allow: frontend/apps/admin/app/(dash)/catalog/_lib/productDescription.ts
-allow: frontend/apps/admin/app/(dash)/catalog/__tests__/
-allow: .dispatch/reports/FE-53.md
+(撤包) package: FE-53
+(撤包) doc: docs/63-第四十二波FE-53付款確認頁與商品描述派工書.md
+(撤包) allow: frontend/apps/storefront/app/(account)/orders/[orderId]/page.tsx
+(撤包) allow: frontend/apps/storefront/app/(account)/orders/_components/
+(撤包) allow: frontend/apps/storefront/app/(account)/orders/__tests__/
+(撤包) allow: frontend/apps/storefront/app/(checkout)/payment/result/page.tsx
+(撤包) allow: frontend/apps/storefront/app/(checkout)/_lib/paymentResultSummary.ts
+(撤包) allow: frontend/apps/storefront/app/(checkout)/_lib/__tests__/
+(撤包) allow: frontend/apps/storefront/app/(shop)/products/[productId]/page.tsx
+(撤包) allow: frontend/apps/storefront/app/(shop)/products/[productId]/__tests__/
+(撤包) allow: frontend/apps/admin/app/(dash)/catalog/_components/ProductForm.tsx
+(撤包) allow: frontend/apps/admin/app/(dash)/catalog/_lib/productDescription.ts
+(撤包) allow: frontend/apps/admin/app/(dash)/catalog/__tests__/
+(撤包) allow: .dispatch/reports/FE-53.md
 
 ---
+
+-->
 
 <!--
 ★ 2026-09-30 撤包：FE-51 已由 Leader 驗收——自己重跑 ui／storefront／admin typecheck（exit 0）與測試（storefront 595、admin 200 全過），Playwright 本機 Chrome 量前台登入／註冊 390／360 與後台登入 1280：同一個 input 節點、切換後選取 2–4 與焦點保留、顯示中送出當下已遮回、前台按鈕 44×44／右側留白 44px、後台 36×34 且與 Email 欄同寬同高、無橫向溢出；Edge 以對照欄證明內建眼睛被藏。原文保留供追溯。
