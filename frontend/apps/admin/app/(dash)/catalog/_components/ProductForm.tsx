@@ -4,6 +4,7 @@ import type { components } from '@greygray/api-client/admin';
 import { Field, Input, Select, Textarea } from '@greygray/ui/admin';
 import { useState } from 'react';
 import { apiErrorMessage } from '../_lib/apiError';
+import { productDescriptionHint } from '../_lib/productDescription';
 import { Button } from './Button';
 
 type S = components['schemas'];
@@ -75,7 +76,7 @@ export function ProductForm({ initial, categories, submitLabel, onSubmit }: Prod
         />
       </Field>
 
-      <Field label="完整描述" htmlFor="product-description">
+      <Field label="完整描述" htmlFor="product-description" hint={productDescriptionHint(description)}>
         <Textarea
           id="product-description"
           rows={4}

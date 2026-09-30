@@ -18,6 +18,14 @@ import type { components } from '@greygray/api-client/storefront';
 import { browserApi } from '../../../_lib/apiClient';
 import { ExplainDisclosure } from '../../_components/ExplainDisclosure';
 import { describeError, type ErrorDisplay } from '../../_lib/errorDisplay';
+import { OrderSummary } from '../../../(account)/orders/_components/OrderSummary';
+import {
+  COPY_ORDER_NUMBER_IDLE,
+  COPY_ORDER_NUMBER_SUCCEEDED,
+  copyOrderNumber,
+  formatPlacedAtInTaipei,
+  mixedOrderShippingMessage,
+} from '../../_lib/paymentResultSummary';
 import { pollDelayMs, shouldKeepPolling } from '../../_lib/paymentResultPolling';
 
 type S = components['schemas'];
@@ -68,6 +76,7 @@ function PaymentResultContent() {
    * 排程用完就停下來，把「要不要再查」交還給使用者（下面那顆「重新查詢」）。
    */
   const [attempt, setAttempt] = useState(0);
+  const [copyFeedback, setCopyFeedback] = useState(COPY_ORDER_NUMBER_IDLE);
   /**
    * 排程是不是已經跑完了。**顯示哪一段文案只看這一個旗標**，不看「現在有沒有排到計時器」——
    * 後者在第一次 render 與 effect 之間有一個空檔，會讓「尚未確認付款」閃一下才變成
@@ -75,6 +84,14 @@ function PaymentResultContent() {
    */
   const [pollExhausted, setPollExhausted] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (copyResetTimerRef.current !== null) clearTimeout(copyResetTimerRef.current);
+    },
+    [],
+  );
 
   function fetchOrder(): Promise<void> {
     if (!orderId) return Promise.resolve();
@@ -152,6 +169,18 @@ function PaymentResultContent() {
   const isPaid = PAID_STATUSES.has(order.status);
   const isCancelled = order.status === 'Cancelled';
   const isAwaitingPayment = order.status === 'AwaitingPayment';
+  const mixedShippingMessage = mixedOrderShippingMessage(order);
+
+  async function handleCopyOrderNumber(orderNumber: string) {
+    const writeText = globalThis.navigator?.clipboard?.writeText.bind(globalThis.navigator.clipboard);
+    const result = await copyOrderNumber(orderNumber, writeText);
+    setCopyFeedback(result);
+
+    if (copyResetTimerRef.current !== null) clearTimeout(copyResetTimerRef.current);
+    if (result === COPY_ORDER_NUMBER_SUCCEEDED) {
+      copyResetTimerRef.current = setTimeout(() => setCopyFeedback(COPY_ORDER_NUMBER_IDLE), 2_000);
+    }
+  }
 
   return (
     <main className="mx-auto flex max-w-[var(--gg-container-max)] flex-col gap-[var(--gg-space-5)] px-[var(--gg-space-4)] py-[var(--gg-space-8)]">
@@ -160,6 +189,25 @@ function PaymentResultContent() {
           <>
             <h1 className="font-display text-[length:var(--gg-text-xl)] font-bold text-success">付款成功</h1>
             <p className="text-fg-muted">訂單 {order.orderNumber} 已收到您的付款，我們會盡快為您安排。</p>
+            <p className="flex flex-wrap items-center justify-center gap-[var(--gg-space-2)] text-[length:var(--gg-text-sm)] text-fg-muted">
+              <span>
+                訂單編號：<span className="select-text font-bold text-fg">{order.orderNumber}</span>
+              </span>
+              <button
+                type="button"
+                className="font-bold text-primary-text underline underline-offset-2"
+                aria-live="polite"
+                onClick={() => void handleCopyOrderNumber(order.orderNumber)}
+              >
+                {copyFeedback}
+              </button>
+            </p>
+            <p className="text-[length:var(--gg-text-sm)] text-fg-muted">
+              下單時間：{formatPlacedAtInTaipei(order.placedAt)}
+            </p>
+            {mixedShippingMessage && (
+              <p className="text-[length:var(--gg-text-sm)] text-fg-muted">{mixedShippingMessage}</p>
+            )}
           </>
         )}
         {isCancelled && (
@@ -186,29 +234,46 @@ function PaymentResultContent() {
           </>
         )}
 
-        <PriceDisplay amount={order.grandTotal} size="lg" />
-        <ExplainDisclosure items={order.quoteExplain ?? []} title="這筆金額怎麼算的？" />
+        {isPaid ? (
+          <>
+            <ExplainDisclosure items={order.quoteExplain ?? []} title="這筆金額怎麼算的？" />
+            <div className="flex flex-wrap items-center justify-center gap-[var(--gg-space-3)]">
+              <Link href={`/orders/${order.id}`}>
+                <Button variant="primary">查看訂單明細</Button>
+              </Link>
+              <Link href="/">
+                <Button variant="secondary">繼續逛逛</Button>
+              </Link>
+            </div>
+          </>
+        ) : (
+          <>
+            <PriceDisplay amount={order.grandTotal} size="lg" />
+            <ExplainDisclosure items={order.quoteExplain ?? []} title="這筆金額怎麼算的？" />
 
-        <div className="flex flex-wrap items-center justify-center gap-[var(--gg-space-3)]">
-          {/*
-            * 排程跑完、狀態仍是 AwaitingPayment 時才給「重新查詢」。
-            * 重查期間給它只會讓人重複按，而每一次按都只是把同一個排程再跑一遍。
-            */}
-          {isAwaitingPayment && pollExhausted && (
-            <Button variant="primary" onClick={load}>
-              重新查詢
-            </Button>
-          )}
-          {isAwaitingPayment && (
-            <Link href={`/payment/${order.id}`}>
-              <Button variant={pollExhausted ? 'secondary' : 'primary'}>重新前往付款</Button>
-            </Link>
-          )}
-          <Link href="/orders">
-            <Button variant="secondary">查看我的訂單</Button>
-          </Link>
-        </div>
+            <div className="flex flex-wrap items-center justify-center gap-[var(--gg-space-3)]">
+              {/*
+                * 排程跑完、狀態仍是 AwaitingPayment 時才給「重新查詢」。
+                * 重查期間給它只會讓人重複按，而每一次按都只是把同一個排程再跑一遍。
+                */}
+              {isAwaitingPayment && pollExhausted && (
+                <Button variant="primary" onClick={load}>
+                  重新查詢
+                </Button>
+              )}
+              {isAwaitingPayment && (
+                <Link href={`/payment/${order.id}`}>
+                  <Button variant={pollExhausted ? 'secondary' : 'primary'}>重新前往付款</Button>
+                </Link>
+              )}
+              <Link href="/orders">
+                <Button variant="secondary">查看我的訂單</Button>
+              </Link>
+            </div>
+          </>
+        )}
       </Card>
+      {isPaid && <OrderSummary order={order} variant="confirmation" />}
     </main>
   );
 }

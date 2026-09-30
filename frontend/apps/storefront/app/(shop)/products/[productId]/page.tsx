@@ -89,7 +89,7 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
               </p>
             )}
             {product.description && (
-              <p className="break-words border-t border-border-soft pt-[var(--gg-space-3)] text-[length:var(--gg-text-sm)] leading-[var(--gg-leading-normal)] text-fg">
+              <p className="whitespace-pre-line break-words border-t border-border-soft pt-[var(--gg-space-3)] text-[length:var(--gg-text-sm)] leading-[var(--gg-leading-normal)] text-fg">
                 {product.description}
               </p>
             )}
