@@ -5,6 +5,7 @@ import { MockBootstrap } from './_mock/MockBootstrap';
 import { SiteHeader } from './_components/SiteHeader';
 import { StorefrontTabBar } from './_components/StorefrontTabBar';
 import { SupportWidget } from './_components/SupportWidget';
+import { MobileSiteHeader } from './_components/MobileSiteHeader';
 
 /*
  * 字體用 next/font 自架，不要用 <link> 拉 Google Fonts——
@@ -57,6 +58,7 @@ export default function RootLayout({
           跟分頁列一樣掛在 <body> 直屬層——前台沒有共同的中介 layout。
         */}
         <SiteHeader />
+        <MobileSiteHeader />
         {children}
         {/*
           底部分頁列（#30）。掛在 `{children}` 之後、`<body>` 直屬層，

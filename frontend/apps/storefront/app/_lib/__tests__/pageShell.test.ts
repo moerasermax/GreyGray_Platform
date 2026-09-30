@@ -23,6 +23,7 @@ import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { shouldShowTabBar } from '../tabs';
+import { shouldShowMobileSiteHeader } from '../mobileNav';
 import {
   SHELL_EXCEPTIONS,
   TOP_BAR_RULES,
@@ -147,6 +148,43 @@ describe('每一條路由恰好有一種殼', () => {
       '/payment/result=false',
       '/payment/:orderId=true',
     ]);
+  });
+});
+
+describe('手機全站頁首的獨立規則', () => {
+  it('等於分頁列顯示且不是首頁，並且不和頁面頂部列重疊', () => {
+    for (const entry of ROUTES) {
+      const expected = shouldShowTabBar(entry.route) && entry.route !== '/';
+      expect(shouldShowMobileSiteHeader(entry.route), entry.route).toBe(expected);
+      expect(
+        shouldShowMobileSiteHeader(entry.route) && shouldShowTopBar(entry.route),
+        entry.route,
+      ).toBe(false);
+    }
+  });
+
+  it('pathname 拿不到時不畫', () => {
+    expect(shouldShowMobileSiteHeader(null)).toBe(false);
+  });
+});
+
+describe('手機全站頁首掛載位置', () => {
+  const layoutFile = join(APP_ROOT, 'layout.tsx');
+  const withoutComments = readFileSync(layoutFile, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+
+  it('掃描器真的讀到 layout 與三個定位點', () => {
+    expect(withoutComments.length).toBeGreaterThan(0);
+    expect(withoutComments.indexOf('<SiteHeader')).toBeGreaterThanOrEqual(0);
+    expect(withoutComments.indexOf('<MobileSiteHeader')).toBeGreaterThanOrEqual(0);
+    expect(withoutComments.indexOf('{children}')).toBeGreaterThanOrEqual(0);
+  });
+
+  it('手機頁首在桌面頁首之後、頁面內容之前', () => {
+    const siteHeader = withoutComments.indexOf('<SiteHeader');
+    const mobileHeader = withoutComments.indexOf('<MobileSiteHeader');
+    const children = withoutComments.indexOf('{children}');
+    expect(siteHeader).toBeLessThan(mobileHeader);
+    expect(mobileHeader).toBeLessThan(children);
   });
 });
 

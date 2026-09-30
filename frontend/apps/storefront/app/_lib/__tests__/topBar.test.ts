@@ -13,6 +13,7 @@ import {
   isShellException,
   normalizePathname,
   shouldShowCartLink,
+  shouldShowMenuButton,
   shouldShowTopBar,
   shouldUseHistoryBack,
   topBarRuleFor,
@@ -86,6 +87,22 @@ describe('購物車連結只放在商品詳情', () => {
 
   it('結帳頁沒有', () => {
     expect(shouldShowCartLink('/checkout')).toBe(false);
+  });
+});
+
+describe('漢堡鈕由 TOP_BAR_RULES 決定', () => {
+  it('商品詳情與購物車顯示，結帳不顯示', () => {
+    expect(shouldShowMenuButton('/products/abc123')).toBe(true);
+    expect(shouldShowMenuButton('/cart')).toBe(true);
+    expect(shouldShowMenuButton('/checkout')).toBe(false);
+  });
+
+  it('規則表逐條帶有明確布林值', () => {
+    expect(TOP_BAR_RULES.map((rule) => [rule.route, rule.showMenuButton])).toEqual([
+      ['/products/:productId', true],
+      ['/cart', true],
+      ['/checkout', false],
+    ]);
   });
 });
 

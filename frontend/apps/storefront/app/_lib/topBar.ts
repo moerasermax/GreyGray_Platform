@@ -10,7 +10,7 @@
  * 錯在只寫了「不要顯示」卻沒有給替代出口。手機電商的商品頁確實不放分頁列，
  * 但它們一定有一條頂部列。
  *
- * ── 為什麼分頁列用黑名單、頂部列卻用白名單 ──
+ * ── 為什麼分頁列用黑名單、頁面頂部列卻用白名單 ──
  * 看起來不對稱，其實是同一個保證的兩半。分頁列預設**顯示**，所以新頁面天生就有出口
  * （`tabs.ts` 檔頭那段：白名單會讓下一個新頁面預設沒有導覽＝#30 換一頁再發作）。
  * 新頁面既然已經有分頁列，就不該再多一條頂部列，所以頂部列預設**不顯示**。
@@ -33,12 +33,15 @@ export interface TopBarRule {
   readonly backHref: string;
   /** 右邊要不要放帶徽章的購物車連結。 */
   readonly showCartLink: boolean;
+  /** 右邊要不要放手機導覽選單。 */
+  readonly showMenuButton: boolean;
   /** 為什麼。跟 `TAB_BAR_RULES` 的 `reason` 同理——沒有理由的規則會被下一個人刪掉。 */
   readonly reason: string;
 }
 
 /**
- * **有頂部列的頁面就這三頁**（使用者 2026-09-02 拍板：只有這三頁，不做全站頂部頁首）。
+ * **有頁面頂部列的頁面就這三頁**。其他手機頁面由全站手機頁首補導覽，
+ * 兩者的顯示規則刻意分開，並由 pageShell 測試守住不重疊。
  *
  * 順序不影響結果（三條路由互不重疊），但維持與 `TAB_BAR_RULES` 相同的排列，
  * 兩份清單對照著看比較不會漏。
@@ -48,6 +51,7 @@ export const TOP_BAR_RULES: readonly TopBarRule[] = [
     route: '/products/:productId',
     backHref: '/',
     showCartLink: true,
+    showMenuButton: true,
     reason:
       '分頁列被 BottomActionBar 擠掉了，這頁只剩「加入購物車」。' +
       '加完之後要看得到車也回得去，所以右邊放帶徽章的購物車',
@@ -56,12 +60,14 @@ export const TOP_BAR_RULES: readonly TopBarRule[] = [
     route: '/cart',
     backHref: '/',
     showCartLink: false,
+    showMenuButton: true,
     reason: '同樣被 BottomActionBar 擠掉分頁列；人已經在購物車了，右邊再放一顆購物車沒有意義',
   },
   {
     route: '/checkout',
     backHref: '/cart',
     showCartLink: false,
+    showMenuButton: false,
     reason:
       '同上。返回回到 /cart 而不是 /——結帳的上一步就是購物車，' +
       '把人直接丟回首頁等於要他從頭再找一次',
@@ -160,6 +166,11 @@ export function backHrefFor(pathname: string): string | null {
 /** 這一頁的頂部列右邊要不要放購物車連結。 */
 export function shouldShowCartLink(pathname: string): boolean {
   return topBarRuleFor(pathname)?.showCartLink ?? false;
+}
+
+/** 這一頁的頂部列右邊要不要放手機導覽選單。 */
+export function shouldShowMenuButton(pathname: string): boolean {
+  return topBarRuleFor(pathname)?.showMenuButton ?? false;
 }
 
 // ── 返回要不要走 history.back() ───────────────────────────────────────────

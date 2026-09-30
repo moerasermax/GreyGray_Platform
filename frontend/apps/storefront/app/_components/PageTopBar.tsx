@@ -13,8 +13,14 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { IconCart, IconChevronLeft, TopBar } from '@greygray/ui';
 import { cartTabAccessibleName, formatCartBadge } from '../_lib/cartBadge';
-import { backHrefFor, shouldShowCartLink, shouldUseHistoryBack } from '../_lib/topBar';
+import {
+  backHrefFor,
+  shouldShowCartLink,
+  shouldShowMenuButton,
+  shouldUseHistoryBack,
+} from '../_lib/topBar';
 import { useCartItemCount } from '../_lib/useCartItemCount';
+import { MobileNavMenu } from './MobileNavMenu';
 
 export interface PageTopBarProps {
   /** 中間那行字。商品頁傳商品名（只有那一頁知道），購物車與結帳傳固定的頁名。 */
@@ -25,6 +31,7 @@ export function PageTopBar({ title }: PageTopBarProps) {
   const pathname = usePathname();
   const backHref = backHrefFor(pathname);
   const withCart = shouldShowCartLink(pathname);
+  const withMenu = shouldShowMenuButton(pathname);
   const itemCount = useCartItemCount(withCart, pathname);
   const badge = formatCartBadge(itemCount);
 
@@ -70,7 +77,8 @@ export function PageTopBar({ title }: PageTopBarProps) {
           aria-label="返回"
           className={
             'inline-flex aspect-square items-center justify-center rounded-pill ' +
-            'p-[var(--gg-space-2)] text-[length:var(--gg-text-lg)] text-fg no-underline ' +
+            'min-h-[var(--gg-touch-min)] min-w-[var(--gg-touch-min)] p-[var(--gg-space-2)] ' +
+            'text-[length:var(--gg-text-lg)] text-fg no-underline ' +
             'transition-colors duration-[var(--gg-duration-base)] ease-out-soft hover:bg-surface-sunken'
           }
         >
@@ -78,35 +86,36 @@ export function PageTopBar({ title }: PageTopBarProps) {
         </Link>
       }
       right={
-        withCart ? (
-          <Link
-            href="/cart"
-            aria-label={cartTabAccessibleName(itemCount)}
-            className={
-              'relative inline-flex aspect-square items-center justify-center rounded-pill ' +
-              'p-[var(--gg-space-2)] text-[length:var(--gg-text-lg)] text-fg no-underline ' +
-              'transition-colors duration-[var(--gg-duration-base)] ease-out-soft hover:bg-surface-sunken'
-            }
-          >
-            <IconCart />
-            {badge !== null && (
-              /*
-               * 徽章只在 `badge !== null` 時存在——「不知道幾件」與「空車」都不畫。
-               * `aria-hidden`：件數已經唸在整個連結的 aria-label 裡，再唸一次只是重複。
-               * 規則與分頁列**同一套函式**（`_lib/cartBadge.ts`），不是複製過來的。
-               */
-              <span
-                aria-hidden={true}
+        withCart || withMenu ? (
+          <div className="flex items-center gap-[var(--gg-space-1)]">
+            {withCart && (
+              <Link
+                href="/cart"
+                aria-label={cartTabAccessibleName(itemCount)}
                 className={
-                  'absolute right-0 top-0 inline-flex min-w-[var(--gg-space-4)] items-center ' +
-                  'justify-center rounded-pill bg-primary px-[var(--gg-space-1)] ' +
-                  'text-[length:var(--gg-text-xs)] font-bold leading-tight text-on-primary'
+                  'relative inline-flex aspect-square min-h-[var(--gg-touch-min)] min-w-[var(--gg-touch-min)] ' +
+                  'items-center justify-center rounded-pill p-[var(--gg-space-2)] ' +
+                  'text-[length:var(--gg-text-lg)] text-fg no-underline transition-colors ' +
+                  'duration-[var(--gg-duration-base)] ease-out-soft hover:bg-surface-sunken'
                 }
               >
-                {badge}
-              </span>
+                <IconCart />
+                {badge !== null && (
+                  <span
+                    aria-hidden={true}
+                    className={
+                      'absolute right-0 top-0 inline-flex min-w-[var(--gg-space-4)] items-center ' +
+                      'justify-center rounded-pill bg-primary px-[var(--gg-space-1)] ' +
+                      'text-[length:var(--gg-text-xs)] font-bold leading-tight text-on-primary'
+                    }
+                  >
+                    {badge}
+                  </span>
+                )}
+              </Link>
             )}
-          </Link>
+            {withMenu && <MobileNavMenu />}
+          </div>
         ) : undefined
       }
     />

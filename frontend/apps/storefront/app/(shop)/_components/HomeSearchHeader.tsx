@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Avatar, SearchBar } from '@greygray/ui';
+import { MobileNavMenu } from '../../_components/MobileNavMenu';
 
 const FOCUS_RING =
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-strong';
@@ -34,7 +35,10 @@ export function HomeSearchHeader() {
   }
 
   return (
-    <header className="flex flex-wrap items-center gap-x-[var(--gg-space-5)] gap-y-[var(--gg-space-3)] border-b border-border-soft pb-[var(--gg-space-4)] lg:hidden">
+    <header className="flex flex-wrap items-center gap-x-[var(--gg-space-2)] gap-y-[var(--gg-space-3)] border-b border-border-soft pb-[var(--gg-space-4)] lg:hidden">
+      <div className="order-1 shrink-0">
+        <MobileNavMenu />
+      </div>
       {/* 首頁的 <h1> 就是品牌名；主視覺與各區塊從 <h2> 開始。 */}
       <h1 className="order-1 shrink-0">
         <Link

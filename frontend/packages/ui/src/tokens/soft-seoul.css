@@ -102,6 +102,7 @@
 
   /* BottomSheet 展開後的最大高度。留 20vh 讓客人看得到底下還有頁面，知道可以關掉。 */
   --gg-sheet-max-h: 80vh;
+  --gg-drawer-width: min(85vw, 22rem);
 
   /* ── 間距（density 5/10：標準）───────────────────────────────────── */
   --gg-space-1: 4px;

@@ -47,6 +47,7 @@ export * from './components/BottomActionBar';
 export * from './components/TopBar';
 export * from './components/BottomSheet';
 export * from './components/Dialog';
+export * from './components/NavDrawer';
 export * from './components/Toast';
 export * from './components/Skeleton';
 export * from './components/EmptyState';
