@@ -1,5 +1,17 @@
 # 啟動 prompt
 
+## FE-56 過渡期付款文案（第四十三波第 2 輪，前端樹，2026-10-01）
+
+```text
+GG_PACKAGE=FE-56
+你是唯一實作者（Codex gpt-5.6-sol medium），不開子代理。專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe（前端樹）。
+開工前讀：AGENTS.md、.dispatch/ACTIVE.md 的 FE-56、docs/69-第四十三波FE-56過渡期付款文案派工書.md（整份）、.dispatch/reports/README.md。派工書以 ACTIVE 的 doc: 為準。
+只准寫 FE-56 的 allow（三條）；不准改 docs/ 與其他任何檔。faq.ts 第 40 行改成派工書 §1 指定的句子（一字不差），其他條目不動。
+最容易做錯的兩件事：① 「付款期限」那條不要動；② 新測試先用舊句跑出紅燈、再改回新句跑綠，兩次輸出都貼進報告。
+前景跑 @greygray/storefront 的 typecheck 與 test，報告前→後條數；不 build、不起也不停 dev server（5002／5003 有 Leader 的 dev server）。
+先列目標，備份要改的既有檔（TEMP 底下 GUID 目錄）。不安裝、不 commit、不改閘門。報告 .dispatch/reports/FE-56.md，三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」。預算：工具 25／讀 10／搜 5／改 3 檔／測修 2 輪，達限回報。stop gate 如提示既有 dirty（兩個 .bak 檔），只回報不還原，最後重述本包交付證據。
+```
+
 ## BE-61 綠界付款通知先驗簽再去重＋過渡期只收信用卡（第四十三波第 1 輪，後端樹，2026-09-30）
 
 ```text
