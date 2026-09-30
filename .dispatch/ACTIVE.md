@@ -51,6 +51,26 @@ Leader 要明講。
 
 ---
 
+## 生效中：BE-61　綠界付款通知先驗簽再去重（#64）＋過渡期只收信用卡（第四十三波第 1 輪，2026-09-30）
+
+BE-59 查證確認的 High 安全缺陷：付款通知端點在驗簽之前就佔住冪等鍵。**不寫 migration、不刪任何資料、不改 `src/Platform/`。**
+以 Release 建置與測試為準（dev 環境已停）。
+
+★★ 最容易做錯的三件事：
+① 驗簽失敗時冪等表要「零寫入」——斷言儲存內容與呼叫次數，不是只看 422；
+② W1／W6 要用正式碼簽章（模擬器或 gateway 的算法），不准用固定回 true／false 的假驗簽器；
+③ `tests/GreyGray.M1a.PaymentLedger.Tests/EcpayGatewayTests.cs` 第 24、65 行的 "ALL" 是綠界官方範例向量，不准改。
+
+package: BE-61
+doc: docs/67-第四十三波BE-61付款通知驗簽先於冪等派工書.md
+allow: src/Modules/Payment/
+allow: src/Hosts/GreyGray.Api.Storefront/M1aEndpoints.cs
+allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
+allow: tests/GreyGray.M1a.PaymentLedger.Tests/
+allow: .dispatch/reports/BE-61.md
+
+---
+
 <!--
 ★ 2026-09-30 撤包：BE-60 驗收——Leader 重跑 Debug 測試執行檔 Migrations 25、IdentityCatalog 42 全過；在 dev 資料庫實測：舊版 trigger 下「孫、子、根」單一語句三層插入會成功，套上新版 0023 後被 category_two_level 擋下（交易 ROLLBACK，無殘留）。原文保留供追溯。
 

@@ -1,5 +1,29 @@
 # 啟動 prompt
 
+## BE-61 綠界付款通知先驗簽再去重＋過渡期只收信用卡（第四十三波第 1 輪，後端樹，2026-09-30）
+
+```text
+GG_PACKAGE=BE-61
+你是唯一實作者（Codex gpt-5.6-sol high），不開子代理。專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform（後端樹）。
+開工前讀：AGENTS.md（六條鐵則）、.dispatch/ACTIVE.md 的 BE-61、docs/67-第四十三波BE-61付款通知驗簽先於冪等派工書.md（整份）、docs/00-decisions.md 的 ADR-044、.dispatch/reports/BE-59.md 的 §3(d)、.dispatch/reports/README.md。派工書以 ACTIVE 的 doc: 為準，CLAUDE.md／AGENTS.md 提到的 docs/13 已過期。
+只准寫 BE-61 的 allow（五條）；不准改 docs/、db/、ops/、src/Platform/、模擬器、其他測試專案。不寫 migration、不刪任何資料。
+最容易做錯的三件事：① 驗簽失敗時冪等表零寫入——斷言儲存內容與 TryBeginAsync 呼叫次數，不是只看 422；② W1／W6 要用正式碼簽章（EcpaySimulator.Core 或 gateway 的算法），不准用固定回 true／false 的假驗簽器；③ tests/GreyGray.M1a.PaymentLedger.Tests/EcpayGatewayTests.cs 第 24、65 行的 "ALL" 是綠界官方範例向量，不准改。另外：key 是 MerchantTradeNo:TradeNo:RtnCode、hash 只算這三個已驗欄位；真驗簽器照派工書 §3.1 用 AddPaymentModule 從 DI 解析（D1 同時證明 DI 註冊），不准為此加 InternalsVisibleTo；不准在 Host 抄第二份 CheckMacValue、不改 IIdempotencyStore、不改 PaymentApplicationService 建構子、服務層原本的驗簽保留；MapPost 的服務參數標 [FromServices]。
+以 Release 為準（reports/README 的 -c Debug 不適用）；dev 環境已停。Docker Desktop 要開著，沒開就停下來回報。動手前先 Release 建置並跑 PaymentLedger、CheckoutOrdering、Migrations、Architecture、IdentityCatalog、CustomerService、EndToEnd 七個測試執行檔（tests\<專案>\bin\Release\net10.0\<專案>.exe）記下現況，改完前景跑完（不要用 dotnet test、不要掛背景就結束），再跑 ops/check-openapi.ps1，報告前→後。
+先列目標，備份要改的既有檔（TEMP 底下 GUID 目錄）。不啟停 dev 服務、不安裝、不 commit、不 push、不部署、不改閘門。報告 .dispatch/reports/BE-61.md，三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」，逐條自驗以派工書 §1 與 §3 為準。預算：工具 80／讀 35／搜 20／改 8 檔／測修 2 輪，達限回報。stop gate 如提示既有 dirty（.dispatch/PROMPTS.md.bak-20260921-211728），只回報不還原，最後重述本包交付證據。
+```
+
+## FE-55 分類樹接線（第四十三波第 1 輪，前端樹，2026-09-30）
+
+```text
+GG_PACKAGE=FE-55
+你是唯一實作者（Codex gpt-5.6-sol medium），不開子代理。專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe（前端樹）。
+開工前讀：AGENTS.md、.dispatch/ACTIVE.md 的 FE-55、docs/68-第四十三波FE-55分類樹接線派工書.md（整份）、docs/00-decisions.md 的 ADR-041、.dispatch/reports/README.md。派工書以 ACTIVE 的 doc: 為準。
+只准寫 FE-55 的 allow（十三條）；不准改 docs/、frontend/packages/ui/。先跑 pnpm api:generate，產物不手改。
+最容易做錯的三件事：① 父分類頁的第一頁與 InfiniteProductGrid 的 query 都要帶 includeDescendants: true，否則捲動載入的第二頁變回只查父分類；② 後台 CategoryDialog 每次都送 parentId（PATCH 是整筆取代），只改名稱也要帶原值，冪等 payload 也要含它；③ 抽屜保留 FE-54 的預取、快取與失敗重試，打開時不能再跳動；展開鈕與連結各自 ≥ 44px。另外：mock 的 POST／PATCH 整筆取代照派工書 1.1 的寫法（不是 { id, ...body }）、商品總數不變；抽屜在同檔抽出純 props 呈現元件來測、收合用 hidden；後台下拉用 @greygray/ui/admin 的 Select；ADR-041 寫的 FE-54 就是本包。
+vitest 是 node 環境、沒有 jsdom：元件用 renderToStaticMarkup，測試檔要設 globalThis.React。前景跑 pnpm typecheck 與 pnpm test（全部套件），再跑 storefront 與 admin 的 build（跑前確認 5002／5003 沒有 dev server，有就停下來回報），報告前→後條數，最多兩輪修正。
+先列目標，備份要改的既有檔（TEMP 底下 GUID 目錄）。不起 dev server、不安裝、不 commit、不改閘門。報告 .dispatch/reports/FE-55.md，三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」，逐條自驗以派工書 §1 與 §3 T1～T11 為準。預算：工具 70／讀 35／搜 15／改 14 檔／測修 2 輪，達限回報。stop gate 如提示既有 dirty（兩個 .bak 檔），只回報不還原，最後重述本包交付證據。
+```
+
 ## BE-60 分類兩層守衛修正（第四十二波修正包，後端樹，2026-09-30）
 
 ```text
