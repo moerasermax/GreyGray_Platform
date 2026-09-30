@@ -1,5 +1,29 @@
 # 啟動 prompt
 
+## BE-60 分類兩層守衛修正（第四十二波修正包，後端樹，2026-09-30）
+
+```text
+GG_PACKAGE=BE-60
+你是唯一實作者（Codex gpt-5.6-sol medium），不開子代理。專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform（後端樹）。
+開工前讀：AGENTS.md、.dispatch/ACTIVE.md 的 BE-60、docs/64-第四十二波BE-60分類守衛修正派工書.md（整份）、.dispatch/reports/README.md。派工書以 ACTIVE 的 doc: 為準。
+只准寫 BE-60 的 allow（五條）；不准改 src/、docs/、ops/。修訂既有檔 db/migrations/0023_category_parent.sql（已 commit、未部署），只改 trigger 函式。
+最容易做錯的三件事：① 「有任何同租戶分類的 parent_id = NEW.id」一律要檢查，不受「上層查不到」影響，其他部分一個字不動；② M9 與 S15 都要先紅後綠，S15 要讓服務層 SaveChanges 真的撞上 trigger 並回 Result、不丟例外，再注入一次違規（暫時拿掉 catch）確認會紅；③ BE-58 報告只改那一句說法。
+dev 三個 Host 正在跑 Release、bin 被鎖：建置與測試用 Debug（tests\<專案>\bin\Debug\net10.0\<專案>.exe），不要停 Host。Docker Desktop 要開著。動手前先跑 Migrations 與 IdentityCatalog 兩個測試執行檔記下現況，改完前景跑完（不要用 dotnet test、不要掛背景），報告前→後。
+先列目標，備份要改的既有檔（TEMP 底下 GUID 目錄）。不啟停服務、不安裝、不 commit、不 push、不改閘門。報告 .dispatch/reports/BE-60.md，三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」，逐條自驗以派工書 §1 為準。預算：工具 50／讀 25／搜 12／改 5 檔／測修 2 輪，達限回報。stop gate 如提示既有 dirty（一個 .bak 檔），只回報不還原，最後重述本包交付證據。
+```
+
+## FE-54 前端修正（第四十二波修正包，前端樹，2026-09-30）
+
+```text
+GG_PACKAGE=FE-54
+你是唯一實作者（Codex gpt-5.6-sol medium），不開子代理。專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe（前端樹）。
+開工前讀：AGENTS.md、.dispatch/ACTIVE.md 的 FE-54、docs/65-第四十二波FE-54前端修正派工書.md（整份）、.dispatch/reports/README.md。
+只准寫 FE-54 的 allow（十六條）。修法寫死在派工書 A～E，不要擴大範圍。
+最容易做錯的四件事：① 密碼欄 spellCheck={false}／autoCapitalize="none"／autoCorrect="off" 放在 {...rest} 之後，前後台兩個 PasswordInput 都要，停用時切換鈕也停用；② DrawerCategories({ open, onNavigate }) 介面不准改，改成掛載就預取＋模組層級快取，失敗清快取、下次打開再試；③ 混合訂單句只留配送卡那一處，自取訂單改用「取貨」兩句；④ OrderSummary 的 detail 輸出不准變。
+前後台 dev server 正在跑，不要停、不要 build。前景跑 @greygray/ui typecheck、@greygray/storefront 與 @greygray/admin 的 typecheck 與 test，報告前→後條數，最多兩輪修正；否定斷言要注入一次違規。
+先列目標，備份要改的既有檔（TEMP 底下 GUID 目錄）。不安裝、不 commit、不改閘門。報告 .dispatch/reports/FE-54.md，三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」，逐條自驗以派工書 A～E 與 T1～T7 為準。預算：工具 60／讀 30／搜 12／改 16 檔／測修 2 輪，達限回報。stop gate 如提示既有 dirty（兩個 .bak 檔），只回報不還原，最後重述本包交付證據。
+```
+
 ## BE-59 #60 綠界 ATM／超商代碼回呼查證（第四十二波第 2 輪，後端樹，2026-09-30）
 
 ```text

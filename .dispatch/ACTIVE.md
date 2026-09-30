@@ -51,6 +51,38 @@ Leader 要明講。
 
 ---
 
+## 生效中：FE-54　密碼欄、導覽抽屜、付款確認頁的修正（第四十二波修正包，2026-09-30）
+
+第四十二波整體驗證找到、經反駁代理確認的前端缺陷；修法寫死在 `docs/65`，不要擴大範圍。原計畫的「分類樹接線」順延成 FE-55。
+前後台 dev server 正在跑（Leader 走查用），**不要停、不要 build**。
+
+★★ 最容易做錯的四件事：
+① 密碼欄的 `spellCheck={false}`／`autoCapitalize="none"`／`autoCorrect="off"` 放在 `{...rest}` 之後，兩個 PasswordInput 都要；
+② `DrawerCategories({ open, onNavigate })` 介面不准改：改成掛載就預取＋模組層級快取，失敗清快取、下次打開再試；
+③ 混合訂單句只留配送卡那一處；自取訂單改用「取貨」的兩句；
+④ `OrderSummary` 的 detail 輸出不准變。
+
+package: FE-54
+doc: docs/65-第四十二波FE-54前端修正派工書.md
+allow: frontend/packages/ui/src/components/PasswordInput.tsx
+allow: frontend/packages/ui/src/admin/PasswordInput.tsx
+allow: frontend/apps/storefront/app/(account)/_components/__tests__/
+allow: frontend/apps/admin/app/login/__tests__/
+allow: frontend/apps/storefront/app/_components/DrawerCategories.tsx
+allow: frontend/apps/storefront/app/_components/MobileNavMenu.tsx
+allow: frontend/apps/storefront/app/_components/MobileSiteHeader.tsx
+allow: frontend/apps/storefront/app/_components/__tests__/
+allow: frontend/apps/storefront/app/_lib/mobileNav.ts
+allow: frontend/apps/storefront/app/_lib/__tests__/
+allow: frontend/apps/storefront/app/(checkout)/payment/result/page.tsx
+allow: frontend/apps/storefront/app/(checkout)/_lib/paymentResultSummary.ts
+allow: frontend/apps/storefront/app/(checkout)/_lib/__tests__/
+allow: frontend/apps/storefront/app/(account)/orders/_components/OrderSummary.tsx
+allow: frontend/apps/storefront/app/(account)/orders/__tests__/
+allow: .dispatch/reports/FE-54.md
+
+---
+
 <!--
 ★ 2026-09-30 撤包：FE-52 機械驗收通過——Leader 重跑 ui／storefront／admin typecheck（exit 0）與 storefront 605、admin 200 全過；審過捲動鎖只鎖 html 並還原原值、pathname 改變與寬度到 lg 自動關閉、不用 useRouter。依使用者指示，真瀏覽器走查併入第四十二波最後的整體驗證。原文保留供追溯。
 
