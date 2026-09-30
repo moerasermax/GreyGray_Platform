@@ -6,9 +6,11 @@ import { usePathname } from 'next/navigation';
 import { IconMenu, NavDrawer } from '@greygray/ui';
 import {
   MOBILE_NAV_DRAWER_ID,
+  MOBILE_NAV_DESKTOP_QUERY,
   MOBILE_NAV_GROUPS,
   MOBILE_NAV_TEXT,
   isMobileNavLinkCurrent,
+  subscribeMobileNavDesktop,
 } from '../_lib/mobileNav';
 import { DrawerCategories } from './DrawerCategories';
 
@@ -23,13 +25,12 @@ export function MobileNavMenu() {
   useEffect(() => closeMenu(), [pathname, closeMenu]);
 
   useEffect(() => {
-    const desktop = window.matchMedia('(min-width: 1024px)');
-    const closeAtDesktop = (event: MediaQueryListEvent) => {
+    const desktop = window.matchMedia(MOBILE_NAV_DESKTOP_QUERY);
+    const closeAtDesktop = (event: { matches: boolean }) => {
       if (event.matches) closeMenu();
     };
     if (desktop.matches) closeMenu();
-    desktop.addEventListener('change', closeAtDesktop);
-    return () => desktop.removeEventListener('change', closeAtDesktop);
+    return subscribeMobileNavDesktop(desktop, closeAtDesktop);
   }, [closeMenu]);
 
   const browseGroup = MOBILE_NAV_GROUPS[1];

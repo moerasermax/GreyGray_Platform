@@ -85,9 +85,9 @@ function ConfirmationLine({ line }: { line: S['OrderLine'] }) {
       </span>
 
       <div className="flex min-w-0 flex-col gap-[var(--gg-space-1)]">
-        <p className="font-bold text-fg">{line.name}</p>
+        <p className="break-words font-bold text-fg">{line.name}</p>
         {line.variantName && (
-          <p className="text-[length:var(--gg-text-sm)] text-fg-muted">{line.variantName}</p>
+          <p className="break-words text-[length:var(--gg-text-sm)] text-fg-muted">{line.variantName}</p>
         )}
         <p className="flex flex-wrap items-center gap-[var(--gg-space-2)] text-[length:var(--gg-text-xs)] text-fg-muted">
           <Badge variant={line.mode} label={line.mode === 'Stock' ? '現貨' : '預購'} />

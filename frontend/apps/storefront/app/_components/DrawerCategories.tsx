@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { listCategories } from '@greygray/api-client/endpoints/storefront';
 import { browserApi } from '../_lib/apiClient';
@@ -13,14 +13,33 @@ export interface DrawerCategoriesProps {
   onNavigate: () => void;
 }
 
-/** 第一次打開抽屜才取分類；成功後在這個抽屜實例中重用。 */
+export function createDrawerCategoriesCache() {
+  let request: Promise<Categories> | null = null;
+
+  return {
+    load(loader: () => Promise<Categories>): Promise<Categories> {
+      if (request) return request;
+      request = Promise.resolve()
+        .then(loader)
+        .catch((error: unknown) => {
+          request = null;
+          throw error;
+        });
+      return request;
+    },
+  };
+}
+
+const categoriesCache = createDrawerCategoriesCache();
+
+/** 掛載時預取分類；成功結果由頁面載入期間的所有抽屜實例共用。 */
 export function DrawerCategories({ open, onNavigate }: DrawerCategoriesProps) {
-  const requestedRef = useRef(false);
   const mountedRef = useRef(false);
+  const previousOpenRef = useRef(open);
   const [state, setState] = useState<
     | { status: 'idle' | 'loading' | 'failed' }
     | { status: 'ready'; categories: Categories }
-  >({ status: 'idle' });
+  >({ status: 'loading' });
 
   useEffect(() => {
     mountedRef.current = true;
@@ -29,19 +48,26 @@ export function DrawerCategories({ open, onNavigate }: DrawerCategoriesProps) {
     };
   }, []);
 
-  useEffect(() => {
-    if (!open || requestedRef.current) return;
-    requestedRef.current = true;
+  const load = useCallback(() => {
     setState({ status: 'loading' });
 
-    listCategories(browserApi())
+    void categoriesCache
+      .load(() => listCategories(browserApi()))
       .then((categories) => {
         if (mountedRef.current) setState({ status: 'ready', categories });
       })
       .catch(() => {
         if (mountedRef.current) setState({ status: 'failed' });
       });
-  }, [open]);
+  }, []);
+
+  useEffect(load, [load]);
+
+  useEffect(() => {
+    const opened = open && !previousOpenRef.current;
+    previousOpenRef.current = open;
+    if (opened && state.status === 'failed') load();
+  }, [load, open, state.status]);
 
   if (state.status === 'idle' || state.status === 'failed') return null;
 

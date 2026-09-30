@@ -20,7 +20,7 @@ export function MobileSiteHeader() {
       <MobileNavMenu />
       <Link
         href="/"
-        className="justify-self-center rounded-[var(--gg-radius-sm)] font-display text-[length:var(--gg-text-xl)] font-extrabold text-fg no-underline"
+        className="inline-flex min-h-[var(--gg-touch-min)] items-center justify-self-center rounded-[var(--gg-radius-sm)] font-display text-[length:var(--gg-text-xl)] font-extrabold text-fg no-underline"
       >
         GreyGray
       </Link>

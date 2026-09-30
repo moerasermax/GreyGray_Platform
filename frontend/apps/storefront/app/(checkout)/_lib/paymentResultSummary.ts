@@ -6,6 +6,10 @@ export const MIXED_ORDER_SHIP_SEPARATELY =
   '這筆訂單有現貨也有預購：現貨會先寄出，預購商品到貨後另外寄出。';
 export const MIXED_ORDER_HOLD_UNTIL_COMPLETE =
   '這筆訂單有現貨也有預購：會等預購商品到齊後一起寄出。';
+export const MIXED_ORDER_PICKUP_SEPARATELY =
+  '這筆訂單有現貨也有預購：現貨可以先取貨，預購商品到貨後另外通知取貨。';
+export const MIXED_ORDER_PICKUP_HOLD_UNTIL_COMPLETE =
+  '這筆訂單有現貨也有預購：會等預購商品到齊後一起通知取貨。';
 export const COPY_ORDER_NUMBER_IDLE = '複製';
 export const COPY_ORDER_NUMBER_SUCCEEDED = '已複製';
 export const COPY_ORDER_NUMBER_FAILED = '複製失敗，請手動選取';
@@ -25,8 +29,15 @@ export function hasMixedOrderModes(lines: readonly S['OrderLine'][]): boolean {
   return hasStock && hasPreorder;
 }
 
-export function mixedOrderShippingMessage(order: Pick<S['Order'], 'lines' | 'shippingPolicy'>): string | null {
+export function mixedOrderShippingMessage(
+  order: Pick<S['Order'], 'lines' | 'shippingPolicy' | 'deliveryMethod'>,
+): string | null {
   if (!hasMixedOrderModes(order.lines)) return null;
+  if (order.deliveryMethod === 'SelfPickup') {
+    return order.shippingPolicy === 'HoldUntilComplete'
+      ? MIXED_ORDER_PICKUP_HOLD_UNTIL_COMPLETE
+      : MIXED_ORDER_PICKUP_SEPARATELY;
+  }
   return order.shippingPolicy === 'HoldUntilComplete'
     ? MIXED_ORDER_HOLD_UNTIL_COMPLETE
     : MIXED_ORDER_SHIP_SEPARATELY;

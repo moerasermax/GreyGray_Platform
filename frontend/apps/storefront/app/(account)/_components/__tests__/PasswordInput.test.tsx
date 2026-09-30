@@ -60,6 +60,34 @@ describe('前台 PasswordInput 靜態標記', () => {
     expect(html).toMatch(/autocomplete="new-password"/i);
   });
 
+  it('FE-54 T1：停用拼字、自動大寫與自動修正，呼叫端不能覆寫', () => {
+    const html = renderToStaticMarkup(
+      <PasswordInput
+        id="account-password"
+        autoComplete="current-password"
+        spellCheck
+        autoCapitalize="sentences"
+        autoCorrect="on"
+      />,
+    );
+    expect(html).toMatch(/spellcheck="false"/i);
+    expect(html).toMatch(/autocapitalize="none"/i);
+    expect(html).toMatch(/autocorrect="off"/i);
+  });
+
+  it.each([
+    ['disabled', { disabled: true }],
+    ['readOnly', { readOnly: true }],
+  ] as const)(
+    'FE-54 T2：input 為 %s 時切換鈕停用',
+    (_state, props) => {
+      const html = renderToStaticMarkup(
+        <PasswordInput id="account-password" autoComplete="current-password" {...props} />,
+      );
+      expect(html).toMatch(/<button[^>]*disabled=""/);
+    },
+  );
+
   it('T8：invalid 轉傳成 aria-invalid', () => {
     const html = renderToStaticMarkup(
       <PasswordInput id="invalid-password" autoComplete="current-password" invalid />,

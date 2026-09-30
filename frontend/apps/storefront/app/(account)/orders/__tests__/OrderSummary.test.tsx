@@ -4,6 +4,7 @@ import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { OrderSummary } from '../_components/OrderSummary';
+import { MIXED_ORDER_PICKUP_SEPARATELY } from '../../../(checkout)/_lib/paymentResultSummary';
 
 (globalThis as unknown as { React: typeof React }).React = React;
 
@@ -39,5 +40,23 @@ describe('OrderSummary', () => {
     expect(confirmationHtml).toContain('無圖');
     expect(confirmationHtml).toContain('inline-flex items-center rounded-pill');
     expect(confirmationHtml).not.toContain(orderLineStatusLabel(order.lines[0]!.status));
+  });
+
+  it('FE-54 T6 confirmation：混合句只出現一次，品名與規格可斷詞', () => {
+    const firstLine = order.lines[0]!;
+    const mixedOrder = {
+      ...order,
+      deliveryMethod: 'SelfPickup' as const,
+      shippingPolicy: 'ShipSeparately' as const,
+      lines: [
+        { ...firstLine, id: 'stock-line', mode: 'Stock' as const, variantName: '超長規格文字' },
+        { ...firstLine, id: 'preorder-line', mode: 'Preorder' as const },
+      ],
+    };
+    const html = renderToStaticMarkup(<OrderSummary order={mixedOrder} variant="confirmation" />);
+
+    expect(html.split(MIXED_ORDER_PICKUP_SEPARATELY)).toHaveLength(2);
+    expect(html).toContain('class="break-words font-bold text-fg"');
+    expect(html).toContain('class="break-words text-[length:var(--gg-text-sm)] text-fg-muted"');
   });
 });

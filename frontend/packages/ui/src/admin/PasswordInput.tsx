@@ -100,6 +100,9 @@ export function PasswordInput({
     <div className="relative">
       <Input
         {...rest}
+        spellCheck={false}
+        autoCapitalize="none"
+        autoCorrect="off"
         ref={setInputRef}
         id={id}
         type={state.inputType}
@@ -112,6 +115,7 @@ export function PasswordInput({
         aria-controls={id}
         className="absolute inset-y-0 right-0 inline-flex min-w-[var(--ga-touch-min)] items-center justify-center text-fg-muted hover:text-fg"
         onClick={handleToggle}
+        disabled={rest.disabled || rest.readOnly}
       >
         {visible ? <EyeOffIcon /> : <EyeIcon />}
       </button>

@@ -102,6 +102,9 @@ export function PasswordInput({
     <div className="relative">
       <Input
         {...rest}
+        spellCheck={false}
+        autoCapitalize="none"
+        autoCorrect="off"
         ref={setInputRef}
         id={id}
         type={state.inputType}
@@ -115,6 +118,7 @@ export function PasswordInput({
         icon={visible ? <IconEyeOff /> : <IconEye />}
         className="absolute inset-y-0 right-0"
         onClick={handleToggle}
+        disabled={rest.disabled || rest.readOnly}
       />
     </div>
   );

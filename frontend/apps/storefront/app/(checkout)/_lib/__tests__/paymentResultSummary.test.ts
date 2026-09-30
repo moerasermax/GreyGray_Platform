@@ -1,9 +1,14 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { components } from '@greygray/api-client/storefront';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   COPY_ORDER_NUMBER_FAILED,
   COPY_ORDER_NUMBER_SUCCEEDED,
   MIXED_ORDER_HOLD_UNTIL_COMPLETE,
+  MIXED_ORDER_PICKUP_HOLD_UNTIL_COMPLETE,
+  MIXED_ORDER_PICKUP_SEPARATELY,
   MIXED_ORDER_SHIP_SEPARATELY,
   copyOrderNumber,
   formatPlacedAtInTaipei,
@@ -32,14 +37,16 @@ function line(mode: S['FulfillmentMode'], status: S['OrderLineStatus'] = 'Pendin
 function summaryOrder(
   shippingPolicy: S['ShippingPolicy'],
   lines: S['OrderLine'][],
-): Pick<S['Order'], 'shippingPolicy' | 'lines'> {
-  return { shippingPolicy, lines };
+  deliveryMethod: S['DeliveryMethod'] = 'HomeDelivery',
+): Pick<S['Order'], 'shippingPolicy' | 'lines' | 'deliveryMethod'> {
+  return { shippingPolicy, lines, deliveryMethod };
 }
 
 const originalTimezone = process.env.TZ;
 
 afterEach(() => {
-  process.env.TZ = originalTimezone;
+  if (originalTimezone === undefined) delete process.env.TZ;
+  else process.env.TZ = originalTimezone;
 });
 
 describe('付款結果的混合訂單摘要', () => {
@@ -65,6 +72,34 @@ describe('付款結果的混合訂單摘要', () => {
     const order = summaryOrder('ShipSeparately', [line('Stock'), line('Preorder', 'Unavailable')]);
     expect(hasMixedOrderModes(order.lines)).toBe(false);
     expect(mixedOrderShippingMessage(order)).toBeNull();
+  });
+
+  it.each([
+    ['ShipSeparately', MIXED_ORDER_PICKUP_SEPARATELY],
+    ['HoldUntilComplete', MIXED_ORDER_PICKUP_HOLD_UNTIL_COMPLETE],
+  ] as const)('FE-54 T5：自取混合訂單 %s 使用取貨文案', (shippingPolicy, expected) => {
+    const order = summaryOrder(shippingPolicy, [line('Stock'), line('Preorder')], 'SelfPickup');
+    expect(mixedOrderShippingMessage(order)).toBe(expected);
+    expect(expected).toContain('取貨');
+    expect(expected).not.toContain('寄出');
+  });
+});
+
+describe('付款結果頁原始碼守衛', () => {
+  const pageSource = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'payment', 'result', 'page.tsx'),
+    'utf8',
+  );
+  const code = pageSource.replace(/\/\*[^]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+
+  it('FE-54 T7：結果卡不再呼叫混合句函式', () => {
+    expect(code).not.toContain('mixedOrderShippingMessage(');
+  });
+
+  it('FE-54 T7：複製狀態的 aria-live 不掛在 button 上', () => {
+    expect(code).toContain('aria-label="複製訂單編號"');
+    expect(code).toMatch(/<(span|p)[^>]*aria-live="polite"/);
+    expect(code).not.toMatch(/<button[^>]*aria-live=/);
   });
 });
 

@@ -2,6 +2,29 @@ import { INFO_LINKS } from '../(info)/_components/InfoLinks';
 import { normalizePathname, shouldShowTabBar } from './tabs';
 
 export const MOBILE_NAV_DRAWER_ID = 'mobile-navigation-drawer';
+/** Tailwind v4 的 `lg` 預設值；matchMedia 不能直接使用 CSS utility。 */
+export const MOBILE_NAV_DESKTOP_QUERY = '(min-width: 64rem)';
+
+export interface MobileNavMediaQuery {
+  matches: boolean;
+  addEventListener?: (type: 'change', listener: (event: { matches: boolean }) => void) => void;
+  removeEventListener?: (type: 'change', listener: (event: { matches: boolean }) => void) => void;
+  addListener?: (listener: (event: { matches: boolean }) => void) => void;
+  removeListener?: (listener: (event: { matches: boolean }) => void) => void;
+}
+
+export function subscribeMobileNavDesktop(
+  mediaQuery: MobileNavMediaQuery,
+  listener: (event: { matches: boolean }) => void,
+): () => void {
+  if (mediaQuery.addEventListener) {
+    mediaQuery.addEventListener('change', listener);
+    return () => mediaQuery.removeEventListener?.('change', listener);
+  }
+
+  mediaQuery.addListener?.(listener);
+  return () => mediaQuery.removeListener?.(listener);
+}
 
 export const MOBILE_NAV_TEXT = {
   openLabel: '開啟選單',

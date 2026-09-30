@@ -24,7 +24,6 @@ import {
   COPY_ORDER_NUMBER_SUCCEEDED,
   copyOrderNumber,
   formatPlacedAtInTaipei,
-  mixedOrderShippingMessage,
 } from '../../_lib/paymentResultSummary';
 import { pollDelayMs, shouldKeepPolling } from '../../_lib/paymentResultPolling';
 
@@ -169,7 +168,6 @@ function PaymentResultContent() {
   const isPaid = PAID_STATUSES.has(order.status);
   const isCancelled = order.status === 'Cancelled';
   const isAwaitingPayment = order.status === 'AwaitingPayment';
-  const mixedShippingMessage = mixedOrderShippingMessage(order);
 
   async function handleCopyOrderNumber(orderNumber: string) {
     const writeText = globalThis.navigator?.clipboard?.writeText.bind(globalThis.navigator.clipboard);
@@ -196,18 +194,18 @@ function PaymentResultContent() {
               <button
                 type="button"
                 className="font-bold text-primary-text underline underline-offset-2"
-                aria-live="polite"
+                aria-label="複製訂單編號"
                 onClick={() => void handleCopyOrderNumber(order.orderNumber)}
               >
-                {copyFeedback}
+                {COPY_ORDER_NUMBER_IDLE}
               </button>
+              <span aria-live="polite">
+                {copyFeedback === COPY_ORDER_NUMBER_IDLE ? '' : copyFeedback}
+              </span>
             </p>
             <p className="text-[length:var(--gg-text-sm)] text-fg-muted">
               下單時間：{formatPlacedAtInTaipei(order.placedAt)}
             </p>
-            {mixedShippingMessage && (
-              <p className="text-[length:var(--gg-text-sm)] text-fg-muted">{mixedShippingMessage}</p>
-            )}
           </>
         )}
         {isCancelled && (
