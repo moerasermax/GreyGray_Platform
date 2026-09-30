@@ -51,7 +51,10 @@ Leader 要明講。
 
 ---
 
-## 生效中：FE-55　分類樹接線（第四十三波第 1 輪，2026-09-30）
+<!--
+★ 2026-10-01 撤包：FE-55 驗收——Leader 重跑 typecheck（exit 0）與測試 api-client 51、storefront 633、admin 209；真後端 390 寬走查：首頁分類列只列根分類、抽屜父分類連結與展開鈕各 44px、展開後子分類 44px 且 aria-controls 對得上、點連結換頁後抽屜關閉；父分類頁 2 個子分類 pill（44px）、商品 4 件（含子分類）；子分類頁「← 上層」、商品 3 件；0 個頁面錯誤。後台對話框只有單元測試＋build 覆蓋（dev 員工密碼讀不到、mock 模式不能用），請使用者目視。原文保留供追溯。
+
+## 已撤包：FE-55　分類樹接線（第四十三波第 1 輪，2026-09-30）
 
 把 BE-58 的兩層分類接到畫面：前台抽屜分類樹、父分類頁（`includeDescendants`）、首頁只列根分類；後台上層分類下拉與表格。先 `pnpm api:generate`。
 
@@ -60,23 +63,25 @@ Leader 要明講。
 ② 後台對話框每次都送 `parentId`（PATCH 是整筆取代），只改名稱也要帶原值；
 ③ 抽屜保留 FE-54 的預取與快取，打開時不能再出現跳動；展開鈕與連結各自 ≥ 44px。
 
-package: FE-55
-doc: docs/68-第四十三波FE-55分類樹接線派工書.md
-allow: frontend/packages/api-client/
-allow: frontend/apps/storefront/app/_lib/categoryTree.ts
-allow: frontend/apps/storefront/app/_lib/mobileNav.ts
-allow: frontend/apps/storefront/app/_lib/__tests__/
-allow: frontend/apps/storefront/app/_components/DrawerCategories.tsx
-allow: frontend/apps/storefront/app/_components/__tests__/
-allow: frontend/apps/storefront/app/(shop)/categories/
-allow: frontend/apps/storefront/app/(shop)/page.tsx
-allow: frontend/apps/storefront/app/(shop)/_components/CategoryRail.tsx
-allow: frontend/apps/storefront/app/(shop)/_components/CategoryChipLink.tsx
-allow: frontend/apps/storefront/app/(shop)/_components/__tests__/
-allow: frontend/apps/admin/app/(dash)/catalog/
-allow: .dispatch/reports/FE-55.md
+(撤包) package: FE-55
+(撤包) doc: docs/68-第四十三波FE-55分類樹接線派工書.md
+(撤包) allow: frontend/packages/api-client/
+(撤包) allow: frontend/apps/storefront/app/_lib/categoryTree.ts
+(撤包) allow: frontend/apps/storefront/app/_lib/mobileNav.ts
+(撤包) allow: frontend/apps/storefront/app/_lib/__tests__/
+(撤包) allow: frontend/apps/storefront/app/_components/DrawerCategories.tsx
+(撤包) allow: frontend/apps/storefront/app/_components/__tests__/
+(撤包) allow: frontend/apps/storefront/app/(shop)/categories/
+(撤包) allow: frontend/apps/storefront/app/(shop)/page.tsx
+(撤包) allow: frontend/apps/storefront/app/(shop)/_components/CategoryRail.tsx
+(撤包) allow: frontend/apps/storefront/app/(shop)/_components/CategoryChipLink.tsx
+(撤包) allow: frontend/apps/storefront/app/(shop)/_components/__tests__/
+(撤包) allow: frontend/apps/admin/app/(dash)/catalog/
+(撤包) allow: .dispatch/reports/FE-55.md
 
 ---
+
+-->
 
 <!--
 ★ 2026-09-30 撤包：FE-54 驗收——Leader 重跑 typecheck（三個 exit 0）與 storefront 629、admin 206；真瀏覽器（重啟 dev server 後）確認：前後台密碼欄帶 spellcheck=false／autocapitalize=none／autocorrect=off、抽屜打開時分類已載好且下方連結位置不動、品牌連結 98×44。原文保留供追溯。
