@@ -37,7 +37,7 @@ export const FAQ_GROUPS: readonly FaqGroup[] = [
       },
       {
         question: '可以用哪些方式付款？',
-        answer: '透過綠界科技（ECPay）線上付款，實際可用的付款方式以付款頁顯示為準。',
+        answer: '目前僅接受信用卡，透過綠界科技（ECPay）線上刷卡付款。',
       },
       {
         question: '送出訂單之後什麼時候要付款？',

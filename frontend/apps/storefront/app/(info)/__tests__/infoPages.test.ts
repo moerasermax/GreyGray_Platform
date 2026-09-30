@@ -115,6 +115,20 @@ describe('文案資料的形狀', () => {
     }
   });
 
+  it('付款方式明確為信用卡，不再把付款方式交由付款頁決定', () => {
+    const paymentFaq = FAQ_GROUPS.flatMap((group) => group.items).find(
+      (item) => item.question === '可以用哪些方式付款？',
+    );
+    if (!paymentFaq) {
+      throw new Error('找不到問題「可以用哪些方式付款？」');
+    }
+
+    expect(paymentFaq.answer).toContain('信用卡');
+    expect(paymentFaq.answer).not.toContain('ATM');
+    expect(paymentFaq.answer).not.toContain('超商代碼');
+    expect(paymentFaq.answer).not.toContain('以付款頁顯示為準');
+  });
+
   it('購買流程恰好兩段，每段 4～6 步，沒有空字串', () => {
     expect(GUIDE_SECTIONS.length).toBe(2);
     for (const section of GUIDE_SECTIONS) {
