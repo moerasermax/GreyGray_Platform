@@ -84,7 +84,10 @@ migration 用 `0023`（`docs/53` 第 89 行曾為 BE-50 預留；BE-50 之後開
 
 -->
 
-## 生效中：BE-59　#60 綠界 ATM／超商代碼回呼查證（第四十二波第 2 輪，2026-09-30，查證包）
+<!--
+★ 2026-09-30 撤包：BE-59 查證包驗收——Leader 重跑 PaymentLedger.Tests（78 條、0 失敗、1 skipped，原 66）；只新增一個測試檔＋報告。結論：推論 (a) 部分推翻（取號走 PaymentInfoURL，未設就不會打到我們）、(b)(c) 成立、(d)＝#64 確認 High；PaymentDueAt 是漏做；建議開張前只收信用卡（A）＋獨立優先修 #64，B 排後。原文保留供追溯。
+
+## 已撤包：BE-59　#60 綠界 ATM／超商代碼回呼查證（第四十二波第 2 輪，2026-09-30，查證包）
 
 目標是證據，不是修法：綠界協定（附官方網址）、現行程式在每種通知下的行為、三條推論逐條證實或推翻、`PaymentDueAt` 刻意或漏做、修法選項與建議。
 **BE-58 撤包之後才派**（它會建置並執行同一個測試專案）。**只新增 `tests/GreyGray.M1a.PaymentLedger.Tests/` 底下的檔**；不准改 `src/`、`docs/`、`ops/`、模擬器、既有測試檔。Docker Desktop 要開著。
@@ -94,12 +97,14 @@ migration 用 `0023`（`docs/53` 第 89 行曾為 BE-50 預留；BE-50 之後開
 ② 綠界協定每一條都要附官方網址，查不到就標「尚待確認」，不准憑記憶寫成事實；
 ③ 測試組法照派工書 §2：可設定時間的時鐘、同一情境共用一個 service 與 repository、先寫 C0 正向對照；C5 若回 stale-callback 是組法錯，不是推翻推論。
 
-package: BE-59
-doc: docs/61-第四十二波BE-59綠界ATM超商代碼回呼查證派工書.md
-allow: tests/GreyGray.M1a.PaymentLedger.Tests/
-allow: .dispatch/reports/BE-59.md
+(撤包) package: BE-59
+(撤包) doc: docs/61-第四十二波BE-59綠界ATM超商代碼回呼查證派工書.md
+(撤包) allow: tests/GreyGray.M1a.PaymentLedger.Tests/
+(撤包) allow: .dispatch/reports/BE-59.md
 
 ---
+
+-->
 
 <!--
 ★ 2026-09-24 撤包：BE-57 已由 Leader 重跑 28/28 並以 Playwright 驗收，整合提交 ec9dbea。原文保留供追溯。
