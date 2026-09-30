@@ -311,7 +311,7 @@ paths:
     get:
       tags: [catalog]
       summary: 分類清單
-      description: 前台「橫捲圓形分類標」的資料來源。回傳的是已發布且底下有上架商品的分類。
+      description: "前台「橫捲圓形分類標」與導覽抽屜的資料來源。回傳已發布的分類：自己或任一直接子分類底下有上架商品（ADR-041；2026-09-30 起，平面分類的行為與先前相同）。清單對父分類封閉：清單裡的子分類，它的父分類一定也在清單裡。分類固定兩層，用 parentId 組樹。"
       security: []
       responses:
         '200':
@@ -340,6 +340,10 @@ paths:
           in: query
           description: 只看現貨或只看預購
           schema: { $ref: '#/components/schemas/FulfillmentMode' }
+        - name: includeDescendants
+          in: query
+          description: "true 時 categoryId 的比對擴大成「這個分類，或它的直接子分類」（ADR-041）；預設 false，與先前的相等比對相同。沒帶 categoryId 時不影響結果。"
+          schema: { type: boolean, default: false }
         - $ref: '#/components/parameters/Cursor'
         - $ref: '#/components/parameters/Limit'
       responses:
@@ -1283,6 +1287,11 @@ components:
         id: { $ref: '#/components/schemas/Id' }
         name: { type: string }
         imageUrl: { type: [string, 'null'], description: '圓形分類標的圖。1:1 裁切。' }
+        parentId:
+          description: 上層分類；null＝根分類。分類固定兩層（ADR-041）。後端照寫不省略。
+          oneOf:
+            - { $ref: '#/components/schemas/Id' }
+            - { type: 'null' }
 
     ProductListItem:
       type: object

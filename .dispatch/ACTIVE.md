@@ -51,6 +51,36 @@ Leader 要明講。
 
 ---
 
+## 生效中：FE-51　密碼顯示／隱藏切換（第四十二波第 1 輪，2026-09-30）
+
+無契約、純 UI；不符合 `docs/45` 小包的單檔條件，**不送外部覆驗是 Leader 的明文裁量**（已由唯讀查證代理逐行核對）。計畫書在後端樹 `docs/58-第四十二波計畫書.md`。
+同一輪後端樹平行 BE-58（分類父子，ADR-041）；Leader 已把契約修訂同步進本樹 `docs/api`（與閘門檔同一個 commit），**本包不跑 `pnpm api:generate`、不碰分類程式**。
+**FE-52 要等本包撤包才開**（兩包都要改 `frontend/packages/ui/src/index.ts`）。
+
+★★ 最容易做錯的四件事：
+① 始終是同一個 `<input>`，只改 `type`，不准用條件式畫兩個；切換時先直接改 DOM 的 `type`、還原選取與焦點，最後才 `setState`（不准在 `setState` 之後的同一個 handler 裡還原）；
+② 切換鈕 `type="button"`、`aria-label` 在「顯示密碼」「隱藏密碼」之間切換、`aria-controls` 指向 input 的 `id`、不加 `aria-pressed`；
+③ 沒有 jsdom／testing-library，**也不准安裝**——焦點、游標、送出前切回隱藏寫成可測的純函式，用假物件測，其餘用 `renderToStaticMarkup`；
+④ 後台按鈕寬度下限 `var(--ga-touch-min)`、高度跟著輸入框，Edge 眼睛用 `[&::-ms-reveal]:hidden`，不准改兩個 app 的 globals.css；`admin/Field.tsx` 只准讓型別收 `ref`。
+
+package: FE-51
+doc: docs/60-第四十二波FE-51密碼顯示切換派工書.md
+allow: frontend/packages/ui/src/components/PasswordInput.tsx
+allow: frontend/packages/ui/src/components/icons/index.tsx
+allow: frontend/packages/ui/src/index.ts
+allow: frontend/packages/ui/src/admin/PasswordInput.tsx
+allow: frontend/packages/ui/src/admin/icons.tsx
+allow: frontend/packages/ui/src/admin/index.ts
+allow: frontend/packages/ui/src/admin/Field.tsx
+allow: frontend/apps/storefront/app/(account)/login/page.tsx
+allow: frontend/apps/storefront/app/(account)/register/page.tsx
+allow: frontend/apps/storefront/app/(account)/_components/__tests__/
+allow: frontend/apps/admin/app/login/page.tsx
+allow: frontend/apps/admin/app/login/__tests__/
+allow: .dispatch/reports/FE-51.md
+
+---
+
 <!--
 ★ 2026-09-24 撤包：FE-37（第六輪：條款保留法定例外清單、隱私權政策頁）已由 Leader 以 Playwright 驗收並整合提交。原文保留供追溯。
 

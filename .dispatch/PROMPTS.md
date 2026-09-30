@@ -1,5 +1,29 @@
 # 啟動 prompt
 
+## BE-58 商品分類固定兩層（第四十二波第 1 輪，後端樹，2026-09-30）
+
+```text
+GG_PACKAGE=BE-58
+你是唯一實作者（Codex gpt-5.6-sol high），不開子代理。專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform（後端樹）。
+開工前讀：AGENTS.md（六條鐵則）、.dispatch/ACTIVE.md 的 BE-58、docs/59-第四十二波BE-58分類父子兩層派工書.md（整份）、docs/00-decisions.md 的 ADR-041、.dispatch/reports/README.md。
+只准寫 BE-58 的 allow（八條）；docs/ 一律不准改——契約與 ADR 由 Leader 寫好，照做，有矛盾就停下來回報。派工書以 ACTIVE 的 doc: 為準，CLAUDE.md／AGENTS.md 提到的 docs/13 已過期。
+最容易做錯的六件事：① 0023 要能重放（部署每次重跑全部 migration），照 0019 的 SET ROLE greygray_owner 與 owner 斷言，函式與 trigger 也建在 SET ROLE 之內、斷言加查 pg_proc；② 兩層規則在應用層回 Result（catalog.invalid-parent-category／catalog.category-depth-exceeded，一字不差，碼裡不能有 not-found），trigger 只是守底：先拿每個租戶的 advisory lock、保持 VOLATILE、查不到上層交給外鍵；③ IdentityCatalogTests 的手寫 SchemaSql 要加 parent_id，連 UNIQUE (tenant_id, id) 一起補；④ 契約 record 的新參數加在最後、給預設值，但 CatalogServices.cs 第 566 行 ValidateCategory 重建 CategoryInput 一定要帶 ParentId，每個 new／解構／with 都要逐一確認；⑤ PATCH 維持整筆取代，parentId 沒帶就是根分類；⑥ 競態被資料庫擋下（23514）也轉成同樣的 422 碼，轉換只寫在 Infra（照 Identity 的例外寫法），Core 不碰 Npgsql。
+本包以 Release 為準（reports/README 的 -c Debug 不適用）：動手前先 Release 建置並跑一次記下現況條數；測試用 tests\<專案>\bin\Release\net10.0\<專案>.exe 前景跑完（Migrations、IdentityCatalog、CheckoutOrdering、PaymentLedger、Inventory、Architecture 六個；不要用 dotnet test、不要掛背景就結束）。ops/check-openapi.ps1 自己在 15000／15001 起停的短命 Host 不算 dev 服務，port 被佔用就停下來回報。Docker Desktop 要開著，沒開就停下來回報。M7 證明不了排隊時不准弱化測試，停下來回報。
+先列目標，備份要改的既有檔（TEMP 底下 GUID 目錄）。不啟停 dev 服務、不安裝、不 commit、不 push、不部署、不改閘門。報告 .dispatch/reports/BE-58.md，三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」，逐條自驗以派工書 §1、§3 為準，寫實際輸出與未驗項。預算：工具 90／讀 40／搜 20／改 18 檔／測修 2 輪，達限回報。stop gate 如提示既有 dirty（一個 .bak 檔：.dispatch/PROMPTS.md.bak-20260921-211728），只回報不還原，最後重述本包交付證據。
+```
+
+## FE-51 密碼顯示／隱藏切換（第四十二波第 1 輪，前端樹，2026-09-30）
+
+```text
+GG_PACKAGE=FE-51
+你是唯一實作者（Codex gpt-5.6-sol medium），不開子代理。專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe（前端樹）。
+開工前讀：AGENTS.md、.dispatch/ACTIVE.md 的 FE-51、docs/60-第四十二波FE-51密碼顯示切換派工書.md（整份）、.dispatch/reports/README.md。
+只准寫 FE-51 的 allow（十三條）。前台與後台各做一個 PasswordInput（兩份各自實作，後台不 import 前台），換掉三個密碼欄，頁面其他地方一個字都不動。
+最容易做錯的五件事：① 始終是同一個 <input>，只改 type，不准用條件式畫兩個；切換時先直接改 DOM 的 type、還原選取與焦點，最後才 setState；② 切換鈕 type="button"、aria-label 在「顯示密碼」「隱藏密碼」之間切換、aria-controls 指向 input 的 id、不加 aria-pressed；③ 沒有 jsdom／testing-library 也不准安裝——焦點、游標、送出前切回隱藏寫成可測的純函式（名稱帶 password 前綴），用假物件測，其餘用 renderToStaticMarkup，否定斷言要注入一次違規；④ 結構是 relative 外層＋沿用 Input（右側留白）＋絕對定位的按鈕，不要照抄 SearchBar；後台按鈕寬度下限 var(--ga-touch-min)、高度跟著輸入框，Edge 眼睛用 [&::-ms-reveal]:hidden，不准改兩個 app 的 globals.css；⑤ admin/Field.tsx 只准讓型別收 ref；exactOptionalPropertyTypes 開著，invalid 留在 rest 裡轉傳。
+不跑 pnpm api:generate、不碰分類程式（契約同步是 Leader 的事）。前景跑 @greygray/ui typecheck、@greygray/storefront 與 @greygray/admin 的 typecheck 與 test，報告前→後條數，最多兩輪修正。
+先列目標，備份要改的既有檔（TEMP 底下 GUID 目錄）。不 build、不起 dev server、不安裝、不 commit、不改閘門。報告 .dispatch/reports/FE-51.md，三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」，逐條自驗以派工書「要求」1～4 與 T1～T8 為準，並列出只能靠瀏覽器驗的行為。預算：工具 50／讀 25／搜 12／改 14 檔／測修 2 輪，達限回報。stop gate 如提示既有 dirty（兩個 .bak 檔），只回報不還原，最後重述本包交付證據。
+```
+
 ## FE-37 第六輪：條款保留例外清單＋隱私權頁版型（2026-09-24）
 
 ```text
