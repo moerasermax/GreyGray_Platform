@@ -51,7 +51,10 @@ Leader 要明講。
 
 ---
 
-## 生效中：BE-60　分類兩層守衛的漏洞＋資料庫路徑測試（第四十二波修正包，2026-09-30）
+<!--
+★ 2026-09-30 撤包：BE-60 驗收——Leader 重跑 Debug 測試執行檔 Migrations 25、IdentityCatalog 42 全過；在 dev 資料庫實測：舊版 trigger 下「孫、子、根」單一語句三層插入會成功，套上新版 0023 後被 category_two_level 擋下（交易 ROLLBACK，無殘留）。原文保留供追溯。
+
+## 已撤包：BE-60　分類兩層守衛的漏洞＋資料庫路徑測試（第四十二波修正包，2026-09-30）
 
 第四十二波整體驗證找到、經反駁代理確認的兩條缺陷。**修訂既有檔**：`0023_category_parent.sql` 已 commit 但未部署，直接改這支、不開新號。**不准改 `src/`。**
 dev 三個 Host 正在跑 Release，**建置與測試用 Debug，不要停 Host**。
@@ -61,16 +64,18 @@ dev 三個 Host 正在跑 Release，**建置與測試用 Debug，不要停 Host*
 ② M9 與 S15 都要**先紅後綠**，S15 要讓服務層的 SaveChanges 真的撞上 trigger 並回 Result，不是只測純函式；
 ③ BE-58 報告只改那一句誇大的說法，其他不動。
 
-package: BE-60
-note: 修訂既有檔——`0023_category_parent.sql` 已在 HEAD（BE-58 0d0e6bd），未部署；這一包只改它的 trigger 函式
-doc: docs/64-第四十二波BE-60分類守衛修正派工書.md
-allow: db/migrations/0023
-allow: tests/GreyGray.M1a.Migrations.Tests/CategoryParentMigrationTests.cs
-allow: tests/GreyGray.M1a.IdentityCatalog.Tests/CategoryHierarchyMigrationServiceTests.cs
-allow: .dispatch/reports/BE-58.md
-allow: .dispatch/reports/BE-60.md
+(撤包) package: BE-60
+(撤包) note: 修訂既有檔——`0023_category_parent.sql` 已在 HEAD（BE-58 0d0e6bd），未部署；這一包只改它的 trigger 函式
+(撤包) doc: docs/64-第四十二波BE-60分類守衛修正派工書.md
+(撤包) allow: db/migrations/0023
+(撤包) allow: tests/GreyGray.M1a.Migrations.Tests/CategoryParentMigrationTests.cs
+(撤包) allow: tests/GreyGray.M1a.IdentityCatalog.Tests/CategoryHierarchyMigrationServiceTests.cs
+(撤包) allow: .dispatch/reports/BE-58.md
+(撤包) allow: .dispatch/reports/BE-60.md
 
 ---
+
+-->
 
 <!--
 ★ 2026-09-30 撤包：BE-58 已由 Leader 驗收——自己重跑六個 Release 測試執行檔（Migrations 24、IdentityCatalog 41、CheckoutOrdering 130／1 skipped、PaymentLedger、Inventory、Architecture），審過 0023（可重放、函式 owner 斷言、advisory lock、查不到上層交外鍵）、前台分類清單查詢與 Infra 例外轉換；check-openapi 兩份 PASS（實作者自驗）。原文保留供追溯。
