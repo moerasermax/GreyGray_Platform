@@ -51,7 +51,10 @@ Leader 要明講。
 
 ---
 
-## 生效中：FE-56　過渡期付款文案（第四十三波第 2 輪，2026-10-01）
+<!--
+★ 2026-10-01 撤包：FE-56 驗收——範圍 2 檔＋報告；faq.ts 答案一字不差為「目前僅接受信用卡，透過綠界科技（ECPay）線上刷卡付款。」；新測試先紅（舊句 1 failed）後綠；Leader 重跑 storefront typecheck exit 0、test 634 全過；dev /faq 已顯示新句。原文保留供追溯。
+
+## 已撤包：FE-56　過渡期付款文案（第四十三波第 2 輪，2026-10-01）
 
 BE-61 已把付款頁限縮成只收信用卡；FAQ「可以用哪些方式付款？」改成一字不差的指定句，補一條先紅後綠的文案測試。小包，免外部覆驗。
 
@@ -59,13 +62,15 @@ BE-61 已把付款頁限縮成只收信用卡；FAQ「可以用哪些方式付�
 ① 只改第 40 行那一句，「付款期限」那條不要動；
 ② 新測試要先用舊句跑出紅燈再改回新句，兩次輸出都貼進報告。
 
-package: FE-56
-doc: docs/69-第四十三波FE-56過渡期付款文案派工書.md
-allow: frontend/apps/storefront/app/(info)/_content/faq.ts
-allow: frontend/apps/storefront/app/(info)/__tests__/infoPages.test.ts
-allow: .dispatch/reports/FE-56.md
+(撤包) package: FE-56
+(撤包) doc: docs/69-第四十三波FE-56過渡期付款文案派工書.md
+(撤包) allow: frontend/apps/storefront/app/(info)/_content/faq.ts
+(撤包) allow: frontend/apps/storefront/app/(info)/__tests__/infoPages.test.ts
+(撤包) allow: .dispatch/reports/FE-56.md
 
 ---
+
+-->
 
 <!--
 ★ 2026-10-01 撤包：FE-55 驗收——Leader 重跑 typecheck（exit 0）與測試 api-client 51、storefront 633、admin 209；真後端 390 寬走查：首頁分類列只列根分類、抽屜父分類連結與展開鈕各 44px、展開後子分類 44px 且 aria-controls 對得上、點連結換頁後抽屜關閉；父分類頁 2 個子分類 pill（44px）、商品 4 件（含子分類）；子分類頁「← 上層」、商品 3 件；0 個頁面錯誤。後台對話框只有單元測試＋build 覆蓋（dev 員工密碼讀不到、mock 模式不能用），請使用者目視。原文保留供追溯。
