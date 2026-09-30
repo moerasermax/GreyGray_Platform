@@ -258,6 +258,45 @@ public sealed class CategoryParentMigrationTests : IAsyncLifetime
             .ShouldBe(1L);
     }
 
+    [Fact(DisplayName = "M9：同一 INSERT 無論列序都不能建立三層分類")]
+    public async Task A_single_insert_cannot_create_three_category_levels_in_any_row_order()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var connectionString = await CreateMigratedDatabaseAsync(23, cancellationToken);
+        var firstRoot = Guid.CreateVersion7();
+        var firstChild = Guid.CreateVersion7();
+        var firstGrandchild = Guid.CreateVersion7();
+
+        var descendantFirstException = await Should.ThrowAsync<PostgresException>(() => ExecuteSqlAsync(
+            connectionString,
+            $"""
+            INSERT INTO catalog.category (id, tenant_id, name, sort_order, parent_id)
+            VALUES
+                ('{firstGrandchild}', '{TenantA}', '孫先', 2, '{firstChild}'),
+                ('{firstChild}', '{TenantA}', '子次', 1, '{firstRoot}'),
+                ('{firstRoot}', '{TenantA}', '根末', 0, NULL);
+            """,
+            cancellationToken));
+
+        AssertDatabaseError(descendantFirstException, "23514", "category_two_level");
+
+        var secondRoot = Guid.CreateVersion7();
+        var secondChild = Guid.CreateVersion7();
+        var secondGrandchild = Guid.CreateVersion7();
+        var ancestorFirstException = await Should.ThrowAsync<PostgresException>(() => ExecuteSqlAsync(
+            connectionString,
+            $"""
+            INSERT INTO catalog.category (id, tenant_id, name, sort_order, parent_id)
+            VALUES
+                ('{secondRoot}', '{TenantA}', '根先', 0, NULL),
+                ('{secondChild}', '{TenantA}', '子次', 1, '{secondRoot}'),
+                ('{secondGrandchild}', '{TenantA}', '孫末', 2, '{secondChild}');
+            """,
+            cancellationToken));
+
+        AssertDatabaseError(ancestorFirstException, "23514", "category_two_level");
+    }
+
     private async Task<string> CreateMigratedDatabaseAsync(
         int lastMigration,
         CancellationToken cancellationToken)

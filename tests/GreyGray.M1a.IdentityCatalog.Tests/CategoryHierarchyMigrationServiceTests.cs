@@ -45,6 +45,76 @@ public sealed class CategoryHierarchyMigrationServiceTests : IAsyncLifetime
         result.Error.Code.ShouldBe("catalog.category-depth-exceeded");
     }
 
+    [Fact(DisplayName = "S15：應用層驗證後的競態由 trigger 擋下並回 Result")]
+    public async Task A_database_trigger_conflict_is_returned_as_a_result()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        CategoryView ancestor;
+        CategoryView parent;
+        CategoryView moving;
+        await using (var setupProvider = BuildProvider())
+        await using (var setupScope = setupProvider.CreateAsyncScope())
+        {
+            var setupAdmin = setupScope.ServiceProvider.GetRequiredService<ICatalogAdministration>();
+            ancestor = (await setupAdmin.CreateCategoryAsync(
+                new CategoryInput("祖", null, 0), cancellationToken)).Value;
+            parent = (await setupAdmin.CreateCategoryAsync(
+                new CategoryInput("父", null, 1), cancellationToken)).Value;
+            moving = (await setupAdmin.CreateCategoryAsync(
+                new CategoryInput("待移動", null, 2), cancellationToken)).Value;
+        }
+
+        await using var provider = BuildProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var admin = scope.ServiceProvider.GetRequiredService<ICatalogAdministration>();
+
+        await using var raceConnection = new NpgsqlConnection(_postgres.GetConnectionString());
+        await using var observerConnection = new NpgsqlConnection(_postgres.GetConnectionString());
+        await raceConnection.OpenAsync(cancellationToken);
+        await observerConnection.OpenAsync(cancellationToken);
+        await using var raceTransaction = await raceConnection.BeginTransactionAsync(cancellationToken);
+        await using (var race = new NpgsqlCommand("""
+                         UPDATE catalog.category
+                         SET parent_id = @ancestor_id
+                         WHERE tenant_id = @tenant_id AND id = @parent_id;
+                         """, raceConnection, raceTransaction))
+        {
+            race.Parameters.AddWithValue("ancestor_id", ancestor.Id.Value);
+            race.Parameters.AddWithValue("tenant_id", TenantId.Default.Value);
+            race.Parameters.AddWithValue("parent_id", parent.Id.Value);
+            (await race.ExecuteNonQueryAsync(cancellationToken)).ShouldBe(1);
+        }
+
+        var serviceTask = admin.UpdateCategoryAsync(
+            moving.Id,
+            new CategoryInput("待移動", null, 2, parent.Id),
+            cancellationToken);
+
+        var waitingLocks = 0L;
+        var waitTimer = System.Diagnostics.Stopwatch.StartNew();
+        while (waitTimer.Elapsed < TimeSpan.FromSeconds(10) && waitingLocks == 0)
+        {
+            await Task.Delay(50, cancellationToken);
+            await using var observe = new NpgsqlCommand("""
+                SELECT count(*)
+                FROM pg_locks
+                WHERE locktype = 'advisory'
+                  AND NOT granted
+                  AND database = (SELECT oid FROM pg_database WHERE datname = current_database());
+                """, observerConnection);
+            waitingLocks = (long)(await observe.ExecuteScalarAsync(cancellationToken)
+                ?? throw new InvalidOperationException("pg_locks 沒有回傳 count。"));
+        }
+
+        waitingLocks.ShouldBe(1L, "服務層 SaveChanges 必須真的等待 trigger 的同租戶 advisory lock。");
+        serviceTask.IsCompleted.ShouldBeFalse();
+        await raceTransaction.CommitAsync(cancellationToken);
+        var result = await serviceTask;
+
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("catalog.category-depth-exceeded");
+    }
+
     private ServiceProvider BuildProvider()
     {
         var configuration = new ConfigurationBuilder()

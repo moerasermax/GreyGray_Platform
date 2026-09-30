@@ -45,6 +45,16 @@ BEGIN
         RETURN NEW;
     END IF;
 
+    IF EXISTS (
+        SELECT 1
+        FROM catalog.category
+        WHERE tenant_id = NEW.tenant_id
+          AND parent_id = NEW.id) THEN
+        RAISE EXCEPTION '商品分類只允許根分類與直接子分類兩層。'
+            USING ERRCODE = 'check_violation',
+                  CONSTRAINT = 'category_two_level';
+    END IF;
+
     SELECT parent_id
     INTO parent_parent_id
     FROM catalog.category
@@ -56,12 +66,7 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    IF parent_parent_id IS NOT NULL
-       OR EXISTS (
-            SELECT 1
-            FROM catalog.category
-            WHERE tenant_id = NEW.tenant_id
-              AND parent_id = NEW.id) THEN
+    IF parent_parent_id IS NOT NULL THEN
         RAISE EXCEPTION '商品分類只允許根分類與直接子分類兩層。'
             USING ERRCODE = 'check_violation',
                   CONSTRAINT = 'category_two_level';
