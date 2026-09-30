@@ -555,7 +555,7 @@ export interface paths {
         };
         /**
          * 分類清單
-         * @description 前台「橫捲圓形分類標」的資料來源。回傳的是已發布且底下有上架商品的分類。
+         * @description 前台「橫捲圓形分類標」與導覽抽屜的資料來源。回傳已發布的分類：自己或任一直接子分類底下有上架商品（ADR-041；2026-09-30 起，平面分類的行為與先前相同）。清單對父分類封閉：清單裡的子分類，它的父分類一定也在清單裡。分類固定兩層，用 parentId 組樹。
          */
         get: {
             parameters: {
@@ -604,6 +604,8 @@ export interface paths {
                     q?: string;
                     /** @description 只看現貨或只看預購 */
                     mode?: components["schemas"]["FulfillmentMode"];
+                    /** @description true 時 categoryId 的比對擴大成「這個分類，或它的直接子分類」（ADR-041）；預設 false，與先前的相等比對相同。沒帶 categoryId 時不影響結果。 */
+                    includeDescendants?: boolean;
                     /** @description 上一頁回傳的 `nextCursor`。第一頁不帶。 */
                     cursor?: components["parameters"]["Cursor"];
                     limit?: components["parameters"]["Limit"];
@@ -1483,8 +1485,10 @@ export interface paths {
          * 綠界回呼
          * @description **不是給前端的端點。** 列在這裡是因為它屬於 Storefront 行程的路由表。
          *
-         *     三件事缺一不可：驗簽（`CheckMacValue`）、時戳容忍窗、`MerchantTradeNo` 去重。
+         *     三件事缺一不可：驗簽（`CheckMacValue`）、時戳容忍窗、去重。
          *     綠界會重送，所以這個端點必須冪等——去重走 `platform.idempotency_key`。
+         *     **先驗簽、再去重**（ADR-044）：驗簽失敗回 `422`，冪等表不寫任何資料；
+         *     驗簽通過後才以 `MerchantTradeNo`＋`TradeNo`＋`RtnCode` 為鍵去重（scope 依事件類型分開）。
          */
         post: {
             parameters: {
@@ -1841,6 +1845,8 @@ export interface components {
             name: string;
             /** @description 圓形分類標的圖。1:1 裁切。 */
             imageUrl?: string | null;
+            /** @description 上層分類；null＝根分類。分類固定兩層（ADR-041）。後端照寫不省略。 */
+            parentId?: components["schemas"]["Id"] | null;
         };
         ProductListItem: {
             id: components["schemas"]["Id"];

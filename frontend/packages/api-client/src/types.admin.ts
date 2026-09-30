@@ -181,6 +181,15 @@ export interface paths {
                     };
                 };
                 403: components["responses"]["Forbidden"];
+                /** @description `catalog.invalid-category` · `catalog.invalid-parent-category` · `catalog.category-depth-exceeded`（ADR-041） */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
             };
         };
         delete?: never;
@@ -231,6 +240,15 @@ export interface paths {
                 };
                 403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
+                /** @description `catalog.invalid-category` · `catalog.invalid-parent-category` · `catalog.category-depth-exceeded`（ADR-041） */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
             };
         };
         trace?: never;
@@ -2031,6 +2049,8 @@ export interface components {
             imageUrl?: string | null;
             /** @default 0 */
             sortOrder: number;
+            /** @description 上層分類。省略或 null＝根分類（PATCH 是整筆取代，與 imageUrl、sortOrder 相同）。分類固定兩層：只能指向根分類，已有子分類者不能變成子分類，不能指向自己（ADR-041）。違反時 422 catalog.invalid-parent-category（不存在、跨租戶、指向自己）或 catalog.category-depth-exceeded（上層不是根分類、自己已有子分類）。 */
+            parentId?: components["schemas"]["Id"] | null;
         };
         Category: {
             id: components["schemas"]["Id"];

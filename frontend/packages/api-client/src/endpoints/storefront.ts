@@ -71,6 +71,7 @@ export interface ListProductsQuery {
   readonly categoryId?: string;
   readonly q?: string;
   readonly mode?: S['FulfillmentMode'];
+  readonly includeDescendants?: boolean;
   readonly cursor?: string;
   readonly limit?: number;
 }

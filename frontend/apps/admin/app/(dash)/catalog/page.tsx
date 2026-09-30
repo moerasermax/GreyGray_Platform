@@ -10,6 +10,7 @@ import { browserApi } from '../../_lib/apiClient';
 import { getSession, hasRequiredRole } from '../../login/_lib/session';
 import { Button } from './_components/Button';
 import { CatalogTabs } from './_components/CatalogTabs';
+import { categoryOptions as buildCategoryOptions } from './_components/CategoryDialog';
 import { fulfillmentModeLabel } from './_lib/labels';
 
 type S = components['schemas'];
@@ -98,7 +99,7 @@ export default function CatalogProductsPage() {
   }
 
   const categoryOptions = useMemo(
-    () => categories.map((category) => ({ value: category.id, label: category.name })),
+    () => buildCategoryOptions(categories),
     [categories],
   );
 

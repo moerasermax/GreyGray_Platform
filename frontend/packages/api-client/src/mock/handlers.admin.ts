@@ -38,6 +38,18 @@ function url(path: string): string {
   return `${ADMIN_BASE_URL}${path}`;
 }
 
+function categoryWriteProblem(categoryId: string, parentId: string | null) {
+  if (!parentId) return null;
+  const parent = categories.find((category) => category.id === parentId);
+  if (!parent || parentId === categoryId) {
+    return problem(422, 'catalog.invalid-parent-category', '上層分類不存在或不可使用。');
+  }
+  if (parent.parentId || categories.some((category) => category.parentId === categoryId)) {
+    return problem(422, 'catalog.category-depth-exceeded', '商品分類最多只能有兩層。');
+  }
+  return null;
+}
+
 // ── 可變狀態 ──────────────────────────────────────────────────────────────
 
 let categories: S['Category'][] = categoryFixtures.map((c) => ({ ...c }));
@@ -71,7 +83,17 @@ export const adminHandlers = [
 
   http.post(url('/v1/categories'), async ({ request }) => {
     const body = (await request.json()) as S['CategoryInput'];
-    const created: S['Category'] = { id: hexId(`admin-category:${Date.now()}`), ...body };
+    const id = hexId(`admin-category:${Date.now()}`);
+    const parentId = body.parentId ?? null;
+    const writeProblem = categoryWriteProblem(id, parentId);
+    if (writeProblem) return jsonProblem(writeProblem);
+    const created: S['Category'] = {
+      id,
+      name: body.name,
+      imageUrl: body.imageUrl ?? null,
+      sortOrder: body.sortOrder ?? 0,
+      parentId,
+    };
     categories = [...categories, created];
     return HttpResponse.json(created, { status: 201 });
   }),
@@ -82,7 +104,16 @@ export const adminHandlers = [
     const body = (await request.json()) as S['CategoryInput'];
     const current = categories[index];
     if (!current) return jsonProblem(problem(404, 'platform.not-found', '找不到這個分類。'));
-    const updated: S['Category'] = { ...current, ...body };
+    const parentId = body.parentId ?? null;
+    const writeProblem = categoryWriteProblem(current.id, parentId);
+    if (writeProblem) return jsonProblem(writeProblem);
+    const updated: S['Category'] = {
+      id: current.id,
+      name: body.name,
+      imageUrl: body.imageUrl ?? null,
+      sortOrder: body.sortOrder ?? 0,
+      parentId,
+    };
     categories = categories.map((c, i) => (i === index ? updated : c));
     return HttpResponse.json(updated);
   }),

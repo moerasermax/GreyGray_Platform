@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { apiErrorMessage } from '../_lib/apiError';
 import { productDescriptionHint } from '../_lib/productDescription';
 import { Button } from './Button';
+import { categoryOptions } from './CategoryDialog';
 
 type S = components['schemas'];
 
@@ -91,7 +92,7 @@ export function ProductForm({ initial, categories, submitLabel, onSubmit }: Prod
           placeholder="未分類"
           value={categoryId ?? ''}
           onChange={(event) => setCategoryId(event.target.value)}
-          options={categories.map((category) => ({ value: category.id, label: category.name }))}
+          options={categoryOptions(categories)}
         />
       </Field>
 

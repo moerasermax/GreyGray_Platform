@@ -38,9 +38,9 @@ export const CATEGORY_IDS = {
 } as const;
 
 export const categories: S['Category'][] = [
-  { id: CATEGORY_IDS.mask, name: '面膜保養', imageUrl: null, sortOrder: 1 },
-  { id: CATEGORY_IDS.kbeauty, name: '韓國藥妝', imageUrl: null, sortOrder: 2 },
-  { id: CATEGORY_IDS.supplement, name: '保健食品', imageUrl: null, sortOrder: 3 },
+  { id: CATEGORY_IDS.mask, name: '面膜保養', imageUrl: null, sortOrder: 1, parentId: CATEGORY_IDS.kbeauty },
+  { id: CATEGORY_IDS.kbeauty, name: '韓國藥妝', imageUrl: null, sortOrder: 2, parentId: null },
+  { id: CATEGORY_IDS.supplement, name: '保健食品', imageUrl: null, sortOrder: 3, parentId: null },
 ];
 
 // ── 商品與 SKU ────────────────────────────────────────────────────────────

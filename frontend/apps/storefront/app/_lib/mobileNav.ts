@@ -33,6 +33,8 @@ export const MOBILE_NAV_TEXT = {
   categoriesTitle: '商品分類',
   browseTitle: '逛逛',
   infoTitle: '購物指南',
+  categoryToggleLabel: (categoryName: string, expanded: boolean) =>
+    `${expanded ? '收合' : '展開'}${categoryName}的子分類`,
 } as const;
 
 export const MOBILE_NAV_BROWSE_LINKS = [

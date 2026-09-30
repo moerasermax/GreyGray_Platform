@@ -249,11 +249,24 @@ export const storefrontHandlers = [
   }),
 
   // ── catalog ───────────────────────────────────────────────────────────
-  http.get(url('/v1/categories'), () => HttpResponse.json(categories)),
+  http.get(url('/v1/categories'), () => {
+    const directlyPublishedIds = new Set(
+      productListItems.flatMap((product) => {
+        const categoryId = productDetailsById.get(product.id)?.categoryId;
+        return categoryId ? [categoryId] : [];
+      }),
+    );
+    const publishedIds = new Set(directlyPublishedIds);
+    for (const category of categories) {
+      if (category.parentId && directlyPublishedIds.has(category.id)) publishedIds.add(category.parentId);
+    }
+    return HttpResponse.json(categories.filter((category) => publishedIds.has(category.id)));
+  }),
 
   http.get(url('/v1/products'), ({ request }) => {
     const q = new URL(request.url).searchParams;
     const categoryId = q.get('categoryId') ?? undefined;
+    const includeDescendants = q.get('includeDescendants') === 'true';
     const keyword = q.get('q')?.toLowerCase() ?? undefined;
     const mode = (q.get('mode') as S['FulfillmentMode'] | null) ?? undefined;
     const cursor = q.get('cursor') ?? undefined;
@@ -262,7 +275,10 @@ export const storefrontHandlers = [
     const filtered = productListItems.filter((p) => {
       if (categoryId) {
         const detail = productDetailsById.get(p.id);
-        if (detail?.categoryId !== categoryId) return false;
+        const acceptedCategoryIds = includeDescendants
+          ? new Set([categoryId, ...categories.filter((category) => category.parentId === categoryId).map((category) => category.id)])
+          : new Set([categoryId]);
+        if (!detail?.categoryId || !acceptedCategoryIds.has(detail.categoryId)) return false;
       }
       if (mode && p.mode !== mode) return false;
       if (keyword && !p.name.toLowerCase().includes(keyword)) return false;

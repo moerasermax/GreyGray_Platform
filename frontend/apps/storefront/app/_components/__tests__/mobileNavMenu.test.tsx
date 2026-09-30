@@ -14,7 +14,8 @@ import {
   isMobileNavLinkCurrent,
   subscribeMobileNavDesktop,
 } from '../../_lib/mobileNav';
-import { createDrawerCategoriesCache } from '../DrawerCategories';
+import { buildCategoryTree, getCategoryPageData, onlyRootCategories } from '../../_lib/categoryTree';
+import { createDrawerCategoriesCache, DrawerCategoryTree } from '../DrawerCategories';
 import { MobileNavMenu } from '../MobileNavMenu';
 
 (globalThis as unknown as { React: typeof React }).React = React;
@@ -85,5 +86,55 @@ describe('FE-54 導覽預取與桌面斷點', () => {
     expect(addListener).toHaveBeenCalledWith(listener);
     unsubscribe();
     expect(removeListener).toHaveBeenCalledWith(listener);
+  });
+});
+
+describe('FE-55 分類樹', () => {
+  const root = { id: 'root', name: '父分類', parentId: null };
+  const child = { id: 'child', name: '子分類', parentId: root.id };
+
+  it('T1／T6：只認兩層，undefined、孤兒與第三層都保留為根，順序照 API', () => {
+    const thirdLevel = { id: 'third', name: '第三層', parentId: child.id };
+    const orphan = { id: 'orphan', name: '孤兒', parentId: 'missing' };
+    const implicitRoot = { id: 'implicit', name: '未帶 parentId' };
+    const tree = buildCategoryTree([root, child, thirdLevel, orphan, implicitRoot]);
+
+    expect(tree.map((node) => node.root.id)).toEqual(['root', 'third', 'orphan', 'implicit']);
+    expect(tree[0]?.children.map((category) => category.id)).toEqual(['child']);
+    expect(onlyRootCategories([root, child])).toEqual([root]);
+    expect(buildCategoryTree([{ id: 'a', name: 'A' }, { id: 'b', name: 'B', parentId: null }]))
+      .toHaveLength(2);
+    expect(buildCategoryTree([])).toEqual([]);
+  });
+
+  it('T2：有子分類的根同時有連結與收合鈕，子清單留在 DOM 且 hidden', () => {
+    const html = renderToStaticMarkup(
+      <DrawerCategoryTree tree={buildCategoryTree([root, child])} onNavigate={() => undefined} />,
+    );
+
+    expect(html).toContain('href="/categories/root"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('aria-controls="drawer-category-root-children"');
+    expect(html).toContain('aria-label="展開父分類的子分類"');
+    expect(html).toContain('id="drawer-category-root-children" hidden=""');
+    expect(html).toContain('href="/categories/child"');
+  });
+
+  it('T3：沒有子分類的根不呈現展開鈕', () => {
+    const html = renderToStaticMarkup(
+      <DrawerCategoryTree tree={buildCategoryTree([root])} onNavigate={() => undefined} />,
+    );
+    expect(html).not.toContain('<button');
+  });
+
+  it('T4／T5：父分類查整棵樹，子分類只做相等查詢並帶回上層資料', () => {
+    const parentPage = getCategoryPageData([root, child], root.id);
+    const childPage = getCategoryPageData([root, child], child.id);
+
+    expect(parentPage?.children).toEqual([child]);
+    expect(parentPage?.productQuery).toEqual({ categoryId: root.id, includeDescendants: true });
+    expect(childPage?.parent).toEqual(root);
+    expect(childPage?.productQuery).toEqual({ categoryId: child.id });
+    expect(childPage?.productQuery).not.toHaveProperty('includeDescendants');
   });
 });

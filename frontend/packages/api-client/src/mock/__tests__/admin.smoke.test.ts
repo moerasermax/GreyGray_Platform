@@ -25,12 +25,61 @@ describe('admin mock：每個 M1a 端點打一次，回應要通過型別檢查'
   });
 
   it('分類 CRUD', async () => {
-    const created = await api.createCategory(client, { name: '新分類', imageUrl: null, sortOrder: 9 }, mutationOptions());
+    const created = await api.createCategory(client, { name: '新分類', imageUrl: null, sortOrder: 9, parentId: null }, mutationOptions());
     expect(created.id).toBeTruthy();
-    const updated = await api.updateCategory(client, created.id, { name: '改名分類', imageUrl: null, sortOrder: 9 }, mutationOptions());
+    const updated = await api.updateCategory(client, created.id, { name: '改名分類', imageUrl: null, sortOrder: 9, parentId: null }, mutationOptions());
     expect(updated.name).toBe('改名分類');
     const list = await api.listCategories(client);
     expect(list.some((c) => c.id === created.id)).toBe(true);
+  });
+
+  it('分類 POST／PATCH 是整筆取代，省略 parentId 會寫成 null', async () => {
+    const categories = await api.listCategories(client);
+    const root = categories.find((category) => category.name === '韓國藥妝');
+    expect(root).toBeDefined();
+    const child = await api.createCategory(client, {
+      name: '暫存子分類',
+      sortOrder: 0,
+      parentId: root!.id,
+    }, mutationOptions());
+    expect(child).toMatchObject({ imageUrl: null, sortOrder: 0, parentId: root!.id });
+
+    const replaced = await api.updateCategory(client, child.id, { name: '只留名稱', sortOrder: 0 }, mutationOptions());
+    expect(replaced).toMatchObject({ name: '只留名稱', imageUrl: null, sortOrder: 0, parentId: null });
+  });
+
+  it('分類兩層規則回對應的 422 error code', async () => {
+    await expect(api.createCategory(client, {
+      name: '孤兒',
+      sortOrder: 0,
+      parentId: '00000000-0000-0000-0000-000000000000',
+    }, mutationOptions())).rejects.toMatchObject({
+      problem: { status: 422, code: 'catalog.invalid-parent-category' },
+    });
+
+    const categories = await api.listCategories(client);
+    const child = categories.find((category) => category.parentId);
+    const rootWithChild = categories.find((category) => category.id === child?.parentId);
+    const otherRoot = categories.find((category) => !category.parentId && category.id !== rootWithChild?.id);
+    expect(child).toBeDefined();
+    expect(rootWithChild).toBeDefined();
+    expect(otherRoot).toBeDefined();
+
+    await expect(api.createCategory(client, {
+      name: '第三層',
+      sortOrder: 0,
+      parentId: child!.id,
+    }, mutationOptions())).rejects.toMatchObject({
+      problem: { status: 422, code: 'catalog.category-depth-exceeded' },
+    });
+    await expect(api.updateCategory(client, rootWithChild!.id, {
+      name: rootWithChild!.name,
+      imageUrl: rootWithChild!.imageUrl ?? null,
+      sortOrder: rootWithChild!.sortOrder,
+      parentId: otherRoot!.id,
+    }, mutationOptions())).rejects.toMatchObject({
+      problem: { status: 422, code: 'catalog.category-depth-exceeded' },
+    });
   });
 
   it('商品與 SKU', async () => {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { listCategories } from '@greygray/api-client/endpoints/storefront';
 import { browserApi } from '../_lib/apiClient';
+import { buildCategoryTree, type CategoryTreeNode } from '../_lib/categoryTree';
 import { MOBILE_NAV_TEXT } from '../_lib/mobileNav';
 
 type Categories = Awaited<ReturnType<typeof listCategories>>;
@@ -31,6 +32,71 @@ export function createDrawerCategoriesCache() {
 }
 
 const categoriesCache = createDrawerCategoriesCache();
+
+export interface DrawerCategoryTreeProps {
+  readonly tree: readonly CategoryTreeNode[];
+  readonly onNavigate: () => void;
+}
+
+export function DrawerCategoryTree({ tree, onNavigate }: DrawerCategoryTreeProps) {
+  const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(() => new Set());
+
+  return (
+    <ul className="mt-[var(--gg-space-2)]">
+      {tree.map(({ root, children }) => {
+        const expanded = expandedIds.has(root.id);
+        const childrenId = `drawer-category-${root.id}-children`;
+        return (
+          <li key={root.id}>
+            <div className="flex min-h-[var(--gg-touch-min)] items-stretch">
+              <Link
+                href={`/categories/${root.id}`}
+                onClick={onNavigate}
+                className="flex min-h-[var(--gg-touch-min)] min-w-[var(--gg-touch-min)] flex-1 items-center rounded-[var(--gg-radius-sm)] px-[var(--gg-space-3)] font-bold text-fg no-underline hover:bg-surface-sunken"
+              >
+                {root.name}
+              </Link>
+              {children.length > 0 ? (
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  aria-controls={childrenId}
+                  aria-label={MOBILE_NAV_TEXT.categoryToggleLabel(root.name, expanded)}
+                  className="flex min-h-[var(--gg-touch-min)] min-w-[var(--gg-touch-min)] items-center justify-center rounded-[var(--gg-radius-sm)] font-bold text-fg hover:bg-surface-sunken"
+                  onClick={() => {
+                    setExpandedIds((current) => {
+                      const next = new Set(current);
+                      if (next.has(root.id)) next.delete(root.id);
+                      else next.add(root.id);
+                      return next;
+                    });
+                  }}
+                >
+                  <span aria-hidden="true">{expanded ? '−' : '+'}</span>
+                </button>
+              ) : null}
+            </div>
+            {children.length > 0 ? (
+              <ul id={childrenId} hidden={!expanded} className="pl-[var(--gg-space-4)]">
+                {children.map((child) => (
+                  <li key={child.id}>
+                    <Link
+                      href={`/categories/${child.id}`}
+                      onClick={onNavigate}
+                      className="flex min-h-[var(--gg-touch-min)] min-w-[var(--gg-touch-min)] items-center rounded-[var(--gg-radius-sm)] px-[var(--gg-space-3)] font-bold text-fg no-underline hover:bg-surface-sunken"
+                    >
+                      {child.name}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 /** 掛載時預取分類；成功結果由頁面載入期間的所有抽屜實例共用。 */
 export function DrawerCategories({ open, onNavigate }: DrawerCategoriesProps) {
@@ -98,19 +164,7 @@ export function DrawerCategories({ open, onNavigate }: DrawerCategoriesProps) {
       >
         {MOBILE_NAV_TEXT.categoriesTitle}
       </h3>
-      <ul className="mt-[var(--gg-space-2)]">
-        {state.categories.map((category) => (
-          <li key={category.id}>
-            <Link
-              href={`/categories/${category.id}`}
-              onClick={onNavigate}
-              className="flex min-h-[var(--gg-touch-min)] items-center rounded-[var(--gg-radius-sm)] px-[var(--gg-space-3)] font-bold text-fg no-underline hover:bg-surface-sunken"
-            >
-              {category.name}
-            </Link>
-          </li>
-        ))}
-      </ul>
+      <DrawerCategoryTree tree={buildCategoryTree(state.categories)} onNavigate={onNavigate} />
     </section>
   );
 }

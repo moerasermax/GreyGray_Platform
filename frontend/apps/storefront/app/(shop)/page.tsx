@@ -7,6 +7,7 @@ import { HeroBanner } from './_components/HeroBanner';
 import { CategoryRail } from './_components/CategoryRail';
 import { ProductWall } from './_components/ProductWall';
 import { InfoLinks } from '../(info)/_components/InfoLinks';
+import { onlyRootCategories } from '../_lib/categoryTree';
 
 /**
  * 首頁走 SSR：品牌標頭（搜尋 ＋ 入口 ＋ 會員）→ 主視覺（開團，或沒有開團時的品牌介紹）→
@@ -36,7 +37,7 @@ export default async function HomePage() {
       <HeroBanner campaign={openCampaigns.items[0]} />
 
       <HomeSection id="home-categories" title="逛分類" description="依類別找商品。">
-        <CategoryRail categories={categories} />
+        <CategoryRail categories={onlyRootCategories(categories)} />
       </HomeSection>
 
       <HomeSection

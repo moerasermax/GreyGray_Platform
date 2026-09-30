@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react';
 import { browserApi } from '../../../_lib/apiClient';
 import { getSession, hasRequiredRole } from '../../../login/_lib/session';
 import { CatalogTabs } from '../_components/CatalogTabs';
-import { CategoryDialog } from '../_components/CategoryDialog';
+import { CategoryDialog, orderCategories } from '../_components/CategoryDialog';
 import { Button } from '../_components/Button';
 
 type S = components['schemas'];
@@ -43,7 +43,22 @@ export default function CategoriesPage() {
   }, [reloadKey]);
 
   const columns: DataTableColumn<S['Category']>[] = [
-    { key: 'name', header: '名稱', renderCell: (row) => <td className="px-3 py-2 text-fg">{row.name}</td> },
+    {
+      key: 'name',
+      header: '名稱',
+      renderCell: (row) => (
+        <td className="px-3 py-2 text-fg">{row.parentId ? `└ ${row.name}` : row.name}</td>
+      ),
+    },
+    {
+      key: 'parentId',
+      header: '上層分類',
+      renderCell: (row) => (
+        <td className="px-3 py-2 text-fg-muted">
+          {row.parentId ? rows.find((category) => category.id === row.parentId)?.name ?? '—' : '—'}
+        </td>
+      ),
+    },
     {
       key: 'sortOrder',
       header: '排序',
@@ -92,7 +107,7 @@ export default function CategoriesPage() {
       ) : (
         <DataTable
           columns={columns}
-          rows={rows}
+          rows={orderCategories(rows)}
           getRowKey={(row) => row.id}
           loading={loading}
           {...(canWrite
@@ -124,6 +139,7 @@ export default function CategoriesPage() {
       <CategoryDialog
         open={dialogOpen}
         category={editing}
+        categories={rows}
         onClose={() => setDialogOpen(false)}
         onSaved={() => setReloadKey((current) => current + 1)}
       />

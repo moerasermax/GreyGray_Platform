@@ -23,6 +23,37 @@ describe('storefront mock：每個 M1a 端點打一次，回應要通過型別�
     expect(categories[0]).toHaveProperty('name');
   });
 
+  it('分類清單對父分類封閉，沒有商品的彩妝不發布', async () => {
+    const categories = await api.listCategories(client);
+    const ids = new Set(categories.map((category) => category.id));
+
+    expect(categories.some((category) => category.name === '彩妝')).toBe(false);
+    expect(categories.find((category) => category.name === '韓國藥妝')?.parentId).toBeNull();
+    expect(categories.filter((category) => category.parentId).map((category) => category.name)).toEqual([
+      '韓系保養',
+      '韓系彩妝',
+    ]);
+    for (const category of categories) {
+      if (category.parentId) expect(ids.has(category.parentId)).toBe(true);
+    }
+  });
+
+  it('includeDescendants 只在 true 時把父分類的直接子分類商品納入', async () => {
+    const categories = await api.listCategories(client);
+    const parent = categories.find((category) => category.name === '韓國藥妝');
+    expect(parent).toBeDefined();
+
+    const direct = await api.listProducts(client, { categoryId: parent!.id, limit: 100 });
+    const withChildren = await api.listProducts(client, {
+      categoryId: parent!.id,
+      includeDescendants: true,
+      limit: 100,
+    });
+
+    expect(direct.items).toHaveLength(0);
+    expect(withChildren.items).toHaveLength(6);
+  });
+
   it('products 列表分頁：能翻到第二頁，最後一頁 nextCursor 是 null', async () => {
     const first = await api.listProducts(client, { limit: 20 });
     expect(first.items).toHaveLength(20);
