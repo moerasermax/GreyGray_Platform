@@ -171,6 +171,26 @@ export function MaskIcon({ className }: IconProps) {
   );
 }
 
+export function EyeIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
+      <circle cx="12" cy="12" r="2.5" />
+    </svg>
+  );
+}
+
+export function EyeOffIcon({ className }: IconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <path d="M3 3l18 18" />
+      <path d="M10.6 6.2A11 11 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3.2 3.8" />
+      <path d="M6.6 6.6C3.7 8.4 2 12 2 12s3.5 6 10 6c1.5 0 2.8-.3 4-.8" />
+      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+    </svg>
+  );
+}
+
 /** 客服訊息（FE-35）。跟前台 `IconMessageCircle` 同一個圖案，各自維護——兩套元件庫不互相依賴。 */
 export function MessageIcon({ className }: IconProps) {
   return (

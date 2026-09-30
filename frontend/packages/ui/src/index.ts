@@ -54,6 +54,7 @@ export * from './components/ErrorState';
 export * from './components/Countdown';
 export * from './components/Field';
 export * from './components/Input';
+export * from './components/PasswordInput';
 export * from './components/Select';
 export * from './components/Textarea';
 export * from './components/Tabs';

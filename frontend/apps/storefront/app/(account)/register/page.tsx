@@ -1,7 +1,7 @@
 'use client';
 
 import * as storefrontApi from '@greygray/api-client/endpoints/storefront';
-import { Button, Card, Field, Input, Skeleton } from '@greygray/ui';
+import { Button, Card, Field, Input, PasswordInput, Skeleton } from '@greygray/ui';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
@@ -104,9 +104,8 @@ function RegisterPageContent() {
           </Field>
 
           <Field label="密碼" htmlFor="register-password" required error={errors.password} hint="8～128 碼">
-            <Input
+            <PasswordInput
               id="register-password"
-              type="password"
               autoComplete="new-password"
               required
               invalid={Boolean(errors.password)}

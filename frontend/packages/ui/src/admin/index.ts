@@ -17,6 +17,7 @@ export * from './ErrorState';
 export * from './KpiTile';
 export * from './DataTable';
 export * from './Field';
+export * from './PasswordInput';
 export * from './DateRangePicker';
 export * from './FilterBar';
 export * from './Dialog';

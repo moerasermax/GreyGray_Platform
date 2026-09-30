@@ -2,7 +2,7 @@
 
 import { ApiError } from '@greygray/api-client';
 import * as storefrontApi from '@greygray/api-client/endpoints/storefront';
-import { Button, Card, Field, Input, Skeleton } from '@greygray/ui';
+import { Button, Card, Field, Input, PasswordInput, Skeleton } from '@greygray/ui';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
@@ -102,9 +102,8 @@ function LoginPageContent() {
           </Field>
 
           <Field label="密碼" htmlFor="login-password" required>
-            <Input
+            <PasswordInput
               id="login-password"
-              type="password"
               autoComplete="current-password"
               required
               value={password}

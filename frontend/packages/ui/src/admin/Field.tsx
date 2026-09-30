@@ -1,6 +1,7 @@
 import type {
   InputHTMLAttributes,
   ReactNode,
+  Ref,
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from 'react';
@@ -46,6 +47,7 @@ const baseControlClass =
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   readonly invalid?: boolean;
+  readonly ref?: Ref<HTMLInputElement>;
 }
 
 export function Input({ className, invalid, ...props }: InputProps) {

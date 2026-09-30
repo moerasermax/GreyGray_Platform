@@ -1,6 +1,6 @@
 'use client';
 
-import { Field, Input } from '@greygray/ui/admin';
+import { Field, Input, PasswordInput } from '@greygray/ui/admin';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { usePayloadIdempotency } from '../_lib/usePayloadIdempotency';
@@ -89,9 +89,8 @@ function LoginContent() {
             />
           </Field>
           <Field label="密碼" htmlFor="login-password" required error={error ?? undefined}>
-            <Input
+            <PasswordInput
               id="login-password"
-              type="password"
               autoComplete="current-password"
               required
               value={password}
