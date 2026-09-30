@@ -51,7 +51,10 @@ Leader 要明講。
 
 ---
 
-## 生效中：BE-58　商品分類固定兩層（第四十二波第 1 輪，2026-09-30）
+<!--
+★ 2026-09-30 撤包：BE-58 已由 Leader 驗收——自己重跑六個 Release 測試執行檔（Migrations 24、IdentityCatalog 41、CheckoutOrdering 130／1 skipped、PaymentLedger、Inventory、Architecture），審過 0023（可重放、函式 owner 斷言、advisory lock、查不到上層交外鍵）、前台分類清單查詢與 Infra 例外轉換；check-openapi 兩份 PASS（實作者自驗）。原文保留供追溯。
+
+## 已撤包：BE-58　商品分類固定兩層（第四十二波第 1 輪，2026-09-30）
 
 ADR-041。契約 Leader 已寫好、兩棵樹同步、與閘門檔同一個 commit，**本包不准改 `docs/`**。
 同一輪前端樹平行 FE-51（`docs/60`，在另一棵樹），檔案不重疊。
@@ -66,16 +69,35 @@ migration 用 `0023`（`docs/53` 第 89 行曾為 BE-50 預留；BE-50 之後開
 ⑤ PATCH 維持整筆取代，`parentId` 沒帶就是根分類；
 ⑥ 競態被資料庫擋下（`23514`）也要轉成同樣的 422 錯誤碼，轉換只寫在 Infra，Core 不碰 Npgsql。
 
-package: BE-58
-doc: docs/59-第四十二波BE-58分類父子兩層派工書.md
-allow: db/migrations/0023
-allow: src/Modules/Catalog/
-allow: src/Hosts/GreyGray.Api.Storefront/M1aEndpoints.cs
-allow: ops/install-dev-environment.ps1
-allow: ops/verify-environment.ps1
-allow: tests/GreyGray.M1a.IdentityCatalog.Tests/
-allow: tests/GreyGray.M1a.Migrations.Tests/
-allow: .dispatch/reports/BE-58.md
+(撤包) package: BE-58
+(撤包) doc: docs/59-第四十二波BE-58分類父子兩層派工書.md
+(撤包) allow: db/migrations/0023
+(撤包) allow: src/Modules/Catalog/
+(撤包) allow: src/Hosts/GreyGray.Api.Storefront/M1aEndpoints.cs
+(撤包) allow: ops/install-dev-environment.ps1
+(撤包) allow: ops/verify-environment.ps1
+(撤包) allow: tests/GreyGray.M1a.IdentityCatalog.Tests/
+(撤包) allow: tests/GreyGray.M1a.Migrations.Tests/
+(撤包) allow: .dispatch/reports/BE-58.md
+
+---
+
+-->
+
+## 生效中：BE-59　#60 綠界 ATM／超商代碼回呼查證（第四十二波第 2 輪，2026-09-30，查證包）
+
+目標是證據，不是修法：綠界協定（附官方網址）、現行程式在每種通知下的行為、三條推論逐條證實或推翻、`PaymentDueAt` 刻意或漏做、修法選項與建議。
+**BE-58 撤包之後才派**（它會建置並執行同一個測試專案）。**只新增 `tests/GreyGray.M1a.PaymentLedger.Tests/` 底下的檔**；不准改 `src/`、`docs/`、`ops/`、模擬器、既有測試檔。Docker Desktop 要開著。
+
+★★ 最容易做錯的三件事：
+① characterization test 是釘住**現況**（測試要綠），現況和派工書表格不同時照實釘住並回報，不要為了配合表格改測試；
+② 綠界協定每一條都要附官方網址，查不到就標「尚待確認」，不准憑記憶寫成事實；
+③ 測試組法照派工書 §2：可設定時間的時鐘、同一情境共用一個 service 與 repository、先寫 C0 正向對照；C5 若回 stale-callback 是組法錯，不是推翻推論。
+
+package: BE-59
+doc: docs/61-第四十二波BE-59綠界ATM超商代碼回呼查證派工書.md
+allow: tests/GreyGray.M1a.PaymentLedger.Tests/
+allow: .dispatch/reports/BE-59.md
 
 ---
 
