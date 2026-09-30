@@ -1,5 +1,41 @@
 # 啟動 prompt
 
+## BE-59 #60 綠界 ATM／超商代碼回呼查證（第四十二波第 2 輪，後端樹，2026-09-30）
+
+```text
+GG_PACKAGE=BE-59
+你是唯一實作者（Codex gpt-5.6-sol high），不開子代理。專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform（後端樹）。
+開工前讀：AGENTS.md（六條鐵則）、.dispatch/ACTIVE.md 的 BE-59、docs/61-第四十二波BE-59綠界ATM超商代碼回呼查證派工書.md（整份）、.dispatch/reports/README.md。派工書以 ACTIVE 的 doc: 為準，CLAUDE.md／AGENTS.md 提到的 docs/13 已過期。
+這是查證包：交付的是證據與建議，不是修法。只准寫 BE-59 的 allow（兩條：tests/GreyGray.M1a.PaymentLedger.Tests/ 與報告）；不准改 src/、docs/、ops/、模擬器、其他測試專案。只新增檔案，既有測試檔不改。Docker Desktop 要開著，沒開就停下來回報。
+最容易做錯的三件事：① characterization test 釘的是現況（測試要綠），C0 正向對照綠了之後，現況和派工書 §2 表格不同時照實釘住並在報告寫明推論不成立，不要為了配合表格改測試；② 綠界協定每一條都附官方網址（含測試商店的繳費完成是否一律 SimulatePaid=1），查不到或無法上網就標「尚待確認」並列出要去確認的官方頁，不准憑記憶寫成事實；③ 測試組法照 §2：可設定時間的時鐘、同一情境共用一個 service 與 repository、同一個 OrderId、台北牆上時間；C5 若回 stale-callback 是組法錯，不是推翻推論。webhook 端點行號一律用 git show 7096a27: 取。
+本包以 Release 為準（reports/README 的 -c Debug 不適用）：動手前先建置並跑一次 tests\GreyGray.M1a.PaymentLedger.Tests\bin\Release\net10.0\GreyGray.M1a.PaymentLedger.Tests.exe 記下現況條數，改完再前景跑完（不要用 dotnet test、不要掛背景就結束）。
+先列目標，備份要改的既有檔（TEMP 底下 GUID 目錄）。不啟停 dev 服務、不安裝、不 commit、不 push、不部署、不改閘門。報告 .dispatch/reports/BE-59.md，三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」，另加「## 查證結論」一節逐條標已觀察／推論／尚待確認；逐條自驗以派工書 §1 五題與 §2 C0～C10 為準。預算：工具 80／讀 40／搜 25／改 3 檔／測修 2 輪，達限回報。stop gate 如提示既有 dirty（.dispatch/PROMPTS.md.bak-20260921-211728），只回報不還原，最後重述本包交付證據。
+```
+
+## FE-52 手機頂部列＋漢堡鈕＋導覽抽屜（第四十二波第 2 輪，前端樹，2026-09-30）
+
+```text
+GG_PACKAGE=FE-52
+你是唯一實作者（Codex gpt-5.6-sol medium），不開子代理。專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe（前端樹）。
+開工前讀：AGENTS.md、.dispatch/ACTIVE.md 的 FE-52、docs/62-第四十二波FE-52手機漢堡選單派工書.md（整份）、.dispatch/reports/README.md。動手前先讀 frontend/apps/storefront/app/_lib/__tests__/pageShell.test.ts 與 topBar.test.ts。
+只准寫 FE-52 的 allow（十六條）。FE-53 的檔一律不准碰；不准改任何 page.tsx、tabs.ts、TopBar.tsx、globals.css、SupportWidget.tsx、useFocusTrap.ts；soft-seoul.css 只准新增 --gg-drawer-width 一個 token。
+最容易做錯的五件事：① 頂部列的漢堡鈕用規則驅動（TopBarRule.showMenuButton），不改頁面；MobileSiteHeader 的規則寫成獨立純函式，不准併進 shouldShowTopBar；② 任何新檔的註解或程式都不准出現 <PageTopBar 這串字、也不准把它包進別的元件；③ 分類在抽屜第一次打開時用 browserApi() 取，不准在 layout／server component 用 serverApi()，空或失敗整組不畫；④ useFocusTrap 的 onClose 一定要 useCallback；抽屜在點連結、pathname 改變、寬度到 lg 時都要自己關；捲動鎖只鎖 html（不動 body）並還原原值，<body> 不准加屬性、SupportWidget 在 layout 的寫法與位置不准動；⑤ 沒有 jsdom／testing-library 也不准安裝；vitest 裡 usePathname() 是 null、useRouter() 會丟錯，元件不准呼叫 useRouter。
+不跑 pnpm api:generate、不碰分類的型別。前景跑 @greygray/ui typecheck、@greygray/storefront typecheck 與 test，報告前→後條數，最多兩輪修正。
+先列目標，備份要改的既有檔（TEMP 底下 GUID 目錄）。不 build、不起 dev server、不安裝、不 commit、不改閘門。報告 .dispatch/reports/FE-52.md，三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」，逐條自驗以派工書「要求」1～6 與 T1～T6 為準，並列出只能靠瀏覽器驗的行為與觸控目標的靜態推算。預算：工具 80／讀 40／搜 15／改 20 檔／測修 2 輪，達限回報。stop gate 如提示既有 dirty（兩個 .bak 檔），只回報不還原，最後重述本包交付證據。
+```
+
+## FE-53 付款確認頁內容補齊＋商品描述保留換行（第四十二波第 2 輪，前端樹，2026-09-30）
+
+```text
+GG_PACKAGE=FE-53
+你是唯一實作者（Codex gpt-5.6-sol medium），不開子代理。專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe（前端樹）。
+開工前讀：AGENTS.md、.dispatch/ACTIVE.md 的 FE-53、docs/63-第四十二波FE-53付款確認頁與商品描述派工書.md（整份）、.dispatch/reports/README.md。
+只准寫 FE-53 的 allow（十二條）。FE-52 已撤包，它的檔一律不准碰；不准碰 frontend/packages/ui、任何殼元件、CheckoutOrderSummary.tsx、orderStatus.ts、recipientDisplay.ts、fixture。
+最容易做錯的四件事：① 詳情頁抽出 OrderSummary 後輸出與現在完全相同（detail 回傳 Fragment、不包外層），確認頁用明確的 variant，摘要放在置中結果卡之外、政策行只在混合訂單顯示；② 金額一律用後端給的值，前端不做加減乘除；混合訂單看 lines[].mode，句子再依 shippingPolicy 二選一（純現貨也是 ShipSeparately）；③ 下單時間明確指定 Asia/Taipei；複製鈕用行內文字回饋，不用 Toast；④ isPaid 以外三個分支的畫面輸出不准變；description 不加 maxLength。
+不跑 pnpm api:generate。前景跑 @greygray/storefront 與 @greygray/admin 的 typecheck 與 test，報告前→後條數，最多兩輪修正。日期格式用派工書指定的選項，T4 要在 TZ=UTC 下驗。
+先列目標，備份要改的既有檔（TEMP 底下 GUID 目錄）。不 build、不起 dev server、不安裝、不 commit、不改閘門。報告 .dispatch/reports/FE-53.md，三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」，逐條自驗以派工書「要求」1～5 與 T1～T8 為準，並列出只能靠瀏覽器驗的行為。預算：工具 70／讀 35／搜 12／改 14 檔／測修 2 輪，達限回報。stop gate 如提示既有 dirty（兩個 .bak 檔），只回報不還原，最後重述本包交付證據。
+```
+
 ## BE-58 商品分類固定兩層（第四十二波第 1 輪，後端樹，2026-09-30）
 
 ```text

@@ -51,6 +51,67 @@ Leader 要明講。
 
 ---
 
+## 生效中：FE-52　手機頂部列＋漢堡鈕＋導覽抽屜（第四十二波第 2 輪，2026-09-30）
+
+團隊原話「漢堡選單：確保手機版觸控範圍夠大，展開後的分類層級分明」。分類先用平面清單，分類樹由 FE-54 只改 `DrawerCategories.tsx` 接上。
+FE-53 在本包撤包後才派，但它的 allow 已生效：**本包不准改任何頁面檔（page.tsx）**、`tabs.ts`、`TopBar.tsx`、`globals.css`、`SupportWidget.tsx`、`useFocusTrap.ts`；`soft-seoul.css` 只准新增 `--gg-drawer-width` 一個 token。
+
+★★ 最容易做錯的五件事：
+① 頂部列的漢堡鈕用規則驅動（`TopBarRule.showMenuButton`），不改頁面；`MobileSiteHeader` 規則寫成獨立純函式，**不准併進 `shouldShowTopBar`**；
+② 任何新檔的註解或程式都不准出現 `<PageTopBar` 這串字、也不准把它包進別的元件（`pageShell.test.ts` 會紅）；
+③ 分類在抽屜第一次打開時用 `browserApi()` 取，**不准在 layout／server component 用 `serverApi()`**（全站會變動態渲染）；空或失敗整組不畫；
+④ `useFocusTrap` 的 `onClose` 一定要 `useCallback`；抽屜在點連結、換頁、寬度到 lg 時都要自己關；捲動鎖**只鎖 html**（不動 body，否則 sticky 失效、關閉時會捲回頂端）並還原原值，`<body>` 不准加屬性；
+⑤ 沒有 jsdom／testing-library 也不准安裝；否定斷言要注入一次違規。
+
+package: FE-52
+doc: docs/62-第四十二波FE-52手機漢堡選單派工書.md
+allow: frontend/packages/ui/src/components/NavDrawer.tsx
+allow: frontend/packages/ui/src/components/internal/useScrollLock.ts
+allow: frontend/packages/ui/src/components/icons/index.tsx
+allow: frontend/packages/ui/src/index.ts
+allow: frontend/packages/ui/src/tokens/soft-seoul.css
+allow: frontend/apps/storefront/app/_components/MobileSiteHeader.tsx
+allow: frontend/apps/storefront/app/_components/MobileNavMenu.tsx
+allow: frontend/apps/storefront/app/_components/DrawerCategories.tsx
+allow: frontend/apps/storefront/app/_components/PageTopBar.tsx
+allow: frontend/apps/storefront/app/_components/__tests__/
+allow: frontend/apps/storefront/app/_lib/topBar.ts
+allow: frontend/apps/storefront/app/_lib/mobileNav.ts
+allow: frontend/apps/storefront/app/_lib/__tests__/
+allow: frontend/apps/storefront/app/layout.tsx
+allow: frontend/apps/storefront/app/(shop)/_components/HomeSearchHeader.tsx
+allow: .dispatch/reports/FE-52.md
+
+---
+
+## 生效中：FE-53　付款確認頁內容補齊＋商品描述保留換行（第四十二波第 2 輪，2026-09-30）
+
+團隊原話「可以加上商品描述及購物後完成訂單的反饋」。無契約、純 UI；不送外部覆驗是 Leader 的明文裁量（已由唯讀查證代理逐行核對）。
+**FE-52 撤包之後才派**；allow 與 FE-52 逐檔切開：**本包不准碰 `frontend/packages/ui` 與任何殼元件**。待付款／確認中／已取消分支這次不動（等 BE-59）。
+
+★★ 最容易做錯的四件事：
+① 詳情頁抽出 `OrderSummary` 後輸出**與現在完全相同**，`detail` 回傳 Fragment 不包外層；確認頁用明確的 `variant`，摘要放在置中結果卡之外；
+② 金額一律用後端給的值，前端不做加減乘除；混合訂單要看 `lines[].mode`，句子再依 `shippingPolicy` 二選一（純現貨也是 `ShipSeparately`）；
+③ 下單時間明確指定 `Asia/Taipei`；複製鈕用行內文字回饋，**不用 Toast**；
+④ isPaid 以外三個分支的畫面輸出不准變；`description` 不加 `maxLength`（資料庫是 `text`）。
+
+package: FE-53
+doc: docs/63-第四十二波FE-53付款確認頁與商品描述派工書.md
+allow: frontend/apps/storefront/app/(account)/orders/[orderId]/page.tsx
+allow: frontend/apps/storefront/app/(account)/orders/_components/
+allow: frontend/apps/storefront/app/(account)/orders/__tests__/
+allow: frontend/apps/storefront/app/(checkout)/payment/result/page.tsx
+allow: frontend/apps/storefront/app/(checkout)/_lib/paymentResultSummary.ts
+allow: frontend/apps/storefront/app/(checkout)/_lib/__tests__/
+allow: frontend/apps/storefront/app/(shop)/products/[productId]/page.tsx
+allow: frontend/apps/storefront/app/(shop)/products/[productId]/__tests__/
+allow: frontend/apps/admin/app/(dash)/catalog/_components/ProductForm.tsx
+allow: frontend/apps/admin/app/(dash)/catalog/_lib/productDescription.ts
+allow: frontend/apps/admin/app/(dash)/catalog/__tests__/
+allow: .dispatch/reports/FE-53.md
+
+---
+
 <!--
 ★ 2026-09-30 撤包：FE-51 已由 Leader 驗收——自己重跑 ui／storefront／admin typecheck（exit 0）與測試（storefront 595、admin 200 全過），Playwright 本機 Chrome 量前台登入／註冊 390／360 與後台登入 1280：同一個 input 節點、切換後選取 2–4 與焦點保留、顯示中送出當下已遮回、前台按鈕 44×44／右側留白 44px、後台 36×34 且與 Email 欄同寬同高、無橫向溢出；Edge 以對照欄證明內建眼睛被藏。原文保留供追溯。
 
