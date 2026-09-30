@@ -51,7 +51,10 @@ Leader 要明講。
 
 ---
 
-## 生效中：FE-52　手機頂部列＋漢堡鈕＋導覽抽屜（第四十二波第 2 輪，2026-09-30）
+<!--
+★ 2026-09-30 撤包：FE-52 機械驗收通過——Leader 重跑 ui／storefront／admin typecheck（exit 0）與 storefront 605、admin 200 全過；審過捲動鎖只鎖 html 並還原原值、pathname 改變與寬度到 lg 自動關閉、不用 useRouter。依使用者指示，真瀏覽器走查併入第四十二波最後的整體驗證。原文保留供追溯。
+
+## 已撤包：FE-52　手機頂部列＋漢堡鈕＋導覽抽屜（第四十二波第 2 輪，2026-09-30）
 
 團隊原話「漢堡選單：確保手機版觸控範圍夠大，展開後的分類層級分明」。分類先用平面清單，分類樹由 FE-54 只改 `DrawerCategories.tsx` 接上。
 FE-53 在本包撤包後才派，但它的 allow 已生效：**本包不准改任何頁面檔（page.tsx）**、`tabs.ts`、`TopBar.tsx`、`globals.css`、`SupportWidget.tsx`、`useFocusTrap.ts`；`soft-seoul.css` 只准新增 `--gg-drawer-width` 一個 token。
@@ -63,26 +66,28 @@ FE-53 在本包撤包後才派，但它的 allow 已生效：**本包不准改�
 ④ `useFocusTrap` 的 `onClose` 一定要 `useCallback`；抽屜在點連結、換頁、寬度到 lg 時都要自己關；捲動鎖**只鎖 html**（不動 body，否則 sticky 失效、關閉時會捲回頂端）並還原原值，`<body>` 不准加屬性；
 ⑤ 沒有 jsdom／testing-library 也不准安裝；否定斷言要注入一次違規。
 
-package: FE-52
-doc: docs/62-第四十二波FE-52手機漢堡選單派工書.md
-allow: frontend/packages/ui/src/components/NavDrawer.tsx
-allow: frontend/packages/ui/src/components/internal/useScrollLock.ts
-allow: frontend/packages/ui/src/components/icons/index.tsx
-allow: frontend/packages/ui/src/index.ts
-allow: frontend/packages/ui/src/tokens/soft-seoul.css
-allow: frontend/apps/storefront/app/_components/MobileSiteHeader.tsx
-allow: frontend/apps/storefront/app/_components/MobileNavMenu.tsx
-allow: frontend/apps/storefront/app/_components/DrawerCategories.tsx
-allow: frontend/apps/storefront/app/_components/PageTopBar.tsx
-allow: frontend/apps/storefront/app/_components/__tests__/
-allow: frontend/apps/storefront/app/_lib/topBar.ts
-allow: frontend/apps/storefront/app/_lib/mobileNav.ts
-allow: frontend/apps/storefront/app/_lib/__tests__/
-allow: frontend/apps/storefront/app/layout.tsx
-allow: frontend/apps/storefront/app/(shop)/_components/HomeSearchHeader.tsx
-allow: .dispatch/reports/FE-52.md
+(撤包) package: FE-52
+(撤包) doc: docs/62-第四十二波FE-52手機漢堡選單派工書.md
+(撤包) allow: frontend/packages/ui/src/components/NavDrawer.tsx
+(撤包) allow: frontend/packages/ui/src/components/internal/useScrollLock.ts
+(撤包) allow: frontend/packages/ui/src/components/icons/index.tsx
+(撤包) allow: frontend/packages/ui/src/index.ts
+(撤包) allow: frontend/packages/ui/src/tokens/soft-seoul.css
+(撤包) allow: frontend/apps/storefront/app/_components/MobileSiteHeader.tsx
+(撤包) allow: frontend/apps/storefront/app/_components/MobileNavMenu.tsx
+(撤包) allow: frontend/apps/storefront/app/_components/DrawerCategories.tsx
+(撤包) allow: frontend/apps/storefront/app/_components/PageTopBar.tsx
+(撤包) allow: frontend/apps/storefront/app/_components/__tests__/
+(撤包) allow: frontend/apps/storefront/app/_lib/topBar.ts
+(撤包) allow: frontend/apps/storefront/app/_lib/mobileNav.ts
+(撤包) allow: frontend/apps/storefront/app/_lib/__tests__/
+(撤包) allow: frontend/apps/storefront/app/layout.tsx
+(撤包) allow: frontend/apps/storefront/app/(shop)/_components/HomeSearchHeader.tsx
+(撤包) allow: .dispatch/reports/FE-52.md
 
 ---
+
+-->
 
 ## 生效中：FE-53　付款確認頁內容補齊＋商品描述保留換行（第四十二波第 2 輪，2026-09-30）
 
