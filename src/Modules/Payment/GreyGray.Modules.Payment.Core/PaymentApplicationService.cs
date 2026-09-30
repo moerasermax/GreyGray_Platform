@@ -20,6 +20,13 @@ internal sealed record EcpaySettings(
 /// </summary>
 internal sealed record EcpayRefundResult(bool Succeeded, string RtnCode, string RtnMsg, string RawResponse);
 
+internal sealed record VerifiedEcpayCallback(
+    string MerchantTradeNo,
+    string TradeNo,
+    int RtnCode,
+    string RtnCodeText,
+    long TradeAmountMajor);
+
 internal interface IEcpayGateway
 {
     IReadOnlyDictionary<string, string> CreateCheckoutFields(
@@ -50,7 +57,7 @@ internal sealed class PaymentApplicationService(
     IEcpayGateway ecpay,
     EcpaySettings settings,
     IClock clock,
-    ICorrelationContext correlationContext) : IPaymentCommand, IPaymentQuery
+    ICorrelationContext correlationContext) : IPaymentCommand, IPaymentQuery, IEcpayCallbackVerifier
 {
     // 為什麼不直接 FindSystemTimeZoneById("Asia/Taipei")：見 TaipeiTime 的註解——
     // InvariantGlobalization 關掉 ICU 之後，Windows 上查不到 IANA 那個名字。
@@ -151,26 +158,17 @@ internal sealed class PaymentApplicationService(
         IReadOnlyDictionary<string, string> fields,
         CancellationToken cancellationToken)
     {
-        if (!ecpay.VerifyCallback(fields))
+        var verification = VerifyCallback(fields);
+        if (verification.IsFailure)
         {
-            return Result.Failure("payment.invalid-signature", "綠界回呼驗簽失敗。");
+            return Result.Failure(verification.Error);
         }
 
-        if (!Required(fields, "MerchantID", out var merchantId) ||
-            !StringComparer.Ordinal.Equals(merchantId, settings.MerchantId) ||
-            !Required(fields, "MerchantTradeNo", out var merchantTradeNo) ||
-            !Required(fields, "TradeNo", out var tradeNo) ||
-            !Required(fields, "RtnCode", out var rtnCodeText) ||
-            !int.TryParse(rtnCodeText, NumberStyles.None, CultureInfo.InvariantCulture, out var rtnCode) ||
-            !Required(fields, "TradeAmt", out var tradeAmountText) ||
-            !long.TryParse(tradeAmountText, NumberStyles.None, CultureInfo.InvariantCulture, out var tradeAmountMajor))
-        {
-            return Result.Failure("payment.invalid-callback", "綠界回呼缺少必要欄位或格式錯誤。");
-        }
+        var callback = verification.Value;
 
         var payment = await payments.FindByMerchantTradeNoAsync(
             correlationContext.TenantId,
-            merchantTradeNo,
+            callback.MerchantTradeNo,
             cancellationToken);
         if (payment is null)
         {
@@ -180,7 +178,7 @@ internal sealed class PaymentApplicationService(
         if ((payment.Status is PaymentStatus.Captured
                 or PaymentStatus.PartiallyRefunded
                 or PaymentStatus.Refunded) &&
-            StringComparer.Ordinal.Equals(payment.ProviderTransactionId, tradeNo))
+            StringComparer.Ordinal.Equals(payment.ProviderTransactionId, callback.TradeNo))
         {
             return Result.Success();
         }
@@ -193,7 +191,7 @@ internal sealed class PaymentApplicationService(
         }
 
         var expectedMajor = payment.Amount.AmountMinor / Currency.TWD.MinorUnitsPerUnit();
-        if (tradeAmountMajor != expectedMajor)
+        if (callback.TradeAmountMajor != expectedMajor)
         {
             return Result.Failure("payment.amount-mismatch", "綠界回呼金額與訂單應付金額不符。");
         }
@@ -205,10 +203,10 @@ internal sealed class PaymentApplicationService(
         }
 
         var occurredAt = clock.UtcNow;
-        if (rtnCode == 1)
+        if (callback.RtnCode == 1)
         {
             var fee = ParseFee(fields, payment.Amount.Currency);
-            if (payment.Capture(tradeNo, fee, callbackTime))
+            if (payment.Capture(callback.TradeNo, fee, callbackTime))
             {
                 await eventPublisher.PublishAsync(
                     new PaymentCaptured(
@@ -221,11 +219,11 @@ internal sealed class PaymentApplicationService(
                         payment.Amount,
                         payment.GoodsAmount,
                         payment.ShippingAmount,
-                        tradeNo),
+                        callback.TradeNo),
                     cancellationToken);
             }
         }
-        else if (payment.Fail(tradeNo))
+        else if (payment.Fail(callback.TradeNo))
         {
             fields.TryGetValue("RtnMsg", out var message);
             await eventPublisher.PublishAsync(
@@ -236,13 +234,24 @@ internal sealed class PaymentApplicationService(
                     payment.Id,
                     payment.OrderId,
                     payment.Provider,
-                    rtnCodeText,
+                    callback.RtnCodeText,
                     message ?? "綠界回報付款失敗。"),
                 cancellationToken);
         }
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return Result.Success();
+    }
+
+    public Result<EcpayCallbackEnvelope> Verify(IReadOnlyDictionary<string, string> fields)
+    {
+        var verification = VerifyCallback(fields);
+        return verification.IsFailure
+            ? Result<EcpayCallbackEnvelope>.Failure(verification.Error)
+            : new EcpayCallbackEnvelope(
+                verification.Value.MerchantTradeNo,
+                verification.Value.TradeNo,
+                verification.Value.RtnCode);
     }
 
     public async Task<Result<PaymentSummary>> GetAsync(
@@ -290,6 +299,38 @@ internal sealed class PaymentApplicationService(
 
         value = string.Empty;
         return false;
+    }
+
+    private Result<VerifiedEcpayCallback> VerifyCallback(
+        IReadOnlyDictionary<string, string> fields)
+    {
+        if (!ecpay.VerifyCallback(fields))
+        {
+            return Result<VerifiedEcpayCallback>.Failure(
+                "payment.invalid-signature",
+                "綠界回呼驗簽失敗。");
+        }
+
+        if (!Required(fields, "MerchantID", out var merchantId) ||
+            !StringComparer.Ordinal.Equals(merchantId, settings.MerchantId) ||
+            !Required(fields, "MerchantTradeNo", out var merchantTradeNo) ||
+            !Required(fields, "TradeNo", out var tradeNo) ||
+            !Required(fields, "RtnCode", out var rtnCodeText) ||
+            !int.TryParse(rtnCodeText, NumberStyles.None, CultureInfo.InvariantCulture, out var rtnCode) ||
+            !Required(fields, "TradeAmt", out var tradeAmountText) ||
+            !long.TryParse(tradeAmountText, NumberStyles.None, CultureInfo.InvariantCulture, out var tradeAmountMajor))
+        {
+            return Result<VerifiedEcpayCallback>.Failure(
+                "payment.invalid-callback",
+                "綠界回呼缺少必要欄位或格式錯誤。");
+        }
+
+        return new VerifiedEcpayCallback(
+            merchantTradeNo,
+            tradeNo,
+            rtnCode,
+            rtnCodeText,
+            tradeAmountMajor);
     }
 
     private static bool TryGetCallbackTime(

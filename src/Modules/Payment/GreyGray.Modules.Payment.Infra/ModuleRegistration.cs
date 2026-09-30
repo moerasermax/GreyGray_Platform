@@ -73,6 +73,8 @@ internal sealed class PaymentModule : IModuleRegistration
         });
         services.AddScoped<IPaymentCommand>(provider =>
             provider.GetRequiredService<PaymentApplicationService>());
+        services.AddScoped<IEcpayCallbackVerifier>(provider =>
+            provider.GetRequiredService<PaymentApplicationService>());
         services.AddScoped<IPaymentQuery>(provider =>
             provider.GetRequiredService<PaymentApplicationService>());
         services.AddScoped<RefundRequestedHandler>(provider =>

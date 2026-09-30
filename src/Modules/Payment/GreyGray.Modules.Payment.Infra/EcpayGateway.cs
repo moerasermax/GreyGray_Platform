@@ -13,6 +13,8 @@ internal sealed class EcpayGateway(
     string hashIv,
     HttpClient httpClient) : IEcpayGateway
 {
+    private const string TransitionalPaymentMethod = "Credit";
+
     public IReadOnlyDictionary<string, string> CreateCheckoutFields(
         string merchantTradeNo,
         Money amount,
@@ -39,7 +41,8 @@ internal sealed class EcpayGateway(
             // 綠界完成頁的「返回商店」按鈕。少了它，客人付完款就停在綠界頁上沒有路回來（#33）。
             // 它跟其他欄位一樣要進 CheckMacValue，所以放在算簽章之前。
             ["ClientBackURL"] = clientBackUrl.AbsoluteUri,
-            ["ChoosePayment"] = "ALL",
+            // ADR-044 過渡期只收信用卡；BE-66 重新開放時不能只把字串改回 ALL。
+            ["ChoosePayment"] = TransitionalPaymentMethod,
             ["EncryptType"] = "1",
         };
         fields["CheckMacValue"] = ComputeCheckMacValue(fields, hashKey, hashIv);

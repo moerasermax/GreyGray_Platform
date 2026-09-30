@@ -98,6 +98,12 @@ public sealed record PaymentInitiationRequest(
     Uri ReturnUrl,
     Uri ClientBackUrl);
 
+/// <summary>已通過綠界驗簽與必要欄位檢查的付款結果通知身分。</summary>
+public sealed record EcpayCallbackEnvelope(
+    string MerchantTradeNo,
+    string TradeNo,
+    int RtnCode);
+
 // ── 同步契約 ─────────────────────────────────────────────────────────────
 
 public interface IPaymentQuery
@@ -123,6 +129,13 @@ public interface IPaymentCommand
     Task<Result> HandleEcpayCallbackAsync(
         IReadOnlyDictionary<string, string> fields,
         CancellationToken cancellationToken);
+}
+
+/// <summary>綠界付款結果通知的只讀驗證入口；不讀寫資料庫，也不發送事件。</summary>
+public interface IEcpayCallbackVerifier
+{
+    /// <summary>驗證 CheckMacValue、MerchantID 與必要欄位。</summary>
+    Result<EcpayCallbackEnvelope> Verify(IReadOnlyDictionary<string, string> fields);
 }
 
 // ── 對外事件 ─────────────────────────────────────────────────────────────

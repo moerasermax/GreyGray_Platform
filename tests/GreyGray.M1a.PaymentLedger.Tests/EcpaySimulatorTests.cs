@@ -37,6 +37,102 @@ public sealed class EcpaySimulatorTests
     private static readonly Uri SimulatorCreditDetailUrl =
         new("http://127.0.0.1:5009/CreditDetail/DoAction");
 
+    [Fact(DisplayName = "V1：只讀驗簽入口回傳已驗過的三個事件身分欄位")]
+    public void Callback_verifier_returns_the_verified_event_identity()
+    {
+        var (service, _, _, _) = CreateService();
+
+        var result = service.Verify(StandaloneNotification());
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.MerchantTradeNo.ShouldBe("GG0000000000000000A1");
+        result.Value.TradeNo.ShouldBe("DEVFAKE2609021200003");
+        result.Value.RtnCode.ShouldBe(1);
+    }
+
+    [Theory(DisplayName = "V2：只讀驗簽與服務層對相同壞輸入回相同錯誤碼")]
+    [InlineData("tampered", "payment.invalid-signature")]
+    [InlineData("bad-signature", "payment.invalid-signature")]
+    [InlineData("wrong-merchant", "payment.invalid-callback")]
+    [InlineData("missing:MerchantTradeNo", "payment.invalid-callback")]
+    [InlineData("missing:TradeNo", "payment.invalid-callback")]
+    [InlineData("missing:RtnCode", "payment.invalid-callback")]
+    [InlineData("missing:TradeAmt", "payment.invalid-callback")]
+    [InlineData("bad-rtn-code", "payment.invalid-callback")]
+    [InlineData("bad-trade-amount", "payment.invalid-callback")]
+    public async Task Callback_verifier_and_handler_return_the_same_error(
+        string mutation,
+        string expectedCode)
+    {
+        var (service, _, _, _) = CreateService();
+        var notification = StandaloneNotification();
+        MutateNotification(notification, mutation);
+
+        var verification = service.Verify(notification);
+        var handled = await service.HandleEcpayCallbackAsync(
+            notification,
+            TestContext.Current.CancellationToken);
+
+        verification.IsFailure.ShouldBeTrue();
+        handled.IsFailure.ShouldBeTrue();
+        verification.Error.Code.ShouldBe(expectedCode);
+        handled.Error.Code.ShouldBe(verification.Error.Code);
+    }
+
+    [Fact(DisplayName = "V3：只讀驗簽不讀寫 repository、unit of work 或 publisher")]
+    public void Callback_verifier_has_no_database_or_event_side_effects()
+    {
+        var service = new PaymentApplicationService(
+            new ThrowingRepository(),
+            new ThrowingUnitOfWork(),
+            new ThrowingPublisher(),
+            new EcpayGateway(Settings(), FakeHashKey, FakeHashIv, new HttpClient()),
+            Settings(),
+            new StubClock(Now),
+            new StubCorrelationContext());
+
+        var result = service.Verify(StandaloneNotification());
+
+        result.IsSuccess.ShouldBeTrue();
+    }
+
+    [Fact(DisplayName = "V4：已 Captured 的同 TradeNo 通知重送不會再發 PaymentCaptured")]
+    public async Task Captured_payment_replay_is_successful_without_a_second_event()
+    {
+        var (service, _, publisher, _) = CreateService();
+        var checkout = await InitiateAsync(service);
+        var notification = BuildNotification(checkout, SimulatedOutcome.Success);
+
+        var first = await service.HandleEcpayCallbackAsync(
+            notification,
+            TestContext.Current.CancellationToken);
+        var replay = await service.HandleEcpayCallbackAsync(
+            notification,
+            TestContext.Current.CancellationToken);
+
+        first.IsSuccess.ShouldBeTrue();
+        replay.IsSuccess.ShouldBeTrue();
+        publisher.Events.ShouldHaveSingleItem().ShouldBeOfType<PaymentCaptured>();
+    }
+
+    [Fact(DisplayName = "C1：過渡期結帳只送 Credit，且不送排除或分期欄位")]
+    public void Checkout_fields_only_offer_credit_during_the_transition()
+    {
+        var gateway = new EcpayGateway(Settings(), FakeHashKey, FakeHashIv, new HttpClient());
+
+        var fields = gateway.CreateCheckoutFields(
+            "GG0000000000000000A1",
+            Money.OfMajor(160, Currency.TWD),
+            "GreyGray GG-20260902-0001",
+            new Uri("http://127.0.0.1:5000/v1/webhooks/ecpay"),
+            new Uri("http://127.0.0.1:5002/payment/result?orderId=deadbeef"),
+            Now);
+
+        fields["ChoosePayment"].ShouldBe("Credit");
+        fields.ShouldNotContainKey("IgnorePayment");
+        fields.ShouldNotContainKey("CreditInstallment");
+    }
+
     [Fact(DisplayName = "模擬器的付款結果通知通過真的驗簽，並讓真的回呼處理把付款轉成 Captured")]
     public async Task Simulator_notification_captures_the_payment_through_production_code()
     {
@@ -356,6 +452,57 @@ public sealed class EcpaySimulatorTests
         return notification.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
     }
 
+    private static Dictionary<string, string> StandaloneNotification()
+    {
+        var notification = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["MerchantID"] = FakeMerchantId,
+            ["MerchantTradeNo"] = "GG0000000000000000A1",
+            ["TradeNo"] = "DEVFAKE2609021200003",
+            ["RtnCode"] = "1",
+            ["TradeAmt"] = "160",
+        };
+        Resign(notification);
+        return notification;
+    }
+
+    private static void MutateNotification(Dictionary<string, string> notification, string mutation)
+    {
+        switch (mutation)
+        {
+            case "tampered":
+                notification["TradeAmt"] = "1";
+                return;
+            case "bad-signature":
+                notification["CheckMacValue"] = new string('0', 64);
+                return;
+            case "wrong-merchant":
+                notification["MerchantID"] = "WRONG";
+                break;
+            case "bad-rtn-code":
+                notification["RtnCode"] = "one";
+                break;
+            case "bad-trade-amount":
+                notification["TradeAmt"] = "one-sixty";
+                break;
+            default:
+                mutation.ShouldStartWith("missing:");
+                notification.Remove(mutation["missing:".Length..]);
+                break;
+        }
+
+        Resign(notification);
+    }
+
+    private static void Resign(Dictionary<string, string> notification)
+    {
+        notification.Remove("CheckMacValue");
+        notification["CheckMacValue"] = EcpaySimulatorCore.Sign(
+            notification,
+            FakeHashKey,
+            FakeHashIv);
+    }
+
     /// <summary>
     /// 走真正的組合根（<c>AddPaymentModule</c>）解析 <see cref="IEcpayGateway"/>，
     /// 才驗得到守衛真的長在正式碼的設定讀取路徑上，而不是測試自己另外寫的一份判斷。
@@ -456,6 +603,52 @@ public sealed class EcpaySimulatorTests
     private sealed class NoopUnitOfWork : IUnitOfWork
     {
         public Task<int> SaveChangesAsync(CancellationToken cancellationToken) => Task.FromResult(0);
+    }
+
+    private sealed class ThrowingRepository : IPaymentRepository
+    {
+        private static InvalidOperationException Unexpected() =>
+            new("只讀驗簽不應存取 repository。");
+
+        public void Add(PaymentEntity payment) => throw Unexpected();
+
+        public Task<PaymentEntity?> FindByOrderAsync(
+            TenantId tenantId,
+            OrderId orderId,
+            CancellationToken cancellationToken) => throw Unexpected();
+
+        public Task<PaymentEntity?> FindByMerchantTradeNoAsync(
+            TenantId tenantId,
+            string merchantTradeNo,
+            CancellationToken cancellationToken) => throw Unexpected();
+
+        public Task<PaymentEntity?> FindByIdAsync(
+            TenantId tenantId,
+            PaymentId id,
+            CancellationToken cancellationToken) => throw Unexpected();
+
+        public Task<IReadOnlyList<PaymentEntity>> FindByOrderAllAsync(
+            TenantId tenantId,
+            OrderId orderId,
+            CancellationToken cancellationToken) => throw Unexpected();
+
+        public Task<PaymentEntity?> FindCapturedOrRefundedByOrderAsync(
+            TenantId tenantId,
+            OrderId orderId,
+            CancellationToken cancellationToken) => throw Unexpected();
+    }
+
+    private sealed class ThrowingUnitOfWork : IUnitOfWork
+    {
+        public Task<int> SaveChangesAsync(CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("只讀驗簽不應寫入資料庫。");
+    }
+
+    private sealed class ThrowingPublisher : IEventPublisher
+    {
+        public Task PublishAsync<TEvent>(TEvent @event, CancellationToken cancellationToken)
+            where TEvent : IIntegrationEvent =>
+            throw new InvalidOperationException("只讀驗簽不應發送事件。");
     }
 
     private sealed class RecordingPublisher : IEventPublisher

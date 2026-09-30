@@ -16,6 +16,7 @@ using GreyGray.Platform.Abstractions.Idempotency;
 using GreyGray.Platform.Abstractions.Sessions;
 using GreyGray.Platform.Http;
 using GreyGray.Shared.Kernel;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Distributed;
 
 // BE-34：讓 CompleteCheckoutAsync 能被 CheckoutOrdering.Tests 直接呼叫。
@@ -33,6 +34,7 @@ internal static class M1aEndpoints
 {
     private const string SessionCookie = "gg_session";
     private const string CartCookie = "gg_cart";
+    private const string EcpayPaymentResultScope = "webhook:ecpay:payment-result";
 
     public static IEndpointRouteBuilder MapM1aStorefrontEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -1070,73 +1072,87 @@ internal static class M1aEndpoints
                 cancellationToken);
         });
 
-        // BE-35／必做 4：這是第 34 個冪等呼叫點，它「沒有」走 BffHttp.ExecuteIdempotentAsync，
-        // 而是手寫了一模一樣的「IsFailure → AbandonAsync」／「catch → AbandonAsync + throw」形狀
-        // （key = MerchantTradeNo、scope = webhook:ecpay），所以 grep ExecuteIdempotentAsync 抓不到它。
-        // 形狀雖然相同，但這裡「維持現狀是對的」，不需要改用新的兩階段多載：
-        //   ① HandleEcpayCallbackAsync 自己就是冪等的——payment.Status 已經是 Captured／
-        //      PartiallyRefunded／Refunded 且 ProviderTransactionId 相同時直接回 Result.Success()，
-        //      abandon 之後綠界重送同一筆回呼會被正確地再處理一次，不會產生第二份副作用；
-        //   ② 成功時的回應是固定字串 "1|OK"，沒有「讀別的模組來組回應」那一段，
-        //      也就沒有「副作用已 commit 之後才失敗」的區間（BE-34 分類：安全）。
-        // 也就是說，這裡缺的是說明而不是修法。真要動它請看
-        // BffHttp.ExecuteIdempotentAsync<TState, TResponse> 的 XML doc，四條語意寫在那裡。
+        // BE-61／#64／ADR-044：驗簽前佔用冪等鍵會讓偽造請求永久封鎖真正通知。
+        // Host 必須先走 Payment.Contracts 的只讀驗證入口，再建立付款結果的冪等列；
+        // Payment 服務層仍保留相同驗簽作第二道防線，避免其他呼叫點繞過入口驗證。
         api.MapPost("/webhooks/ecpay", async (
             HttpContext context,
-            IPaymentCommand payments,
-            IIdempotencyStore idempotency,
+            [FromServices] IEcpayCallbackVerifier verifier,
+            [FromServices] IPaymentCommand payments,
+            [FromServices] IIdempotencyStore idempotency,
             CancellationToken cancellationToken) =>
         {
             var form = await context.Request.ReadFormAsync(cancellationToken);
             var fields = form.ToDictionary(pair => pair.Key, pair => pair.Value.ToString(), StringComparer.Ordinal);
-            if (!fields.TryGetValue("MerchantTradeNo", out var merchantTradeNo) ||
-                string.IsNullOrWhiteSpace(merchantTradeNo))
-            {
-                return BffHttp.Problem(new Error("payment.invalid-callback", "綠界回呼缺少交易編號。"));
-            }
-
-            var canonical = string.Join(
-                "&",
-                fields.OrderBy(pair => pair.Key, StringComparer.Ordinal)
-                    .Select(pair => $"{pair.Key}={pair.Value}"));
-            var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
-            var scope = "webhook:ecpay";
-            var key = merchantTradeNo.Trim();
-            var (outcome, _) = await idempotency.TryBeginAsync(key, scope, hash, cancellationToken);
-            if (outcome == IdempotencyOutcome.AlreadyCompleted)
-            {
-                return Results.Text("1|OK", "text/plain", Encoding.UTF8);
-            }
-
-            if (outcome == IdempotencyOutcome.InFlight)
-            {
-                return Results.StatusCode(StatusCodes.Status409Conflict);
-            }
-
-            if (outcome == IdempotencyOutcome.KeyReusedWithDifferentPayload)
-            {
-                return BffHttp.Problem(
-                    new Error("payment.callback-payload-mismatch", "同一交易編號的回呼內容不一致。"));
-            }
-
-            try
-            {
-                var result = await payments.HandleEcpayCallbackAsync(fields, cancellationToken);
-                if (result.IsFailure)
-                {
-                    await idempotency.AbandonAsync(key, scope, cancellationToken);
-                    return BffHttp.Problem(result.Error);
-                }
-
-                await idempotency.CompleteAsync(key, scope, "1|OK", cancellationToken);
-                return Results.Text("1|OK", "text/plain", Encoding.UTF8);
-            }
-            catch
-            {
-                await idempotency.AbandonAsync(key, scope, CancellationToken.None);
-                throw;
-            }
+            return await HandleEcpayWebhookAsync(
+                fields,
+                verifier,
+                payments,
+                idempotency,
+                cancellationToken);
         });
+    }
+
+    internal static async Task<IResult> HandleEcpayWebhookAsync(
+        IReadOnlyDictionary<string, string> fields,
+        IEcpayCallbackVerifier verifier,
+        IPaymentCommand payments,
+        IIdempotencyStore idempotency,
+        CancellationToken cancellationToken)
+    {
+        var verification = verifier.Verify(fields);
+        if (verification.IsFailure)
+        {
+            return BffHttp.Problem(verification.Error);
+        }
+
+        var envelope = verification.Value;
+        var key = $"{envelope.MerchantTradeNo}:{envelope.TradeNo}:{envelope.RtnCode}";
+        var canonical =
+            $"MerchantTradeNo={envelope.MerchantTradeNo}&TradeNo={envelope.TradeNo}&RtnCode={envelope.RtnCode}";
+        var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
+        var (outcome, _) = await idempotency.TryBeginAsync(
+            key,
+            EcpayPaymentResultScope,
+            hash,
+            cancellationToken);
+        if (outcome == IdempotencyOutcome.AlreadyCompleted)
+        {
+            return Results.Text("1|OK", "text/plain", Encoding.UTF8);
+        }
+
+        if (outcome == IdempotencyOutcome.InFlight)
+        {
+            return Results.StatusCode(StatusCodes.Status409Conflict);
+        }
+
+        if (outcome == IdempotencyOutcome.KeyReusedWithDifferentPayload)
+        {
+            return BffHttp.Problem(
+                new Error("payment.callback-payload-mismatch", "同一交易編號的回呼內容不一致。"));
+        }
+
+        try
+        {
+            var result = await payments.HandleEcpayCallbackAsync(fields, cancellationToken);
+            if (result.IsFailure)
+            {
+                await idempotency.AbandonAsync(key, EcpayPaymentResultScope, cancellationToken);
+                return BffHttp.Problem(result.Error);
+            }
+
+            await idempotency.CompleteAsync(
+                key,
+                EcpayPaymentResultScope,
+                "1|OK",
+                cancellationToken);
+            return Results.Text("1|OK", "text/plain", Encoding.UTF8);
+        }
+        catch
+        {
+            await idempotency.AbandonAsync(key, EcpayPaymentResultScope, CancellationToken.None);
+            throw;
+        }
     }
 
     /// <summary>
