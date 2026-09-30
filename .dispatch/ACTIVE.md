@@ -51,6 +51,34 @@ Leader 要明講。
 
 ---
 
+## 生效中：BE-58　商品分類固定兩層（第四十二波第 1 輪，2026-09-30）
+
+ADR-041。契約 Leader 已寫好、兩棵樹同步、與閘門檔同一個 commit，**本包不准改 `docs/`**。
+同一輪前端樹平行 FE-51（`docs/60`，在另一棵樹），檔案不重疊。
+migration 用 `0023`（`docs/53` 第 89 行曾為 BE-50 預留；BE-50 之後開包時取當時的下一號，不再預留）。
+派工前已做兩層覆驗（Codex 證據包＋5 個唯讀查證代理），結論已併入 `docs/59`。
+
+★★ 最容易做錯的五件事：
+① `0023` 要能重放（部署每次重跑全部 migration），照 `0019` 的 `SET ROLE greygray_owner` 與 owner 斷言；
+② 兩層規則在應用層回 `Result`（`catalog.invalid-parent-category`／`catalog.category-depth-exceeded`，一字不差；碼裡不能有 `not-found`），trigger 只是守底，而且要先拿每個租戶的 advisory lock；
+③ `IdentityCatalogTests` 的手寫 `SchemaSql` 要加 `parent_id`，**連 `UNIQUE (tenant_id, id)` 一起補**，否則複合外鍵建不起來、整個專案紅；
+④ 契約 record 的新參數一律加在最後、給預設值，但「編得過」不等於對——`ValidateCategory` 重建 `CategoryInput` 那行（`CatalogServices.cs` 第 566 行）一定要帶 `ParentId`；別的測試專案只跑、不准動；
+⑤ PATCH 維持整筆取代，`parentId` 沒帶就是根分類；
+⑥ 競態被資料庫擋下（`23514`）也要轉成同樣的 422 錯誤碼，轉換只寫在 Infra，Core 不碰 Npgsql。
+
+package: BE-58
+doc: docs/59-第四十二波BE-58分類父子兩層派工書.md
+allow: db/migrations/0023
+allow: src/Modules/Catalog/
+allow: src/Hosts/GreyGray.Api.Storefront/M1aEndpoints.cs
+allow: ops/install-dev-environment.ps1
+allow: ops/verify-environment.ps1
+allow: tests/GreyGray.M1a.IdentityCatalog.Tests/
+allow: tests/GreyGray.M1a.Migrations.Tests/
+allow: .dispatch/reports/BE-58.md
+
+---
+
 <!--
 ★ 2026-09-24 撤包：BE-57 已由 Leader 重跑 28/28 並以 Playwright 驗收，整合提交 ec9dbea。原文保留供追溯。
 
