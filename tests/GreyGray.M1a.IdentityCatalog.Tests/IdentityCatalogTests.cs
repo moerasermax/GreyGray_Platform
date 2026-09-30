@@ -13,7 +13,7 @@ using Xunit;
 
 namespace GreyGray.M1a.IdentityCatalog.Tests;
 
-public sealed class IdentityCatalogTests : IAsyncLifetime
+public sealed partial class IdentityCatalogTests : IAsyncLifetime
 {
     private const string SchemaSql = """
         DROP SCHEMA IF EXISTS iam CASCADE;
@@ -97,7 +97,14 @@ public sealed class IdentityCatalogTests : IAsyncLifetime
             tenant_id uuid NOT NULL,
             name varchar(50) NOT NULL,
             image_url varchar(2048),
-            sort_order int NOT NULL
+            sort_order int NOT NULL,
+            parent_id uuid,
+            CONSTRAINT category_tenant_id_unique UNIQUE (tenant_id, id),
+            CONSTRAINT category_parent_same_tenant_fk
+                FOREIGN KEY (tenant_id, parent_id)
+                REFERENCES catalog.category (tenant_id, id)
+                ON DELETE RESTRICT,
+            CONSTRAINT category_parent_not_self CHECK (parent_id IS NULL OR parent_id <> id)
         );
         CREATE TABLE catalog.product (
             id uuid PRIMARY KEY,

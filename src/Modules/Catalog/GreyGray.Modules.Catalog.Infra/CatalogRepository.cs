@@ -3,6 +3,7 @@ using GreyGray.Modules.Catalog.Core;
 using GreyGray.Modules.Identity.Contracts;
 using GreyGray.Shared.Kernel;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace GreyGray.Modules.Catalog.Infra;
 
@@ -14,6 +15,14 @@ internal sealed class CatalogRepository(CatalogDbContext dbContext) : ICatalogRe
         CancellationToken cancellationToken) =>
         dbContext.Categories.SingleOrDefaultAsync(
             value => value.Id == id && value.TenantId == tenantId,
+            cancellationToken);
+
+    public Task<bool> HasChildCategoriesAsync(
+        CategoryId id,
+        TenantId tenantId,
+        CancellationToken cancellationToken) =>
+        dbContext.Categories.AnyAsync(
+            value => value.TenantId == tenantId && value.ParentId == id,
             cancellationToken);
 
     public async Task<IReadOnlyList<Category>> ListCategoriesAsync(
@@ -32,7 +41,11 @@ internal sealed class CatalogRepository(CatalogDbContext dbContext) : ICatalogRe
             .Where(category => category.TenantId == tenantId &&
                 dbContext.Products.Any(product =>
                     product.TenantId == tenantId &&
-                    product.CategoryId == category.Id &&
+                    (product.CategoryId == category.Id ||
+                     dbContext.Categories.Any(child =>
+                         child.TenantId == tenantId &&
+                         child.ParentId == category.Id &&
+                         product.CategoryId == child.Id)) &&
                     product.IsActive &&
                     dbContext.Skus.Any(sku =>
                         sku.ProductId == product.Id &&
@@ -191,6 +204,31 @@ internal sealed class CatalogRepository(CatalogDbContext dbContext) : ICatalogRe
         }
     }
 
-    public async Task SaveChangesAsync(CancellationToken cancellationToken) =>
-        await dbContext.SaveChangesAsync(cancellationToken);
+    public async Task SaveChangesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException exception)
+            when (exception.InnerException is PostgresException postgres &&
+                  MapCategoryHierarchyError(postgres) is not null)
+        {
+            throw new CatalogPersistenceConflictException(
+                MapCategoryHierarchyError(postgres)!,
+                exception);
+        }
+    }
+
+    internal static string? MapCategoryHierarchyError(PostgresException exception) =>
+        (exception.SqlState, exception.ConstraintName) switch
+        {
+            (PostgresErrorCodes.CheckViolation, "category_two_level") =>
+                "catalog.category-depth-exceeded",
+            (PostgresErrorCodes.CheckViolation, "category_parent_not_self") =>
+                "catalog.invalid-parent-category",
+            (PostgresErrorCodes.ForeignKeyViolation, "category_parent_same_tenant_fk") =>
+                "catalog.invalid-parent-category",
+            _ => null,
+        };
 }

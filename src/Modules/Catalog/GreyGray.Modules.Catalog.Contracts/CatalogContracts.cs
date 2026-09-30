@@ -67,13 +67,18 @@ public sealed record SkuSnapshot(
     public Money? ListPrice { get; init; }
 }
 
-public sealed record CategoryInput(string Name, string? ImageUrl, int SortOrder);
+public sealed record CategoryInput(
+    string Name,
+    string? ImageUrl,
+    int SortOrder,
+    CategoryId? ParentId = null);
 
 public sealed record CategoryView(
     CategoryId Id,
     string Name,
     string? ImageUrl,
-    int SortOrder);
+    int SortOrder,
+    CategoryId? ParentId = null);
 
 /// <summary>符合 frozen AdminSkuInput；M1a 起重量與三邊尺寸皆為必要值。</summary>
 public sealed record AdminSkuInput(
@@ -149,7 +154,8 @@ public sealed record ProductSearch(
     FulfillmentMode? Mode,
     bool IncludeArchived,
     string? Cursor,
-    int Limit);
+    int Limit,
+    bool IncludeDescendants = false);
 
 // ── 同步契約 ─────────────────────────────────────────────────────────────
 

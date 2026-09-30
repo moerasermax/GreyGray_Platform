@@ -369,14 +369,13 @@ internal static class M1aEndpoints
         api.MapGet("/categories", async (
             IStorefrontCatalogQuery catalog,
             CancellationToken cancellationToken) =>
-            Results.Ok((await catalog.ListCategoriesAsync(cancellationToken))
-                .Select(category => new CategoryResponse(category.Id, category.Name, category.ImageUrl))
-                .ToArray()));
+            Results.Ok(await ProjectCategoriesAsync(catalog, cancellationToken)));
 
         api.MapGet("/products", async (
             string? q,
             string? categoryId,
             FulfillmentMode? mode,
+            bool? includeDescendants,
             string? cursor,
             int? limit,
             HttpContext context,
@@ -398,7 +397,7 @@ internal static class M1aEndpoints
             }
 
             var result = await ListProductsAsync(
-                new ProductSearch(q, category, mode, false, cursor, limit ?? 20),
+                BuildProductSearch(q, category, mode, includeDescendants, cursor, limit),
                 await GetCustomerAsync(context, sessions, cancellationToken),
                 catalog,
                 favorites,
@@ -437,6 +436,33 @@ internal static class M1aEndpoints
                 : BffHttp.Problem(result.Error);
         });
     }
+
+    internal static async Task<CategoryResponse[]> ProjectCategoriesAsync(
+        IStorefrontCatalogQuery catalog,
+        CancellationToken cancellationToken) =>
+        (await catalog.ListCategoriesAsync(cancellationToken))
+        .Select(category => new CategoryResponse(
+            category.Id,
+            category.Name,
+            category.ImageUrl,
+            category.ParentId))
+        .ToArray();
+
+    internal static ProductSearch BuildProductSearch(
+        string? query,
+        CategoryId? categoryId,
+        FulfillmentMode? mode,
+        bool? includeDescendants,
+        string? cursor,
+        int? limit) =>
+        new(
+            query,
+            categoryId,
+            mode,
+            false,
+            cursor,
+            limit ?? 20,
+            includeDescendants ?? false);
 
     /// <summary>
     /// 組 <c>GET /v1/products</c> 的回應。
@@ -1633,7 +1659,11 @@ internal static class M1aEndpoints
 
     private sealed record StoredValueResponse(Money Balance);
 
-    private sealed record CategoryResponse(CategoryId Id, string Name, string? ImageUrl);
+    internal sealed record CategoryResponse(
+        CategoryId Id,
+        string Name,
+        string? ImageUrl,
+        CategoryId? ParentId);
 
     internal sealed record ProductPageResponse(
         IReadOnlyList<ProductListItemResponse> Items,

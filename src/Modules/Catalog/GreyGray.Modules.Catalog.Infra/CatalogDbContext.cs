@@ -42,6 +42,10 @@ internal sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> option
         entity.Property(value => value.Name).HasColumnName("name").HasMaxLength(50).IsRequired();
         entity.Property(value => value.ImageUrl).HasColumnName("image_url").HasMaxLength(2048);
         entity.Property(value => value.SortOrder).HasColumnName("sort_order").IsRequired();
+        entity.Property(value => value.ParentId).HasColumnName("parent_id")
+            .HasConversion(
+                id => id.HasValue ? id.Value.Value : (Guid?)null,
+                value => value.HasValue ? new CategoryId(value.Value) : null);
         entity.HasIndex(value => new { value.TenantId, value.SortOrder, value.Name })
             .HasDatabaseName("ix_category_tenant_sort");
     }

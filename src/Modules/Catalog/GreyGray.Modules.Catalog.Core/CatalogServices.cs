@@ -211,14 +211,32 @@ internal sealed class CatalogService(
             return Result<CategoryView>.Failure(validated.Error);
         }
 
+        var parentValidation = await ValidateCategoryParentAsync(
+            null,
+            validated.Value.ParentId,
+            cancellationToken);
+        if (parentValidation.IsFailure)
+        {
+            return Result<CategoryView>.Failure(parentValidation.Error);
+        }
+
         var category = Category.Create(
             CategoryId.New(),
             correlationContext.TenantId,
             validated.Value.Name,
             validated.Value.ImageUrl,
-            validated.Value.SortOrder);
+            validated.Value.SortOrder,
+            validated.Value.ParentId);
         repository.AddCategory(category);
-        await repository.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await repository.SaveChangesAsync(cancellationToken);
+        }
+        catch (CatalogPersistenceConflictException exception)
+        {
+            return CategoryPersistenceFailure(exception.ErrorCode);
+        }
+
         return category.ToView();
     }
 
@@ -242,8 +260,29 @@ internal sealed class CatalogService(
             return Result<CategoryView>.Failure(validated.Error);
         }
 
-        category.Update(validated.Value.Name, validated.Value.ImageUrl, validated.Value.SortOrder);
-        await repository.SaveChangesAsync(cancellationToken);
+        var parentValidation = await ValidateCategoryParentAsync(
+            categoryId,
+            validated.Value.ParentId,
+            cancellationToken);
+        if (parentValidation.IsFailure)
+        {
+            return Result<CategoryView>.Failure(parentValidation.Error);
+        }
+
+        category.Update(
+            validated.Value.Name,
+            validated.Value.ImageUrl,
+            validated.Value.SortOrder,
+            validated.Value.ParentId);
+        try
+        {
+            await repository.SaveChangesAsync(cancellationToken);
+        }
+        catch (CatalogPersistenceConflictException exception)
+        {
+            return CategoryPersistenceFailure(exception.ErrorCode);
+        }
+
         return category.ToView();
     }
 
@@ -440,7 +479,21 @@ internal sealed class CatalogService(
 
         if (search.CategoryId is { } categoryId)
         {
-            query = query.Where(value => value.CategoryId == categoryId);
+            if (search.IncludeDescendants)
+            {
+                var categoryIds = (await repository.ListCategoriesAsync(
+                        correlationContext.TenantId,
+                        cancellationToken))
+                    .Where(value => value.Id == categoryId || value.ParentId == categoryId)
+                    .Select(value => value.Id)
+                    .Append(categoryId)
+                    .ToHashSet();
+                query = query.Where(value => value.CategoryId is { } id && categoryIds.Contains(id));
+            }
+            else
+            {
+                query = query.Where(value => value.CategoryId == categoryId);
+            }
         }
 
         if (search.Mode is { } mode)
@@ -563,8 +616,57 @@ internal sealed class CatalogService(
             return Result<CategoryInput>.Failure("catalog.invalid-category", "分類名稱或圖片網址格式不正確。");
         }
 
-        return new CategoryInput(name, imageUrl, input.SortOrder);
+        return new CategoryInput(name, imageUrl, input.SortOrder, input.ParentId);
     }
+
+    private async Task<Result> ValidateCategoryParentAsync(
+        CategoryId? categoryId,
+        CategoryId? parentId,
+        CancellationToken cancellationToken)
+    {
+        if (parentId is null)
+        {
+            return Result.Success();
+        }
+
+        if (categoryId == parentId)
+        {
+            return Result.Failure(
+                "catalog.invalid-parent-category",
+                "上層分類不存在、不屬於同一租戶，或指向分類自己。");
+        }
+
+        var parent = await repository.FindCategoryAsync(
+            parentId.Value,
+            correlationContext.TenantId,
+            cancellationToken);
+        if (parent is null)
+        {
+            return Result.Failure(
+                "catalog.invalid-parent-category",
+                "上層分類不存在、不屬於同一租戶，或指向分類自己。");
+        }
+
+        if (parent.ParentId is not null ||
+            categoryId is { } id && await repository.HasChildCategoriesAsync(
+                id,
+                correlationContext.TenantId,
+                cancellationToken))
+        {
+            return Result.Failure(
+                "catalog.category-depth-exceeded",
+                "商品分類只允許根分類與直接子分類兩層。");
+        }
+
+        return Result.Success();
+    }
+
+    private static Result<CategoryView> CategoryPersistenceFailure(string errorCode) =>
+        Result<CategoryView>.Failure(
+            errorCode,
+            errorCode == "catalog.invalid-parent-category"
+                ? "上層分類不存在、不屬於同一租戶，或指向分類自己。"
+                : "商品分類只允許根分類與直接子分類兩層。");
 
     private static Result<SkuData> ValidateSku(AdminSkuInput input)
     {

@@ -10,11 +10,17 @@ internal sealed class Category
     {
     }
 
-    private Category(CategoryId id, TenantId tenantId, string name, string? imageUrl, int sortOrder)
+    private Category(
+        CategoryId id,
+        TenantId tenantId,
+        string name,
+        string? imageUrl,
+        int sortOrder,
+        CategoryId? parentId)
     {
         Id = id;
         TenantId = tenantId;
-        Update(name, imageUrl, sortOrder);
+        Update(name, imageUrl, sortOrder, parentId);
     }
 
     public CategoryId Id { get; private set; }
@@ -22,22 +28,32 @@ internal sealed class Category
     public string Name { get; private set; } = string.Empty;
     public string? ImageUrl { get; private set; }
     public int SortOrder { get; private set; }
+    public CategoryId? ParentId { get; private set; }
 
     public static Category Create(
         CategoryId id,
         TenantId tenantId,
         string name,
         string? imageUrl,
-        int sortOrder) => new(id, tenantId, name, imageUrl, sortOrder);
+        int sortOrder,
+        CategoryId? parentId) => new(id, tenantId, name, imageUrl, sortOrder, parentId);
 
-    public void Update(string name, string? imageUrl, int sortOrder)
+    public void Update(string name, string? imageUrl, int sortOrder, CategoryId? parentId)
     {
         Name = name;
         ImageUrl = imageUrl;
         SortOrder = sortOrder;
+        ParentId = parentId;
     }
 
-    public CategoryView ToView() => new(Id, Name, ImageUrl, SortOrder);
+    public CategoryView ToView() => new(Id, Name, ImageUrl, SortOrder, ParentId);
+}
+
+internal sealed class CatalogPersistenceConflictException(
+    string errorCode,
+    Exception innerException) : Exception("Catalog 分類階層寫入衝突。", innerException)
+{
+    public string ErrorCode { get; } = errorCode;
 }
 
 internal sealed class Product
@@ -247,6 +263,7 @@ internal sealed record FavoriteProduct(Product Product, DateTimeOffset CreatedAt
 internal interface ICatalogRepository
 {
     Task<Category?> FindCategoryAsync(CategoryId id, TenantId tenantId, CancellationToken cancellationToken);
+    Task<bool> HasChildCategoriesAsync(CategoryId id, TenantId tenantId, CancellationToken cancellationToken);
     Task<IReadOnlyList<Category>> ListCategoriesAsync(TenantId tenantId, CancellationToken cancellationToken);
     Task<IReadOnlyList<Category>> ListPublishedCategoriesAsync(TenantId tenantId, CancellationToken cancellationToken);
     Task<Product?> FindProductAsync(ProductId id, TenantId tenantId, CancellationToken cancellationToken);
