@@ -51,7 +51,10 @@ Leader 要明講。
 
 ---
 
-## 生效中：FE-51　密碼顯示／隱藏切換（第四十二波第 1 輪，2026-09-30）
+<!--
+★ 2026-09-30 撤包：FE-51 已由 Leader 驗收——自己重跑 ui／storefront／admin typecheck（exit 0）與測試（storefront 595、admin 200 全過），Playwright 本機 Chrome 量前台登入／註冊 390／360 與後台登入 1280：同一個 input 節點、切換後選取 2–4 與焦點保留、顯示中送出當下已遮回、前台按鈕 44×44／右側留白 44px、後台 36×34 且與 Email 欄同寬同高、無橫向溢出；Edge 以對照欄證明內建眼睛被藏。原文保留供追溯。
+
+## 已撤包：FE-51　密碼顯示／隱藏切換（第四十二波第 1 輪，2026-09-30）
 
 無契約、純 UI；不符合 `docs/45` 小包的單檔條件，**不送外部覆驗是 Leader 的明文裁量**（已由唯讀查證代理逐行核對）。計畫書在後端樹 `docs/58-第四十二波計畫書.md`。
 同一輪後端樹平行 BE-58（分類父子，ADR-041）；Leader 已把契約修訂同步進本樹 `docs/api`（與閘門檔同一個 commit），**本包不跑 `pnpm api:generate`、不碰分類程式**。
@@ -63,23 +66,25 @@ Leader 要明講。
 ③ 沒有 jsdom／testing-library，**也不准安裝**——焦點、游標、送出前切回隱藏寫成可測的純函式，用假物件測，其餘用 `renderToStaticMarkup`；
 ④ 後台按鈕寬度下限 `var(--ga-touch-min)`、高度跟著輸入框，Edge 眼睛用 `[&::-ms-reveal]:hidden`，不准改兩個 app 的 globals.css；`admin/Field.tsx` 只准讓型別收 `ref`。
 
-package: FE-51
-doc: docs/60-第四十二波FE-51密碼顯示切換派工書.md
-allow: frontend/packages/ui/src/components/PasswordInput.tsx
-allow: frontend/packages/ui/src/components/icons/index.tsx
-allow: frontend/packages/ui/src/index.ts
-allow: frontend/packages/ui/src/admin/PasswordInput.tsx
-allow: frontend/packages/ui/src/admin/icons.tsx
-allow: frontend/packages/ui/src/admin/index.ts
-allow: frontend/packages/ui/src/admin/Field.tsx
-allow: frontend/apps/storefront/app/(account)/login/page.tsx
-allow: frontend/apps/storefront/app/(account)/register/page.tsx
-allow: frontend/apps/storefront/app/(account)/_components/__tests__/
-allow: frontend/apps/admin/app/login/page.tsx
-allow: frontend/apps/admin/app/login/__tests__/
-allow: .dispatch/reports/FE-51.md
+(撤包) package: FE-51
+(撤包) doc: docs/60-第四十二波FE-51密碼顯示切換派工書.md
+(撤包) allow: frontend/packages/ui/src/components/PasswordInput.tsx
+(撤包) allow: frontend/packages/ui/src/components/icons/index.tsx
+(撤包) allow: frontend/packages/ui/src/index.ts
+(撤包) allow: frontend/packages/ui/src/admin/PasswordInput.tsx
+(撤包) allow: frontend/packages/ui/src/admin/icons.tsx
+(撤包) allow: frontend/packages/ui/src/admin/index.ts
+(撤包) allow: frontend/packages/ui/src/admin/Field.tsx
+(撤包) allow: frontend/apps/storefront/app/(account)/login/page.tsx
+(撤包) allow: frontend/apps/storefront/app/(account)/register/page.tsx
+(撤包) allow: frontend/apps/storefront/app/(account)/_components/__tests__/
+(撤包) allow: frontend/apps/admin/app/login/page.tsx
+(撤包) allow: frontend/apps/admin/app/login/__tests__/
+(撤包) allow: .dispatch/reports/FE-51.md
 
 ---
+
+-->
 
 <!--
 ★ 2026-09-24 撤包：FE-37（第六輪：條款保留法定例外清單、隱私權政策頁）已由 Leader 以 Playwright 驗收並整合提交。原文保留供追溯。
