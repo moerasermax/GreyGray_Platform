@@ -1,5 +1,17 @@
 # 啟動 prompt
 
+## FE-58 後台取號資訊與人工退款（mock）（第四十五波第 2 輪，前端樹，2026-10-01）
+
+```text
+GG_PACKAGE=FE-58
+你是唯一實作者（Codex gpt-5.6-sol medium），不開子代理。專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe（前端樹）。
+開工前讀：AGENTS.md、.dispatch/ACTIVE.md 的 FE-58、docs/76-第四十五波FE-58後台取號資訊與人工退款派工書.md（整份）、docs/00-decisions.md 的 ADR-044（含 2026-10-01 補記）、.dispatch/reports/README.md。派工書以 ACTIVE 的 doc: 為準。
+只准寫 FE-58 的 allow（九條）；不准改 docs/、frontend/packages/ui/、frontend/apps/storefront/、frontend/apps/admin/app/login/、其他 handler 與 fixture。先跑 pnpm api:generate，產物不手改；storefront 畫面一律不動。
+最容易做錯的三件事：① 金額是 Money：輸入先驗 /^\d+$/ 整數元，再用 moneyFromMajorInput(input, 'TWD') 換成 amountMinor（NT$500＝50000），request body 型別從 paths 推導不手寫；三個人工退款金額只顯示後端值，畫面不做加減；② 時間一律 Asia/Taipei（含收款／撥款／下單於，用 hourCycle h23），台北今天自己寫 taipeiToday、不重用 campaigns/_lib/datetime.ts；remittedOn 是純日期直接顯示字串；③ mock 一律不可變更新（逐層重建，不就地 push）、檢查順序照派工書寫死、新種子接在 adminOrders 最後且 id／訂單號全新；useToast／getSession／usePayloadIdempotency 只留在 page.tsx，區塊元件只吃 props。
+vitest 是 node 環境、沒有 jsdom：元件用 renderToStaticMarkup，測試檔要設 globalThis.React。前景跑 pnpm typecheck、pnpm test（全部套件）、pnpm --filter @greygray/admin build（跑前確認 5003 沒有 dev server，有就停下來回報；admin build 以 0xC0000409／ENOENT／ENOTEMPTY 失敗就同參數重跑一次，第二次仍失敗才停），報告前→後條數，最多兩輪修正。不准起 dev server、不安裝套件。
+先列目標，備份要改的既有檔（TEMP 底下 GUID 目錄）。不 commit、不改閘門。報告 .dispatch/reports/FE-58.md，三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」，逐條自驗以派工書 §1 與 §3 T1～T10 為準，並附給 Leader 的 mock 走查步驟。預算：工具 140／讀 50／搜 20／改 20 檔／測修 2 輪，達限回報。stop gate 如提示既有 dirty（兩個 .bak 檔），只回報不還原，最後重述本包交付證據。
+```
+
 ## BE-67 dev 員工種子腳本可指定密碼輸出位置（第四十五波第 1 輪，後端樹，2026-10-01）
 
 ```text

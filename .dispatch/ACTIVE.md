@@ -51,6 +51,29 @@ Leader 要明講。
 
 ---
 
+## 生效中：FE-58　後台：付款方式與取號資訊、繳費期限與取消來源、人工退款登記（先用 mock）（第四十五波第 2 輪，2026-10-01）
+
+後台訂單詳情的付款紀錄顯示付款方式、已取號狀態與取號資訊；訂單顯示繳費期限與取消來源；非信用卡的「待人工退款」與「登記已匯款（可分次）」。後端還沒給值，先用 mock，驗收靠單元測試＋mock 走查。先 `pnpm api:generate`。
+
+★★ 最容易做錯的三件事：
+① 金額是 `Money`：輸入先驗整數元，再用 `moneyFromMajorInput(input, 'TWD')` 換成 `amountMinor`（NT$500＝50000）；三個人工退款金額只顯示後端值，畫面不做加減；
+② 時間一律 `Asia/Taipei`（含收款／撥款／下單於），「台北今天」自己寫、不重用 campaigns 那支瀏覽器時區的工具；`remittedOn` 是純日期，直接顯示字串；
+③ mock 一律不可變更新（逐層重建，不就地 push）、新種子接在 `adminOrders` 最後且 id／訂單號全新；hook 只留在 page.tsx，區塊元件只吃 props。
+
+package: FE-58
+doc: docs/76-第四十五波FE-58後台取號資訊與人工退款派工書.md
+allow: frontend/packages/api-client/src/types.admin.ts
+allow: frontend/packages/api-client/src/types.storefront.ts
+allow: frontend/packages/api-client/src/endpoints/admin.ts
+allow: frontend/packages/api-client/src/endpoints/README.md
+allow: frontend/packages/api-client/src/mock/fixtures.admin.ts
+allow: frontend/packages/api-client/src/mock/handlers.admin.ts
+allow: frontend/packages/api-client/src/mock/__tests__/
+allow: frontend/apps/admin/app/(dash)/orders/
+allow: .dispatch/reports/FE-58.md
+
+---
+
 <!--
 ★ 2026-10-01 撤包：FE-60 驗收——範圍 3 個既有檔＋測試＋報告全在 allow；Leader 重跑 typecheck exit 0、test api-client 52／storefront 655／admin 216；mock 走查（後端不起、NEXT_PUBLIC_USE_MOCK=1、頁面開在 127.0.0.1）：SSR 頁含 mock 商品名、server log 有 SSR server 已啟動且沒有 Attempted to call startMock()、瀏覽器 worker 已啟動、/v1 請求全由 Service Worker 回應、送往 127.0.0.1:500x 0 筆；mock ATM 訂單顯示取號卡；後台無 cookie 開 /orders 不被彈回、登入後停在儀表板。冷啟動第一次載入各有 1 筆 404，重量未重現。原文保留供追溯。
 
