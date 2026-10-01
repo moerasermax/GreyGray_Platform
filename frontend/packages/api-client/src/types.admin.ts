@@ -1271,6 +1271,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/orders/{orderId}/payments/{paymentId}/manual-refunds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 登記人工退款（非信用卡，可分次）
+         * @description **第四十五波先定契約、第四十六波 BE-65 實作（ADR-044）；實作前呼叫會得到 `404`。**
+         *     ATM／超商代碼／條碼付款不能透過綠界退刷，需要退款時那筆付款會出現 `manualRefund`（`status=Pending`）。
+         *     客服向客人取得帳戶（**系統不存客人銀行帳號**，不要把帳號填進 `note`）、自行匯款後，到這裡登記。
+         *
+         *     - **可分次登記**：每次一筆，累計不得超過 `manualRefund.outstandingAmount`；累計到 `requiredAmount` 時 `status` 變成 `Completed`。
+         *     - **登記後不可修改或刪除**（只追加）。
+         *     - 老闆、會計、營運都可以登記：`x-required-role` 列出的角色**任一**即可，Owner 一律可。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+                };
+                path: {
+                    orderId: components["schemas"]["Id"];
+                    paymentId: components["schemas"]["Id"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description 這次匯出的金額（TWD、整數元、大於 0），不得超過目前的 `outstandingAmount`。 */
+                        amount: components["schemas"]["Money"];
+                        /**
+                         * Format: date
+                         * @description 匯款日期（台北日期），不得晚於台北今天。
+                         */
+                        remittedOn: string;
+                        /** @description 備註（例如匯款帳號後五碼）。**不要填客人的完整銀行帳號。** */
+                        note?: string | null;
+                    };
+                };
+            };
+            responses: {
+                /** @description 已登記；回傳更新後的訂單（`payments[].manualRefund` 已含這一筆）。 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AdminOrder"];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                /** @description `payment.concurrent-update`（同時有另一筆登記或退款，請重新讀取後再試） */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /**
+                 * @description `payment.manual-refund-not-required`（這筆付款沒有待人工退款）·
+                 *     `payment.manual-refund-exceeds-outstanding`（超過尚待匯出的金額）·
+                 *     `payment.manual-refund-amount-invalid`（金額不是大於 0 的整數元，或幣別不符）·
+                 *     `payment.manual-refund-date-invalid`（匯款日期晚於台北今天）
+                 */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/campaigns/{campaignId}/purchase-items": {
         parameters: {
             query?: never;
@@ -2208,6 +2297,14 @@ export interface components {
             convenienceStoreName?: string | null;
             /** @description 超商取貨的門市地址（下單當時凍結）；舊訂單為 null。 */
             convenienceStoreAddress?: string | null;
+            /**
+             * Format: date-time
+             * @description 繳費期限（ADR-044）：建單＋24 小時；ATM／超商代碼／條碼取號後改成綠界期限。
+             *     非信用卡過了這個期限再等 2 天才自動取消。第四十五波之前**仍待付款**的舊訂單由部署回填；其他舊訂單為 `null`。
+             */
+            paymentDueAt?: string | null;
+            /** @description 取消來源（ADR-044）；未取消、或第四十五波之前取消的舊訂單為 `null`。 */
+            cancellationSource?: components["schemas"]["OrderCancellationSource"] | null;
             lines: components["schemas"]["AdminOrderLine"][];
             payments?: components["schemas"]["PaymentSummary"][];
             quoteExplain?: string[];
@@ -2249,6 +2346,11 @@ export interface components {
             method?: components["schemas"]["PaymentMethod"] | null;
             /** @description ATM／超商代碼／條碼的取號資訊（ADR-044）；信用卡與未取號為 `null`。後台在繳費後仍保留，供對帳。 */
             instructions?: components["schemas"]["PaymentInstructions"] | null;
+            /**
+             * @description 非信用卡付款的人工退款（ADR-044；第四十五波定契約、BE-65 實作）。有值且 `status=Pending` 就是「待人工退款」；
+             *     信用卡、或不需要退款時為 `null`。BE-65 上線前不會出現（欄位缺席視同 `null`）。
+             */
+            manualRefund?: components["schemas"]["ManualRefund"] | null;
             /** Format: date-time */
             capturedAt?: string | null;
             /**
@@ -2258,6 +2360,45 @@ export interface components {
              */
             settledAt?: string | null;
         };
+        /**
+         * @description `Pending` 待人工退款（還有尚待匯出的金額）、`Completed` 目前已全額登記。**`Completed` 不是終態**：之後若有新的退款要求（例如先取消一個品項、再取消整張訂單），`requiredAmount` 會增加、回到 `Pending`。前端必須容忍未知值（`docs/05` §6）。
+         * @enum {string}
+         */
+        ManualRefundStatus: "Pending" | "Completed";
+        /** @description 非信用卡付款的人工退款狀態（ADR-044）。金額都由後端算好，**前端不做加減**。 */
+        ManualRefund: {
+            status: components["schemas"]["ManualRefundStatus"];
+            /** @description 應退總額 */
+            requiredAmount: components["schemas"]["Money"];
+            /** @description 已登記匯出的累計金額 */
+            recordedAmount: components["schemas"]["Money"];
+            /** @description 尚待匯出的金額（應退－已登記） */
+            outstandingAmount: components["schemas"]["Money"];
+            /** @description 登記紀錄，由舊到新；只追加、不可修改。 */
+            entries: components["schemas"]["ManualRefundEntry"][];
+        };
+        ManualRefundEntry: {
+            id: components["schemas"]["Id"];
+            amount: components["schemas"]["Money"];
+            /**
+             * Format: date
+             * @description 匯款日期（台北日期）
+             */
+            remittedOn: string;
+            note?: string | null;
+            /** @description 登記的員工（StaffId） */
+            recordedBy: components["schemas"]["Id"];
+            /** @description 登記的員工顯示名稱（登記當下凍結） */
+            recordedByName: string;
+            /** Format: date-time */
+            recordedAt: string;
+        };
+        /**
+         * @description 訂單取消來源（ADR-044）。`Customer` 客人自助取消、`Staff` 後台取消、`PaymentExpired` 逾期未付款自動取消。
+         *     前端必須容忍未知值（`docs/05` §6）。
+         * @enum {string}
+         */
+        OrderCancellationSource: "Customer" | "Staff" | "PaymentExpired";
         PurchaseItem: {
             id: components["schemas"]["Id"];
             skuId: components["schemas"]["Id"];

@@ -77,6 +77,7 @@
 | GET | `/v1/orders/{orderId}` | `getOrder` |
 | POST | `/v1/orders/{orderId}/cancel` | `cancelOrder` |
 | POST | `/v1/orders/{orderId}/lines/{lineId}/cancel` | `cancelOrderLine` |
+| POST | `/v1/orders/{orderId}/payments/{paymentId}/manual-refunds` | `recordManualRefund`（ADR-044；可分次登記人工匯款） |
 | GET | `/v1/ledger/entries` | `listLedgerEntries` |
 | GET | `/v1/ledger/campaign-margin/{campaignId}` | `getCampaignMargin` |
 | GET | `/v1/ledger/liability-vs-cash` | `getLiabilityVsCash` |

@@ -20,6 +20,17 @@ function daysFromNowDate(days: number): string {
   return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
 }
 
+function futureTaipeiDeadline(days: number): string {
+  const date = new Date(Date.now() + days * 86_400_000);
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' })
+      .formatToParts(date)
+      .filter((part) => part.type !== 'literal')
+      .map((part) => [part.type, part.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}T23:59:59+08:00`;
+}
+
 // ── 團隊成員 ──────────────────────────────────────────────────────────────
 
 export const staffFixture: S['Staff'] = {
@@ -320,12 +331,123 @@ function buildSimpleAdminOrder(seedKey: string, status: S['OrderStatus'], daysAg
   };
 }
 
+const atmInstructionsOrderBase = buildSimpleAdminOrder('森田藥粧-玻尿酸保濕面膜', 'AwaitingPayment', 0, 58);
+const atmDeadline = futureTaipeiDeadline(3);
+const atmInstructionsOrder: S['AdminOrder'] = {
+  ...atmInstructionsOrderBase,
+  id: hexId('admin-order:FE58:ATM已取號'),
+  orderNumber: 'GG26100100058',
+  paymentDueAt: atmDeadline,
+  payments: [{
+    id: hexId('payment:FE58:ATM已取號'),
+    provider: 'ECPay',
+    status: 'InstructionsIssued',
+    method: 'Atm',
+    amount: atmInstructionsOrderBase.grandTotal,
+    fee: null,
+    providerTransactionId: null,
+    instructions: {
+      method: 'Atm',
+      bankCode: '822',
+      virtualAccount: '00998877665544',
+      expiresAt: atmDeadline,
+      issuedAt: daysAgoIso(0),
+    },
+    manualRefund: null,
+    capturedAt: null,
+    settledAt: null,
+  }],
+};
+
+const pendingRefundOrderBase = buildSimpleAdminOrder('若元錠EX', 'Cancelled', 4, 59);
+const pendingRefundOrder: S['AdminOrder'] = {
+  ...pendingRefundOrderBase,
+  id: hexId('admin-order:FE58:超商代碼待人工退款'),
+  orderNumber: 'GG26100100059',
+  cancellationSource: 'PaymentExpired',
+  payments: [{
+    id: hexId('payment:FE58:超商代碼待人工退款'),
+    provider: 'ECPay',
+    status: 'Captured',
+    method: 'ConvenienceStoreCode',
+    amount: pendingRefundOrderBase.grandTotal,
+    fee: twd(30),
+    providerTransactionId: 'FE58-CVS-00059',
+    instructions: {
+      method: 'ConvenienceStoreCode',
+      paymentNo: 'CVS590059',
+      expiresAt: daysAgoIso(2),
+      issuedAt: daysAgoIso(4),
+    },
+    manualRefund: {
+      status: 'Pending',
+      requiredAmount: twd(1_000),
+      recordedAmount: twd(300),
+      outstandingAmount: twd(700),
+      entries: [{
+        id: hexId('manual-refund-entry:FE58:partial'),
+        amount: twd(300),
+        remittedOn: daysFromNowDate(-1),
+        note: '第一次部分匯款，後五碼 0059',
+        recordedBy: staffFixture.id,
+        recordedByName: staffFixture.displayName,
+        recordedAt: daysAgoIso(1),
+      }],
+    },
+    capturedAt: daysAgoIso(1),
+    settledAt: null,
+  }],
+};
+
+const completedRefundOrderBase = buildSimpleAdminOrder('森田藥粧-玻尿酸保濕面膜', 'Cancelled', 8, 60);
+const completedRefundOrder: S['AdminOrder'] = {
+  ...completedRefundOrderBase,
+  id: hexId('admin-order:FE58:條碼人工退款完成'),
+  orderNumber: 'GG26100100060',
+  cancellationSource: 'Staff',
+  payments: [{
+    id: hexId('payment:FE58:條碼人工退款完成'),
+    provider: 'ECPay',
+    status: 'Captured',
+    method: 'Barcode',
+    amount: completedRefundOrderBase.grandTotal,
+    fee: twd(30),
+    providerTransactionId: 'FE58-BARCODE-00060',
+    instructions: {
+      method: 'Barcode',
+      barcodes: ['BARCODE-60-A', 'BARCODE-60-B', 'BARCODE-60-C'],
+      expiresAt: daysAgoIso(5),
+      issuedAt: daysAgoIso(8),
+    },
+    manualRefund: {
+      status: 'Completed',
+      requiredAmount: twd(500),
+      recordedAmount: twd(500),
+      outstandingAmount: twd(0),
+      entries: [{
+        id: hexId('manual-refund-entry:FE58:completed'),
+        amount: twd(500),
+        remittedOn: daysFromNowDate(-2),
+        note: null,
+        recordedBy: staffFixture.id,
+        recordedByName: staffFixture.displayName,
+        recordedAt: daysAgoIso(2),
+      }],
+    },
+    capturedAt: daysAgoIso(6),
+    settledAt: daysAgoIso(5),
+  }],
+};
+
 export const adminOrders: S['AdminOrder'][] = [
   mixedOrder,
   homeDeliveryOrder,
   buildSimpleAdminOrder('森田藥粧-玻尿酸保濕面膜', 'AwaitingPayment', 0, 1),
   buildSimpleAdminOrder('若元錠EX', 'Completed', 20, 2),
   buildSimpleAdminOrder('森田藥粧-玻尿酸保濕面膜', 'Cancelled', 5, 3),
+  atmInstructionsOrder,
+  pendingRefundOrder,
+  completedRefundOrder,
 ];
 
 export function adminOrderListItemOf(order: S['AdminOrder']): S['AdminOrderListItem'] {

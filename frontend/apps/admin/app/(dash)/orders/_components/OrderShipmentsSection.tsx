@@ -16,6 +16,7 @@ import {
   summarizeOrderShipments,
 } from '../../shipments/_lib/orderShipments';
 import { shipmentMethodLabel, shipmentStatusLabel, shipmentStatusTone } from '../../shipments/_lib/labels';
+import { formatTaipeiDateTime } from '../_lib/paymentDetails';
 
 type S = components['schemas'];
 
@@ -35,9 +36,7 @@ export interface OrderShipmentsSectionProps {
 
 function timeText(value: string | null | undefined, fallback: string): string {
   if (!value) return fallback;
-  return new Intl.DateTimeFormat('zh-TW', { dateStyle: 'short', timeStyle: 'short' }).format(
-    new Date(value),
-  );
+  return formatTaipeiDateTime(value);
 }
 
 export function OrderShipmentsSection({

@@ -142,6 +142,8 @@ export function paymentStatusLabel(status: S['PaymentStatus'] | (string & {})): 
       return '已全額退款';
     case 'PartiallyRefunded':
       return '部分退款';
+    case 'InstructionsIssued':
+      return '已取號待繳費';
     default:
       return status;
   }
@@ -158,6 +160,58 @@ export function paymentStatusTone(status: S['PaymentStatus'] | (string & {})): S
     case 'Refunded':
     case 'PartiallyRefunded':
       return 'info';
+    case 'InstructionsIssued':
+      return 'warning';
+    default:
+      return 'neutral';
+  }
+}
+
+export function paymentMethodLabel(method: S['PaymentMethod'] | (string & {})): string {
+  switch (method) {
+    case 'CreditCard':
+      return '信用卡';
+    case 'Atm':
+      return 'ATM 轉帳';
+    case 'ConvenienceStoreCode':
+      return '超商代碼';
+    case 'Barcode':
+      return '超商條碼';
+    default:
+      return method;
+  }
+}
+
+export function orderCancellationSourceLabel(source: S['OrderCancellationSource'] | (string & {})): string {
+  switch (source) {
+    case 'Customer':
+      return '客人自行取消';
+    case 'Staff':
+      return '後台取消';
+    case 'PaymentExpired':
+      return '逾期未付款自動取消';
+    default:
+      return source;
+  }
+}
+
+export function manualRefundStatusLabel(status: S['ManualRefundStatus'] | (string & {})): string {
+  switch (status) {
+    case 'Pending':
+      return '待人工退款';
+    case 'Completed':
+      return '已全額登記';
+    default:
+      return status;
+  }
+}
+
+export function manualRefundStatusTone(status: S['ManualRefundStatus'] | (string & {})): StatusTone {
+  switch (status) {
+    case 'Pending':
+      return 'warning';
+    case 'Completed':
+      return 'success';
     default:
       return 'neutral';
   }

@@ -6,6 +6,10 @@ import {
   orderLineStatusTone,
   orderStatusLabel,
   orderStatusTone,
+  orderCancellationSourceLabel,
+  manualRefundStatusLabel,
+  manualRefundStatusTone,
+  paymentMethodLabel,
   paymentProviderLabel,
   paymentStatusLabel,
   paymentStatusTone,
@@ -109,6 +113,35 @@ describe('paymentStatus', () => {
   it('未知值退回原始字串與 neutral', () => {
     expect(paymentStatusLabel(UNKNOWN)).toBe(UNKNOWN);
     expect(paymentStatusTone(UNKNOWN)).toBe('neutral');
+  });
+
+  it('InstructionsIssued 顯示已取號待繳費且是 warning', () => {
+    expect(paymentStatusLabel('InstructionsIssued')).toBe('已取號待繳費');
+    expect(paymentStatusTone('InstructionsIssued')).toBe('warning');
+  });
+});
+
+describe('ADR-044 新增標籤', () => {
+  it('四種付款方式都有中文，未知值保留原字', () => {
+    expect(paymentMethodLabel('CreditCard')).toBe('信用卡');
+    expect(paymentMethodLabel('Atm')).toBe('ATM 轉帳');
+    expect(paymentMethodLabel('ConvenienceStoreCode')).toBe('超商代碼');
+    expect(paymentMethodLabel('Barcode')).toBe('超商條碼');
+    expect(paymentMethodLabel(UNKNOWN)).toBe(UNKNOWN);
+  });
+
+  it('三種取消來源都有中文，未知值保留原字', () => {
+    expect(orderCancellationSourceLabel('Customer')).toBe('客人自行取消');
+    expect(orderCancellationSourceLabel('Staff')).toBe('後台取消');
+    expect(orderCancellationSourceLabel('PaymentExpired')).toBe('逾期未付款自動取消');
+    expect(orderCancellationSourceLabel(UNKNOWN)).toBe(UNKNOWN);
+  });
+
+  it('人工退款狀態有中文與 tone，未知值回原字加 neutral', () => {
+    expect(manualRefundStatusLabel('Pending')).toBe('待人工退款');
+    expect(manualRefundStatusLabel('Completed')).toBe('已全額登記');
+    expect(manualRefundStatusLabel(UNKNOWN)).toBe(UNKNOWN);
+    expect(manualRefundStatusTone(UNKNOWN)).toBe('neutral');
   });
 });
 

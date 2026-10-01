@@ -20,6 +20,7 @@ type S = components['schemas'];
  * 所以從 `paths` 推導。**不要手寫複本**——手寫的複本在契約改動時不會有任何東西說話。
  */
 export type CreateLotRequest = paths['/v1/lots']['post']['requestBody']['content']['application/json'];
+export type RecordManualRefundRequest = paths['/v1/orders/{orderId}/payments/{paymentId}/manual-refunds']['post']['requestBody']['content']['application/json'];
 /** `RequestOptions.query` 要求索引簽章；具名 query 介面沒有，這裡轉一手。 */
 type QueryRecord = Record<string, string | number | boolean | undefined | null>;
 
@@ -330,6 +331,16 @@ export function refundOrderLineShortfall(
   options: MutationOptions,
 ): Promise<S['AdminOrder']> {
   return client.post(`/v1/orders/${orderId}/lines/${lineId}/refund-shortfall`, { body, ...options });
+}
+
+export function recordManualRefund(
+  client: ApiClient,
+  orderId: string,
+  paymentId: string,
+  body: RecordManualRefundRequest,
+  options: MutationOptions,
+): Promise<S['AdminOrder']> {
+  return client.post(`/v1/orders/${orderId}/payments/${paymentId}/manual-refunds`, { body, ...options });
 }
 
 // ── ledger ────────────────────────────────────────────────────────────────

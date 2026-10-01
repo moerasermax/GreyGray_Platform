@@ -6,6 +6,7 @@ import {
   cancelOrderLine,
   getCampaign,
   getOrder,
+  recordManualRefund,
   refundOrderLineShortfall,
 } from '@greygray/api-client/endpoints/admin';
 import type { components } from '@greygray/api-client/admin';
@@ -19,7 +20,7 @@ import {
 } from '@greygray/ui/admin';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { browserApi } from '../../../_lib/apiClient';
 import { usePayloadIdempotency } from '../../../_lib/usePayloadIdempotency';
 import { getSession, hasRequiredRole } from '../../../login/_lib/session';
@@ -27,6 +28,9 @@ import { listShipments } from '../../shipments/_lib/api';
 import { CancelOrderDialog } from '../_components/CancelOrderDialog';
 import { CancelOrderLineDialog } from '../_components/CancelOrderLineDialog';
 import { OrderShipmentsSection } from '../_components/OrderShipmentsSection';
+import { ManualRefundDialog } from '../_components/ManualRefundDialog';
+import { ManualRefundSection } from '../_components/ManualRefundSection';
+import { PaymentInstructions } from '../_components/PaymentInstructions';
 import { RefundShortfallDialog } from '../_components/RefundShortfallDialog';
 import {
   deliveryMethodLabel,
@@ -35,6 +39,8 @@ import {
   orderLineStatusTone,
   orderStatusLabel,
   orderStatusTone,
+  orderCancellationSourceLabel,
+  paymentMethodLabel,
   paymentProviderLabel,
   paymentStatusLabel,
   paymentStatusTone,
@@ -43,6 +49,13 @@ import {
 } from '../_lib/labels';
 import { convenienceStoreDisplay } from '../_lib/convenienceStore';
 import { recipientAddressOf } from '../_lib/recipientAddress';
+import {
+  canRecordManualRefund,
+  formatTaipeiDateTime,
+  manualRefundErrorMessage,
+  taipeiToday,
+  validateManualRefundInput,
+} from '../_lib/paymentDetails';
 
 type S = components['schemas'];
 type OrderLine = S['AdminOrderLine'];
@@ -67,11 +80,13 @@ export default function OrderDetailPage() {
   // 出貨單需要符合 Operator（與側邊欄「出貨」的 `requiredRole` 一致）。角色不符時
   // 不打 `/v1/shipments`（唯讀、會計原本會撞 403），區塊改顯示一句中性說明（FE-49）。
   // `(dash)/layout.tsx` 拿到員工資料前不渲染子頁，所以 `getSession()` 這裡一定有值。
-  const canViewShipments = hasRequiredRole(getSession()?.role ?? 'ReadOnly', 'Operator');
+  const staffRole = getSession()?.role ?? 'ReadOnly';
+  const canViewShipments = hasRequiredRole(staffRole, 'Operator');
   // 這頁三個寫入端點後端都掛 `StaffRoleFilter(Operator)`（後端樹 Admin Host 的
   // `M1aEndpoints.cs` 177–223 行、`M1bShortfallRefundEndpoints.cs`）：
   // 取消整張訂單、取消此品項、退短缺款。角色不符時按鈕不渲染，不讓人按了才 403（FE-50）。
-  const canOperate = hasRequiredRole(getSession()?.role ?? 'ReadOnly', 'Operator');
+  const canOperate = hasRequiredRole(staffRole, 'Operator');
+  const canRecordRefund = canRecordManualRefund(staffRole);
 
   const [order, setOrder] = useState<S['AdminOrder'] | null>(null);
   const [campaignTitle, setCampaignTitle] = useState<string | null>(null);
@@ -92,6 +107,12 @@ export default function OrderDetailPage() {
   const [cancelOrderOpen, setCancelOrderOpen] = useState(false);
   const [cancelLine, setCancelLine] = useState<OrderLine | null>(null);
   const [refundShortfallLine, setRefundShortfallLine] = useState<OrderLine | null>(null);
+  const [manualRefundPaymentId, setManualRefundPaymentId] = useState<string | null>(null);
+  const [manualRefundAmount, setManualRefundAmount] = useState('');
+  const [manualRefundDate, setManualRefundDate] = useState(() => taipeiToday(new Date()));
+  const [manualRefundNote, setManualRefundNote] = useState('');
+  const [manualRefundError, setManualRefundError] = useState<string | null>(null);
+  const [manualRefundSubmitting, setManualRefundSubmitting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -185,6 +206,53 @@ export default function OrderDetailPage() {
     idempotency.complete();
     setOrder(updated);
     toast.show('success', `品項「${refundShortfallLine.name}」的短缺款已退款。`);
+  }
+
+  function openManualRefund(paymentId: string) {
+    setManualRefundPaymentId(paymentId);
+    setManualRefundAmount('');
+    setManualRefundDate(taipeiToday(new Date()));
+    setManualRefundNote('');
+    setManualRefundError(null);
+  }
+
+  function closeManualRefund() {
+    if (manualRefundSubmitting) return;
+    setManualRefundPaymentId(null);
+    setManualRefundError(null);
+  }
+
+  async function handleManualRefund() {
+    if (!manualRefundPaymentId) return;
+    const validation = validateManualRefundInput(
+      manualRefundAmount,
+      manualRefundDate,
+      manualRefundNote,
+      new Date(),
+    );
+    if (!validation.ok) {
+      setManualRefundError(validation.error);
+      return;
+    }
+    const payload = { orderId, paymentId: manualRefundPaymentId, body: validation.body };
+    setManualRefundSubmitting(true);
+    setManualRefundError(null);
+    try {
+      const updated = await recordManualRefund(browserApi(), orderId, manualRefundPaymentId, validation.body, {
+        idempotencyKey: idempotency.current(payload),
+      });
+      idempotency.complete();
+      setOrder(updated);
+      setManualRefundPaymentId(null);
+      toast.show('success', '已登記人工退款匯款。');
+    } catch (cause) {
+      const mapped = manualRefundErrorMessage(cause);
+      setManualRefundError(
+        mapped ?? (cause instanceof ApiError ? cause.problem.title : '登記失敗，請稍後再試。'),
+      );
+    } finally {
+      setManualRefundSubmitting(false);
+    }
   }
 
   if (loading) {
@@ -310,9 +378,7 @@ export default function OrderDetailPage() {
             <StatusPill label={orderStatusLabel(order.status)} tone={orderStatusTone(order.status)} />
             <span className="text-sm text-fg-muted">
               下單於{' '}
-              {new Intl.DateTimeFormat('zh-TW', { dateStyle: 'medium', timeStyle: 'short' }).format(
-                new Date(order.placedAt),
-              )}
+              {formatTaipeiDateTime(order.placedAt)}
             </span>
           </div>
         </div>
@@ -355,6 +421,18 @@ export default function OrderDetailPage() {
           <p className="mt-1 text-sm font-medium text-fg">{shippingPolicyLabel(order.shippingPolicy)}</p>
         </div>
         {order.deliveryMethod === 'ConvenienceStore' ? <ConvenienceStoreCell order={order} /> : null}
+        {order.paymentDueAt ? (
+          <div>
+            <p className="text-xs text-fg-muted">繳費期限</p>
+            <p className="mt-1 text-sm font-medium text-fg">{formatTaipeiDateTime(order.paymentDueAt)}</p>
+          </div>
+        ) : null}
+        {order.cancellationSource ? (
+          <div>
+            <p className="text-xs text-fg-muted">取消來源</p>
+            <p className="mt-1 text-sm font-medium text-fg">{orderCancellationSourceLabel(order.cancellationSource)}</p>
+          </div>
+        ) : null}
         <div>
           <p className="text-xs text-fg-muted">商品小計</p>
           <p className="mt-1 font-mono text-sm font-semibold tabular-nums text-fg">{formatMoney(order.goodsTotal)}</p>
@@ -425,6 +503,7 @@ export default function OrderDetailPage() {
               <thead>
                 <tr className="border-b border-border-soft bg-surface-sunken text-left text-fg-on-tint">
                   <th scope="col" className="px-3 py-2 text-xs font-medium">金流商</th>
+                  <th scope="col" className="px-3 py-2 text-xs font-medium">付款方式</th>
                   <th scope="col" className="px-3 py-2 text-xs font-medium">狀態</th>
                   <th scope="col" className="px-3 py-2 text-right text-xs font-medium" data-numeric>金額</th>
                   <th scope="col" className="px-3 py-2 text-right text-xs font-medium" data-numeric>手續費</th>
@@ -434,28 +513,29 @@ export default function OrderDetailPage() {
               </thead>
               <tbody>
                 {order.payments.map((payment) => (
-                  <tr key={payment.id} className="border-b border-border-soft last:border-0">
-                    <td className="px-3 py-2 text-fg">{paymentProviderLabel(payment.provider)}</td>
-                    <td className="px-3 py-2">
-                      <StatusPill label={paymentStatusLabel(payment.status)} tone={paymentStatusTone(payment.status)} />
-                    </td>
-                    <MoneyCell value={formatMoney(payment.amount)} />
-                    <MoneyCell value={payment.fee ? formatMoney(payment.fee) : '—'} />
-                    <td className="px-3 py-2 text-fg-muted">
-                      {payment.capturedAt
-                        ? new Intl.DateTimeFormat('zh-TW', { dateStyle: 'short', timeStyle: 'short' }).format(
-                            new Date(payment.capturedAt),
-                          )
-                        : '—'}
-                    </td>
-                    <td className="px-3 py-2 text-fg-muted">
-                      {payment.settledAt
-                        ? new Intl.DateTimeFormat('zh-TW', { dateStyle: 'short', timeStyle: 'short' }).format(
-                            new Date(payment.settledAt),
-                          )
-                        : '尚未撥款'}
-                    </td>
-                  </tr>
+                  <Fragment key={payment.id}>
+                    <tr className="border-b border-border-soft">
+                      <td className="px-3 py-2 text-fg">{paymentProviderLabel(payment.provider)}</td>
+                      <td className="px-3 py-2 text-fg">{payment.method ? paymentMethodLabel(payment.method) : '—'}</td>
+                      <td className="px-3 py-2">
+                        <StatusPill label={paymentStatusLabel(payment.status)} tone={paymentStatusTone(payment.status)} />
+                      </td>
+                      <MoneyCell value={formatMoney(payment.amount)} />
+                      <MoneyCell value={payment.fee ? formatMoney(payment.fee) : '—'} />
+                      <td className="px-3 py-2 text-fg-muted">{payment.capturedAt ? formatTaipeiDateTime(payment.capturedAt) : '—'}</td>
+                      <td className="px-3 py-2 text-fg-muted">{payment.settledAt ? formatTaipeiDateTime(payment.settledAt) : '尚未撥款'}</td>
+                    </tr>
+                    {payment.instructions || payment.manualRefund ? (
+                      <tr className="border-b border-border-soft last:border-0">
+                        <td colSpan={7} className="px-3 py-3">
+                          <div className="flex flex-col gap-3">
+                            <PaymentInstructions instructions={payment.instructions} paymentStatus={payment.status} orderStatus={order.status} />
+                            <ManualRefundSection paymentId={payment.id} manualRefund={payment.manualRefund} canRecord={canRecordRefund} onRecord={openManualRefund} />
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -481,6 +561,20 @@ export default function OrderDetailPage() {
         shortfallQuantity={refundShortfallLine?.quantityShortfall ?? 0}
         onClose={() => setRefundShortfallLine(null)}
         onConfirm={handleRefundShortfall}
+      />
+      <ManualRefundDialog
+        open={manualRefundPaymentId !== null}
+        amountInput={manualRefundAmount}
+        remittedOn={manualRefundDate}
+        noteInput={manualRefundNote}
+        today={taipeiToday(new Date())}
+        error={manualRefundError}
+        submitting={manualRefundSubmitting}
+        onAmountChange={setManualRefundAmount}
+        onRemittedOnChange={setManualRefundDate}
+        onNoteChange={setManualRefundNote}
+        onClose={closeManualRefund}
+        onSubmit={() => void handleManualRefund()}
       />
     </div>
   );

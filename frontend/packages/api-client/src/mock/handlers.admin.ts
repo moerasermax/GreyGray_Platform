@@ -8,7 +8,7 @@
  */
 
 import { http, HttpResponse } from 'msw';
-import type { components } from '../types.admin';
+import type { components, paths } from '../types.admin';
 import { adminAuthHandlers } from './handlers.admin.auth';
 import { adminCompensationHandlers } from './handlers.admin.compensation';
 import { adminProcurementHandlers } from './handlers.admin.procurement';
@@ -58,7 +58,45 @@ let campaigns: S['AdminCampaign'][] = adminCampaignFixtures.map((c) => ({ ...c }
 let campaignOffers = new Map<string, S['AdminCampaignOffer'][]>(
   Array.from(adminCampaignOffersByCampaignId.entries()).map(([k, v]) => [k, v.map((o) => ({ ...o }))]),
 );
-let orders: S['AdminOrder'][] = adminOrderFixtures.map((o) => ({ ...o }));
+function cloneOrder(order: S['AdminOrder']): S['AdminOrder'] {
+  return {
+    ...order,
+    grandTotal: { ...order.grandTotal },
+    goodsTotal: { ...order.goodsTotal },
+    shippingFee: { ...order.shippingFee },
+    lines: order.lines.map((line) => ({
+      ...line,
+      unitPrice: { ...line.unitPrice },
+      lineTotal: { ...line.lineTotal },
+      ...(line.refundedAmount ? { refundedAmount: { ...line.refundedAmount } } : {}),
+    })),
+    ...(order.payments ? {
+      payments: order.payments.map((payment) => ({
+        ...payment,
+        amount: { ...payment.amount },
+        ...(payment.fee ? { fee: { ...payment.fee } } : {}),
+        ...(payment.instructions ? {
+          instructions: {
+            ...payment.instructions,
+            ...(payment.instructions.barcodes ? { barcodes: [...payment.instructions.barcodes] } : {}),
+          },
+        } : {}),
+        ...(payment.manualRefund ? {
+          manualRefund: {
+            ...payment.manualRefund,
+            requiredAmount: { ...payment.manualRefund.requiredAmount },
+            recordedAmount: { ...payment.manualRefund.recordedAmount },
+            outstandingAmount: { ...payment.manualRefund.outstandingAmount },
+            entries: payment.manualRefund.entries.map((entry) => ({ ...entry, amount: { ...entry.amount } })),
+          },
+        } : {}),
+      })),
+    } : {}),
+    ...(order.quoteExplain ? { quoteExplain: [...order.quoteExplain] } : {}),
+  };
+}
+
+let orders: S['AdminOrder'][] = adminOrderFixtures.map(cloneOrder);
 /** 批號（M2）。fixture 沒有種任何一筆——庫存要靠 `POST /v1/lots` 進貨才會有。 */
 let lots: S['Lot'][] = [];
 
@@ -68,7 +106,7 @@ export function resetAdminMockState(): void {
   products = adminProductFixtures.map((p) => ({ ...p, skus: p.skus.map((s) => ({ ...s })) }));
   campaigns = adminCampaignFixtures.map((c) => ({ ...c }));
   campaignOffers = new Map(Array.from(adminCampaignOffersByCampaignId.entries()).map(([k, v]) => [k, v.map((o) => ({ ...o }))]));
-  orders = adminOrderFixtures.map((o) => ({ ...o }));
+  orders = adminOrderFixtures.map(cloneOrder);
   lots = [];
 }
 
@@ -386,6 +424,71 @@ export const adminHandlers = [
     const found = orders.find((o) => o.id === params.orderId);
     if (!found) return jsonProblem(problem(404, 'platform.not-found', '找不到這張訂單。'));
     return HttpResponse.json(found);
+  }),
+
+  http.post(url('/v1/orders/:orderId/payments/:paymentId/manual-refunds'), async ({ request, params }) => {
+    const orderIndex = orders.findIndex((order) => order.id === params.orderId);
+    const order = orderIndex >= 0 ? orders[orderIndex] : undefined;
+    const paymentIndex = order?.payments?.findIndex((payment) => payment.id === params.paymentId) ?? -1;
+    const payment = paymentIndex >= 0 ? order?.payments?.[paymentIndex] : undefined;
+    if (!order || !payment) {
+      return jsonProblem(problem(404, 'platform.not-found', '找不到這筆訂單或付款。'));
+    }
+    const manualRefund = payment.manualRefund;
+    if (!manualRefund || manualRefund.status !== 'Pending') {
+      return jsonProblem(problem(422, 'payment.manual-refund-not-required', '這筆付款目前不需要人工退款。'));
+    }
+    type Body = paths['/v1/orders/{orderId}/payments/{paymentId}/manual-refunds']['post']['requestBody']['content']['application/json'];
+    const body = (await request.json()) as Body;
+    if (
+      body.amount.amountMinor <= 0 ||
+      !Number.isInteger(body.amount.amountMinor) ||
+      body.amount.amountMinor % 100 !== 0 ||
+      body.amount.currency !== payment.amount.currency
+    ) {
+      return jsonProblem(problem(422, 'payment.manual-refund-amount-invalid', '金額必須是大於 0 的整數元。'));
+    }
+    const now = new Date();
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' })
+        .formatToParts(now)
+        .filter((part) => part.type !== 'literal')
+        .map((part) => [part.type, part.value]),
+    );
+    const today = `${parts.year}-${parts.month}-${parts.day}`;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(body.remittedOn) || body.remittedOn > today) {
+      return jsonProblem(problem(422, 'payment.manual-refund-date-invalid', '匯款日期不能晚於今天（台灣時間）。'));
+    }
+    if (body.amount.amountMinor > manualRefund.outstandingAmount.amountMinor) {
+      return jsonProblem(problem(422, 'payment.manual-refund-exceeds-outstanding', '超過尚待匯出的金額。'));
+    }
+
+    const recordedMinor = manualRefund.recordedAmount.amountMinor + body.amount.amountMinor;
+    const outstandingMinor = manualRefund.requiredAmount.amountMinor - recordedMinor;
+    const updatedManualRefund: S['ManualRefund'] = {
+      ...manualRefund,
+      status: outstandingMinor === 0 ? 'Completed' : 'Pending',
+      recordedAmount: { amountMinor: recordedMinor, currency: manualRefund.recordedAmount.currency },
+      outstandingAmount: { amountMinor: outstandingMinor, currency: manualRefund.outstandingAmount.currency },
+      entries: [
+        ...manualRefund.entries.map((entry) => ({ ...entry, amount: { ...entry.amount } })),
+        {
+          id: hexId(`manual-refund-entry:${Date.now()}:${manualRefund.entries.length}`),
+          amount: { ...body.amount },
+          remittedOn: body.remittedOn,
+          note: body.note ?? null,
+          recordedBy: staffFixture.id,
+          recordedByName: staffFixture.displayName,
+          recordedAt: now.toISOString(),
+        },
+      ],
+    };
+    const updatedPayments = (order.payments ?? []).map((current, index) =>
+      index === paymentIndex ? { ...current, manualRefund: updatedManualRefund } : current,
+    );
+    const updatedOrder: S['AdminOrder'] = { ...order, payments: updatedPayments };
+    orders = orders.map((current, index) => (index === orderIndex ? updatedOrder : current));
+    return HttpResponse.json(updatedOrder);
   }),
 
   http.post(url('/v1/orders/:orderId/cancel'), ({ params }) => {

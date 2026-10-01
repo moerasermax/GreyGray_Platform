@@ -1242,6 +1242,15 @@ export interface paths {
                     };
                 };
                 404: components["responses"]["NotFound"];
+                /** @description `ordering.concurrent-update`（同時有付款入帳或另一個取消，請重新讀取訂單後再試；ADR-044） */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
                 /** @description `ordering.cannot-self-cancel-after-payment` */
                 422: {
                     headers: {
@@ -1304,6 +1313,15 @@ export interface paths {
                  *     `payment.instructions-already-issued`（已取號待繳費，不開新單號；前端重新讀訂單、顯示 `paymentInstructions`，ADR-044）
                  */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["ProblemDetails"];
+                    };
+                };
+                /** @description `ordering.payment-overdue`（繳費期限已過：ATM／超商代碼／條碼正在等綠界可能晚到的付款通知，或即將自動取消；不能再發動付款，ADR-044） */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1492,6 +1510,56 @@ export interface paths {
          *     綠界會重送，所以這個端點必須冪等——去重走 `platform.idempotency_key`。
          *     **先驗簽、再去重**（ADR-044）：驗簽失敗回 `422`，冪等表不寫任何資料；
          *     驗簽通過後才以 `MerchantTradeNo`＋`TradeNo`＋`RtnCode` 為鍵去重（scope 依事件類型分開）。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/x-www-form-urlencoded": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            responses: {
+                /** @description 綠界要求回應純文字 `1|OK`。**不是 JSON。** */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": string;
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/webhooks/ecpay/payment-info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 綠界取號通知（ATM／超商代碼／條碼）
+         * @description **不是給前端的端點。** 客人取號（ATM 虛擬帳號、超商代碼、超商條碼）後，綠界把繳費資訊與繳費期限送到這裡
+         *     （付款時送給綠界的 `PaymentInfoURL`，ADR-044）。
+         *
+         *     規則同 `/v1/webhooks/ecpay`：**先驗簽、再去重**——驗簽失敗回 `422`，冪等表不寫任何資料；
+         *     驗簽通過後以 `MerchantTradeNo`＋`TradeNo`＋`RtnCode` 為鍵去重，scope 為 `webhook:ecpay:payment-info`（與付款結果分開）。
+         *     事件類型由路由決定，不靠 `RtnCode` 猜；取號通知沒有 `PaymentDate`，不套 20 分鐘時間窗。
          */
         post: {
             parameters: {
@@ -1769,6 +1837,12 @@ export interface components {
          * @enum {string}
          */
         PaymentStatus: "Pending" | "Captured" | "Failed" | "Refunded" | "PartiallyRefunded" | "InstructionsIssued";
+        /**
+         * @description 訂單取消來源（ADR-044）。`Customer` 客人自助取消、`Staff` 後台取消、`PaymentExpired` 逾期未付款自動取消。
+         *     前端必須容忍未知值（`docs/05` §6）。
+         * @enum {string}
+         */
+        OrderCancellationSource: "Customer" | "Staff" | "PaymentExpired";
         /**
          * @description 付款方式（ADR-044）。`CreditCard` 信用卡、`Atm` ATM 轉帳、`ConvenienceStoreCode` 超商代碼、`Barcode` 超商條碼。
          *     前端必須容忍未知值（`docs/05` §6）。
@@ -2103,13 +2177,29 @@ export interface components {
              * @description 逾期未付會自動取消（Saga Timer）。前端顯示倒數用這個，
              *     **不要自己算**——時限是後端的規則。
              *     ATM／超商代碼／條碼取號後改成綠界的繳費期限（ADR-044）。
+             *     ATM／超商代碼／條碼過了這個期限，系統再等 2 天（等綠界可能晚到的付款通知）才自動取消；這段期間 `paymentOverdue` 為 `true`。
              */
             paymentDueAt?: string | null;
             /**
-             * @description ATM／超商代碼／條碼**已取號、尚未繳費**時才有值（ADR-044）；信用卡、未取號、已繳費、已取消一律 `null`。
+             * @description ATM／超商代碼／條碼**已取號、尚未繳費**時才有值（ADR-044）；信用卡、未取號、已繳費、已取消一律 `null`，繳費期限已過（`paymentOverdue=true`）也是 `null`。
              *     有值時前端顯示取號資訊，**不要再讓客人重新前往付款**（同一張訂單已有有效的繳費資訊）。
              */
             paymentInstructions?: components["schemas"]["PaymentInstructions"] | null;
+            /**
+             * @description `true`＝繳費期限（`paymentDueAt`）已過、訂單尚未取消：系統在等綠界可能晚到的付款通知，或即將自動取消（ADR-044）。
+             *     前端顯示「確認中」，**不顯示付款入口與倒數**；付款端點此時回 `422 ordering.payment-overdue`。沒給視為 `false`。
+             */
+            paymentOverdue?: boolean;
+            /**
+             * Format: date-time
+             * @description 取消時間；未取消為 `null`。
+             */
+            cancelledAt?: string | null;
+            /**
+             * @description 取消來源（ADR-044）：`Customer` 客人自己取消、`Staff` 由客服／營運取消、`PaymentExpired` 逾期未付款自動取消。
+             *     未取消、或第四十五波之前取消的舊訂單為 `null`。前端依來源顯示固定說明，**不顯示後台填的取消原因**（那是內部備註）。
+             */
+            cancellationSource?: components["schemas"]["OrderCancellationSource"] | null;
             /** @description 下單當時凍結的計價說明。運費規則之後改了也不影響這裡。 */
             quoteExplain?: string[];
         };
