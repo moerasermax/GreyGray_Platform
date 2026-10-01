@@ -51,6 +51,42 @@ Leader 要明講。
 
 ---
 
+## BE-67　dev 員工種子腳本可指定密碼輸出位置（第四十五波第 1 輪，2026-10-01）
+
+`ops/seed-dev-staff.ps1` 加 `-CredentialsDir`，只改新建立帳號的密碼寫到哪；沒給參數時行為一字不變。讓 Leader 建 Claude 專用 dev 後台帳號、讀得到密碼。dev 資料庫停著，除了 T3 不准實跑。
+
+★★ 最容易做錯的三件事：
+① 沒給參數時傳給工具的 `--secrets-dir` 必須和現在完全一樣；
+② repo 檢查（往上找含 `.git` 的祖先）要在讀 secrets 之前，而且不准先建目錄；不准用 `Resolve-Path`；
+③ 只改這一支 dev 腳本，維持無 BOM、LF；不准改 `src/Tools/`（正式機建 Owner 也用同一支工具）。
+
+package: BE-67
+doc: docs/73-第四十五波BE-67開發員工種子密碼輸出位置派工書.md
+allow: ops/seed-dev-staff.ps1
+allow: .dispatch/reports/BE-67.md
+
+---
+
+## BE-63　取號接線：取號通知路由、訂單帶取號資訊、409、後台付款摘要（第四十五波第 1 輪，2026-10-01；BE-67 撤包後才派）
+
+把 BE-62 的 Payment 能力接到 Host：`POST /v1/webhooks/ecpay/payment-info`（scope `webhook:ecpay:payment-info`）、`GET /v1/orders/{orderId}` 帶 `paymentInstructions`、`StatusFor` 精確比對三個碼對到 409、Admin `PaymentSummary` 帶 `method`／`instructions`。契約與 `docs/05` 已由 Leader 寫好。以 Release 為準。
+
+★★ 最容易做錯的三件事：
+① 取號通知路由照付款結果路由（先驗簽→冪等五種結果），只換 scope 與服務方法；付款結果路由既有測試一條斷言都不准改；
+② 訂單詳情只在 `AwaitingPayment` 才查取號資訊、其他狀態一律 `null` 且不呼叫查詢、查詢失敗回 Problem；不動 `ToOrderAsync` 簽章與結帳／取消兩條 render 路徑；
+③ `StatusFor` 只加 `payment.instructions-already-issued`、`payment.concurrent-update`、`ordering.concurrent-update` 的精確比對（`string.Equals`），用近似碼反例證明；不准送 `PaymentInfoURL` 或非信用卡 `ChoosePayment`（BE-66）。
+
+package: BE-63
+doc: docs/75-第四十五波BE-63取號接線派工書.md
+allow: src/Hosts/GreyGray.Api.Storefront/M1aEndpoints.cs
+allow: src/Hosts/GreyGray.Api.Admin/M1aEndpoints.cs
+allow: src/Platform/Http/BffHttp.cs
+allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
+allow: tests/GreyGray.Platform.Tests/
+allow: .dispatch/reports/BE-63.md
+
+---
+
 <!--
 ★ 2026-10-01 撤包：BE-62 驗收——範圍 23 檔全在 allow，0005／0008 各只改一行 CHECK；Leader 重建 Release 0 警告 0 錯誤、13 個測試執行檔共 545 條 0 失敗（Migrations 37、PaymentLedger 117）；dev 實測：install 清單變更觸發 0001～0024 整套重放成功，重放後 CHECK 含 5、部分唯一索引 (0,1,4,5)、11 個新欄位齊全；Release Host 走信用卡：ChoosePayment=Credit、偽造通知 422 且冪等表零寫入、真付款 Captured、method=0。取號真流程待 BE-63（路由）與 BE-66（模擬器）。原文保留供追溯。
 
