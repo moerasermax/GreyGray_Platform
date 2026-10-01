@@ -51,7 +51,27 @@ Leader 要明講。
 
 ---
 
-## 生效中：BE-68　期限、逾期與取消來源接到 Host（第四十五波第 3 輪，2026-10-02；BE-64 撤包後才派）
+## 生效中：BE-69　結帳建單競態修正：撞到唯一索引時回既有訂單，不再回 500（第四十五波修正包，2026-10-02；BE-68 撤包後才派）
+
+Storefront 結帳 API 與 Worker 的 `CheckoutCompleted` handler 會同時為同一台購物車建單，Host 輸了客人看到 500。Infra 把兩個唯一索引的 23505 翻成 Ordering 自己的例外，`CreateFromCheckoutAsync` 接住後重讀、走跟冪等分支相同的判斷。只動 Ordering 與它的測試；不碰 Hosts、Platform、db、契約。以 Release 為準。
+
+★★ 最容易做錯的三件事：
+① 只翻譯 `ux_orders_tenant_checkout_cart` 與 `ux_orders_checkout_event` 兩個 constraint 的 23505，其他 `DbUpdateException` 原樣往上拋；Core 不准參考 Npgsql；
+② 重讀後的判斷要和第 53 行的冪等分支**共用同一個私有方法**（同鍵回既有、異鍵回 `ordering.checkout-already-processed`），不准複製；
+③ 相撞要用真 PostgreSQL **確定性**重現（輸家第一次查詢回 null 的 repository 包裝），Host 形狀與 Worker 形狀（冪等包裝器的交易內）都要測；交易內重讀做不到就停下來回報，不准改包裝器。
+
+package: BE-69
+doc: docs/80-第四十五波BE-69結帳建單競態修正派工書.md
+allow: src/Modules/Ordering/
+allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
+allow: .dispatch/reports/BE-69.md
+
+---
+
+<!--
+★ 2026-10-02 撤包：BE-68 驗收——範圍 5 檔全在 allow（兩支 Host M1aEndpoints.cs、新測試 OrderDeadlineHostTests、PaymentInstructionsHostTests 只補兩處 FakeClock、報告）；Leader 逐行讀 diff（付款處理原樣抽出、逾期檢查在已取消之後與 Payment 之前、route 維持 lambda、單一 IsPaymentOverdue）；重建 Release 0 警告 0 錯誤、13 個測試執行檔 606 條 0 失敗、check-openapi 34／34、30／30；dev Release 畫面走查：期限改成已過 → paymentOverdue=true、付款 422（同 key 仍 422、無新付款）、訂單頁「繳費期限已過，正在確認付款」無「前往付款」、自助取消成功並顯示「你已取消這筆訂單。」＋取消時間；後台 Customer／PaymentExpired／舊資料 null 都對。走查時另外撞到結帳建單競態（Host 與 Worker 同時建單、Host 輸了回 500）——不是 BE-68 的缺陷，開 BE-69 修正。原文保留供追溯。
+
+## 已撤包：BE-68　期限、逾期與取消來源接到 Host（第四十五波第 3 輪，2026-10-02；BE-64 撤包後才派）
 
 storefront 訂單回應帶 `paymentOverdue`、`cancelledAt`、`cancellationSource`；付款端點在繳費期限已過時回 `422 ordering.payment-overdue`；後台訂單回應帶 `paymentDueAt`、`cancellationSource`。只動兩支 Host 檔與 CheckoutOrdering 測試；契約 Leader 已寫好、不准改 `docs/`；不碰 `src/Modules/`、`src/Platform/`。以 Release 為準。
 
@@ -60,14 +80,17 @@ storefront 訂單回應帶 `paymentOverdue`、`cancelledAt`、`cancellationSourc
 ② 付款端點原樣抽成 `internal static InitiateCustomerPaymentAsync(…, IClock clock, …)`，route **維持 lambda 包法**（不准改 method group）；順序：已取消 409 → 逾期 422 → 才交給 Payment；已付款的訂單即使過期也不是逾期；
 ③ Host 測試一律用 `FakeClock`、不准用真實時鐘；`PaymentInstructionsHostTests.cs` 第 91、201 行只准補 `new FakeClock(Now)`，O1～O5 斷言一字不改；`ToOrderAsync`／`ToAdminOrderAsync` 簽章不改。
 
-package: BE-68
-doc: docs/79-第四十五波BE-68期限與取消資訊接到Host派工書.md
-allow: src/Hosts/GreyGray.Api.Storefront/M1aEndpoints.cs
-allow: src/Hosts/GreyGray.Api.Admin/M1aEndpoints.cs
-allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
-allow: .dispatch/reports/BE-68.md
+(撤包) package: BE-68
+(撤包) doc: docs/79-第四十五波BE-68期限與取消資訊接到Host派工書.md
+(撤包) allow: src/Hosts/GreyGray.Api.Storefront/M1aEndpoints.cs
+(撤包) allow: src/Hosts/GreyGray.Api.Admin/M1aEndpoints.cs
+(撤包) allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
+(撤包) allow: .dispatch/reports/BE-68.md
 
 ---
+
+-->
+
 
 <!--
 ★ 2026-10-02 撤包：BE-64 驗收——範圍 18 檔全在 allow（docs/00-decisions.md、docs/72 為 Leader 依驗收審查另行修正）；四角度唯讀審查退回 5 項已修（M2 的 t0 改取資料庫時間並以 59 分鐘負向注入證明會紅、種子補已取消／Completed／新版形狀、0025 回填條件改 payment_auto_cancel_at IS NULL、衝突丟出前清 ChangeTracker、取號事件只准延後期限）；Leader 重建 Release 0 警告 0 錯誤、13 個測試執行檔 592 條 0 失敗（2 個既有 skip）、check-openapi storefront 34／34、admin 30／30；dev 重放 0001→0025：7 筆舊待付款回填期限並各排 1 個計時器、非待付款未動；計時器到期 → 取消（PaymentExpired）→ OrderCancelled 派送 → 庫存預留釋放，無新死信。原文保留供追溯。
