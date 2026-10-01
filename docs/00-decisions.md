@@ -1051,9 +1051,9 @@ ADR-019 與 `CLAUDE.md` 都寫著「租約到期前要處理、**先把到期日
 - **非信用卡逾期多等 2 天才取消**：ATM／超商代碼／條碼過了綠界期限後，系統再等 2 天（吸收晚到的付款通知；條碼官方明載可晚兩天）才自動取消；信用卡建單 24 小時準時取消。
   **客人看到的期限不變**（`paymentDueAt`＝綠界期限）。實際自動取消時點另存在 Order（內部欄位、不進契約）——只存 `PaymentDueAt` 的話，舊的 24 小時計時器觸發時分不出要不要加寬限。
 - **寬限期間顯示「確認中」、不能再付款**：`Order.paymentOverdue=true`，前台不顯示付款入口；付款端點回 `422 ordering.payment-overdue`。否則客人可以重新付款，開放 ATM 後甚至能重新取號、無限延長期限。
-- **舊的待付款訂單回填期限、部署後自動取消**：migration 以單一敘述 `UPDATE … RETURNING` 接 `INSERT INTO platform.saga_timer`（沒有 JOIN，形狀同 ADR-016「一個交易寫兩張表」；冪等靠「期限為空」這個條件），
-  計時器排在 **migration 執行時間＋1 小時**（migration 在停服前執行，舊 Worker 不認得新的計時器種類，撈到會丟例外、卡住整條計時器佇列；部署若在 migration 之後失敗、舊版繼續跑，要在一小時內重新部署，或把這批 `ordering.payment-due` 計時器標成已取消。2026-10-01 覆驗提出）。
-- **取消後才入帳**：Ordering 記已收款、維持已取消，發 `RefundRequested`（原路）；退刷或人工由 Payment 依付款方式決定（BE-65）。
+- **舊的待付款訂單回填期限、部署後自動取消**：migration 以單一敘述 `UPDATE … RETURNING` 接 `INSERT INTO platform.saga_timer`（沒有 JOIN，形狀同 ADR-016「一個交易寫兩張表」；冪等靠「自動取消時點為空」這個條件，與取消守衛看同一個欄位），
+  計時器排在 **migration 執行時間＋1 小時**（migration 在停服前執行，舊 Worker 不認得新的計時器種類，撈到會丟例外、卡住整條計時器佇列；部署若在 migration 之後失敗、舊版繼續跑，要在一小時內重新部署，否則把未觸發的 `ordering.payment-due` 計時器**延後**（把 `fire_at` 往後推）——**不要取消**：取消後重放 0025 不會再排（回填只撈自動取消時點為空的訂單），那批訂單會永遠不被取消；**回滾到舊版之前也一樣先延後**（舊 Worker 不認得這個 saga type，撈到就卡住整條佇列）。**新版上線後要再跑一次 0025 的回填**（冪等），補上「migration 跑完到舊版停掉」之間舊版建的訂單；部署後唯讀確認「待付款且自動取消時點為空」為 0 筆。2026-10-01 覆驗與 BE-64 驗收審查提出）。
+- **取消後才入帳**：Ordering 記已收款、維持已取消，發 `RefundRequested`（原路）；退刷或人工由 Payment 依付款方式決定（BE-65）。⚠ **BE-65 之前的已知缺口**：剛入帳的信用卡交易通常還沒關帳，綠界的退刷（`Action=R`）會被拒，Payment 目前只寫稽核、不告警、不發 `PaymentRefunded`——這種訂單會停在「已取消、已收款、未退款」。BE-65 要改成未關帳走放棄（`Action=N`）或退刷被拒時轉待人工退款；在那之前用唯讀查詢「已取消且已收款大於已退款」的訂單人工追蹤（2026-10-01 BE-64 驗收審查提出）。
 - **寬限期間仍可自助取消**（訂單還是待付款）；之後若有晚到的付款，走「取消後才入帳」。付款端點**先檢查逾期**（`422 ordering.payment-overdue`），再檢查已取號（`409`）。
 - **「同時更新」一律 409**：`payment.concurrent-update`、`ordering.concurrent-update` 與 `payment.instructions-already-issued` 在 `BffHttp.StatusFor` 以**精確比對**對到 409（BE-63），符合 `docs/05` §3「409＝狀態衝突」；`StatusFor` 原本的子字串規則不動。
 - **取消原因讓客人看得到，但不做推播**：`OrderCancelled` 加選填 `Source`（`Customer`／`Staff`／`PaymentExpired`，舊事件為 `null`），Order 保存來源；前台訂單頁依來源顯示固定說明，
