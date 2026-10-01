@@ -51,6 +51,28 @@ Leader 要明講。
 
 ---
 
+## 生效中：BE-64　Ordering：繳費期限、逾期自動取消（含非信用卡寬限）、舊訂單回填、樂觀鎖、取消後才入帳、取消來源（第四十五波第 2 輪，2026-10-01）
+
+建單 24 小時期限、取號後改綠界期限＋2 天寬限、逾期計時器 `ordering.payment-due`、`0025` 回填舊待付款訂單並排計時器、Order 樂觀鎖（品項層級也要參與）、取消後才入帳只發退款要求、取消來源寫進訂單與事件。只動 Ordering、一支 migration、ops 兩支清單；不碰 Hosts（BE-68）與 Payment（BE-65）。以 Release 為準。
+
+★★ 最容易做錯的三件事：
+① 計時器只排新的、不取消舊的（不准呼叫 `CancelAllForSagaAsync`／`CancelAsync`）；handler 業務 no-op 不丟例外、樂觀鎖衝突往上拋；取號事件 handler 一定用冪等包裝器登記；
+② `0025` 用單一 `UPDATE … RETURNING` 接 `INSERT INTO platform.saga_timer`、`saga_id` N 格式、`fire_at` 至少 migration 時間＋1 小時、可重放；測試的時間斷言用套用前取的 `t0`；
+③ 取消後才入帳金額仍須等於 `GrandTotal`、只發一筆 `RefundRequested`（金額＝`PaidAmount`）、不發 `OrderPaid`／`OrderReadyToShip`；樂觀鎖要涵蓋只改品項的操作；不准動 `IOrderingApplication` 的方法清單。
+
+package: BE-64
+doc: docs/77-第四十五波BE-64繳費期限與逾期取消派工書.md
+allow: src/Modules/Ordering/
+allow: db/migrations/0025
+allow: ops/install-dev-environment.ps1
+allow: ops/verify-environment.ps1
+allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
+allow: tests/GreyGray.M1a.Migrations.Tests/
+allow: tests/GreyGray.Contracts.Tests/
+allow: .dispatch/reports/BE-64.md
+
+---
+
 <!--
 ★ 2026-10-01 撤包：BE-67 驗收——範圍只有 ops/seed-dev-staff.ps1＋報告；diff 確認沒給參數時 --secrets-dir 仍是 $secretsDir、順序 repo 檢查→讀 secrets→建目錄＋ACL→dotnet run；Leader 實跑：用 -CredentialsDir 新建 claude.owner／claude.readonly 兩筆（exit 0），新目錄 AreAccessRulesProtected=True、只剩 SYSTEM／Administrators／目前使用者，AI 讀得到密碼檔；同指令重跑 2 筆略過、檔案雜湊不變；不帶參數跑預設種子 4 筆已存在；repo 內路徑＋不存在的 InstallRoot 在第 44 行 throw、沒建任何目錄。原文保留供追溯。
 
@@ -73,7 +95,10 @@ Leader 要明講。
 -->
 
 
-## 生效中：BE-63　取號接線：取號通知路由、訂單帶取號資訊、409、後台付款摘要（第四十五波第 1 輪，2026-10-01；BE-67 撤包後才派）
+<!--
+★ 2026-10-01 撤包：BE-63 驗收——範圍 7 檔全在 allow（EcpayWebhookEndpointTests 只新增測試與替身多記一值，W1～W10、D1 斷言未動；StatusFor 三個碼精確比對在原規則前）；Leader 重建 Release 0 警告 0 錯誤、13 個測試執行檔 575 條 0 失敗、check-openapi storefront 34／34、admin 30／30；Release Host 實機：付款表單 12 鍵、ChoosePayment=Credit、無 PaymentInfoURL；我算的 CheckMacValue 與後端表單一致；偽造取號通知 422 invalid-signature 零寫入；正確簽章的取號通知（信用卡付款）→ 422 payment.payment-method-mismatch、payment-info scope 1 列 ABANDONED；訂單詳情帶 paymentInstructions:null；Claude 專用帳號登入後台，PaymentSummary 帶 method=CreditCard、instructions=null。原文保留供追溯。
+
+## 已撤包：BE-63　取號接線：取號通知路由、訂單帶取號資訊、409、後台付款摘要（第四十五波第 1 輪，2026-10-01；BE-67 撤包後才派）
 
 把 BE-62 的 Payment 能力接到 Host：`POST /v1/webhooks/ecpay/payment-info`（scope `webhook:ecpay:payment-info`）、`GET /v1/orders/{orderId}` 帶 `paymentInstructions`、`StatusFor` 精確比對三個碼對到 409、Admin `PaymentSummary` 帶 `method`／`instructions`。契約與 `docs/05` 已由 Leader 寫好。以 Release 為準。
 
@@ -82,16 +107,19 @@ Leader 要明講。
 ② 訂單詳情只在 `AwaitingPayment` 才查取號資訊、其他狀態一律 `null` 且不呼叫查詢、查詢失敗回 Problem；不動 `ToOrderAsync` 簽章與結帳／取消兩條 render 路徑；
 ③ `StatusFor` 只加 `payment.instructions-already-issued`、`payment.concurrent-update`、`ordering.concurrent-update` 的精確比對（`string.Equals`），用近似碼反例證明；不准送 `PaymentInfoURL` 或非信用卡 `ChoosePayment`（BE-66）。
 
-package: BE-63
-doc: docs/75-第四十五波BE-63取號接線派工書.md
-allow: src/Hosts/GreyGray.Api.Storefront/M1aEndpoints.cs
-allow: src/Hosts/GreyGray.Api.Admin/M1aEndpoints.cs
-allow: src/Platform/Http/BffHttp.cs
-allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
-allow: tests/GreyGray.Platform.Tests/
-allow: .dispatch/reports/BE-63.md
+(撤包) package: BE-63
+(撤包) doc: docs/75-第四十五波BE-63取號接線派工書.md
+(撤包) allow: src/Hosts/GreyGray.Api.Storefront/M1aEndpoints.cs
+(撤包) allow: src/Hosts/GreyGray.Api.Admin/M1aEndpoints.cs
+(撤包) allow: src/Platform/Http/BffHttp.cs
+(撤包) allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
+(撤包) allow: tests/GreyGray.Platform.Tests/
+(撤包) allow: .dispatch/reports/BE-63.md
 
 ---
+
+-->
+
 
 <!--
 ★ 2026-10-01 撤包：BE-62 驗收——範圍 23 檔全在 allow，0005／0008 各只改一行 CHECK；Leader 重建 Release 0 警告 0 錯誤、13 個測試執行檔共 545 條 0 失敗（Migrations 37、PaymentLedger 117）；dev 實測：install 清單變更觸發 0001～0024 整套重放成功，重放後 CHECK 含 5、部分唯一索引 (0,1,4,5)、11 個新欄位齊全；Release Host 走信用卡：ChoosePayment=Credit、偽造通知 422 且冪等表零寫入、真付款 Captured、method=0。取號真流程待 BE-63（路由）與 BE-66（模擬器）。原文保留供追溯。
