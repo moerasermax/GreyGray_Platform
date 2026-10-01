@@ -51,7 +51,10 @@ Leader 要明講。
 
 ---
 
-## FE-60　前端 mock 模式修復（#66）（第四十五波第 1 輪，2026-10-01）
+<!--
+★ 2026-10-01 撤包：FE-60 驗收——範圍 3 個既有檔＋測試＋報告全在 allow；Leader 重跑 typecheck exit 0、test api-client 52／storefront 655／admin 216；mock 走查（後端不起、NEXT_PUBLIC_USE_MOCK=1、頁面開在 127.0.0.1）：SSR 頁含 mock 商品名、server log 有 SSR server 已啟動且沒有 Attempted to call startMock()、瀏覽器 worker 已啟動、/v1 請求全由 Service Worker 回應、送往 127.0.0.1:500x 0 筆；mock ATM 訂單顯示取號卡；後台無 cookie 開 /orders 不被彈回、登入後停在儀表板。冷啟動第一次載入各有 1 筆 404，重量未重現。原文保留供追溯。
+
+## 已撤包：FE-60　前端 mock 模式修復（#66）（第四十五波第 1 輪，2026-10-01）
 
 讓 `NEXT_PUBLIC_USE_MOCK=1` 重新可用：mock 下 apiClient 用 handler 的網址、server 端不載入 `MockBootstrap`、後台 middleware 在 mock 下放行。正式 build（`=0`）行為不變。不准起 dev server、不准裝套件。
 
@@ -60,16 +63,19 @@ Leader 要明講。
 ② server 端（RSC 與 SSR）一律不載入 `MockBootstrap`，用 `vi.mock` 旗標測試證明；
 ③ 後台 middleware 只在 `NEXT_PUBLIC_USE_MOCK=1` 時放行，非 mock 行為一字不變；正式 bundle 用「動手前後的基準比對」證明沒有新增 mock 相依。
 
-package: FE-60
-doc: docs/74-第四十五波FE-60前端mock模式修復派工書.md
-allow: frontend/apps/storefront/app/_lib/apiClient.ts
-allow: frontend/apps/admin/app/_lib/apiClient.ts
-allow: frontend/apps/admin/middleware.ts
-allow: frontend/apps/storefront/app/_lib/__tests__/
-allow: frontend/apps/admin/app/_lib/__tests__/
-allow: .dispatch/reports/FE-60.md
+(撤包) package: FE-60
+(撤包) doc: docs/74-第四十五波FE-60前端mock模式修復派工書.md
+(撤包) allow: frontend/apps/storefront/app/_lib/apiClient.ts
+(撤包) allow: frontend/apps/admin/app/_lib/apiClient.ts
+(撤包) allow: frontend/apps/admin/middleware.ts
+(撤包) allow: frontend/apps/storefront/app/_lib/__tests__/
+(撤包) allow: frontend/apps/admin/app/_lib/__tests__/
+(撤包) allow: .dispatch/reports/FE-60.md
 
 ---
+
+-->
+
 
 <!--
 ★ 2026-10-01 撤包：FE-57 驗收——範圍 14 檔全在 allow；Leader 重跑 typecheck exit 0、test api-client 52／storefront 651／admin 209；真瀏覽器回歸（dev，舊 Debug 後端）：分類樹與「註冊→加購→超商取貨→模擬器付款→付款成功」主流程正常、0 頁面錯誤。取號畫面在正式站休眠，真畫面走查排到 BE-66 之後。原文保留供追溯。
