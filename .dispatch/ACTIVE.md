@@ -51,7 +51,10 @@ Leader 要明講。
 
 ---
 
-## 生效中：BE-62　Payment 已取號待繳費狀態＋取號資訊＋依付款方式送綠界（第四十四波第 1 輪，2026-10-01）
+<!--
+★ 2026-10-01 撤包：BE-62 驗收——範圍 23 檔全在 allow，0005／0008 各只改一行 CHECK；Leader 重建 Release 0 警告 0 錯誤、13 個測試執行檔共 545 條 0 失敗（Migrations 37、PaymentLedger 117）；dev 實測：install 清單變更觸發 0001～0024 整套重放成功，重放後 CHECK 含 5、部分唯一索引 (0,1,4,5)、11 個新欄位齊全；Release Host 走信用卡：ChoosePayment=Credit、偽造通知 422 且冪等表零寫入、真付款 Captured、method=0。取號真流程待 BE-63（路由）與 BE-66（模擬器）。原文保留供追溯。
+
+## 已撤包：BE-62　Payment 已取號待繳費狀態＋取號資訊＋依付款方式送綠界（第四十四波第 1 輪，2026-10-01）
 
 路線 B（ADR-044）的 Payment 模組那一段：`InstructionsIssued`、migration `0024`、單一 `ChoosePayment`＋`PaymentInfoURL`＋3 天期限、取號通知的服務方法、新事件 `PaymentInstructionsIssued`。**不碰 `src/Hosts/`**（路由、訂單回應、409、Admin 對應都是 BE-63）。以 Release 為準。
 
@@ -60,22 +63,24 @@ Leader 要明講。
 ② ATM 的 `ExpireDate` 只有日期 → 當天 23:59:59 台北時間；所有綠界時間都先取台北偏移再 `ToUniversalTime()`（#35）；取號通知與非即時付款不套 20 分鐘時間窗；
 ③ 部署每次重放全部 migration：`0005`／`0008` 那兩條 CHECK 要改成含 5（只准改那兩條），0024 只加新欄位、新 CHECK、重建部分唯一索引（`DROP INDEX` 要帶 `payment.`）；事件總數有兩支測試寫死 44（Contracts 與 Platform），都要改成 45。
 
-package: BE-62
-note: 修訂既有檔——`0005_m1a_payment_ledger.sql` 與 `0008_m1a_line_refund.sql` 已部署，正式機每次部署都會重放；只改 `payment_status_known`、`payment_refund_status_consistent` 兩條 CHECK 定義加入 5，否則下次部署重放時會用舊定義擋掉已取號的資料
-doc: docs/70-第四十四波BE-62付款已取號狀態派工書.md
-allow: src/Modules/Payment/
-allow: db/migrations/0024
-allow: db/migrations/0005_m1a_payment_ledger.sql
-allow: db/migrations/0008_m1a_line_refund.sql
-allow: ops/install-dev-environment.ps1
-allow: ops/verify-environment.ps1
-allow: tests/GreyGray.M1a.PaymentLedger.Tests/
-allow: tests/GreyGray.M1a.Migrations.Tests/
-allow: tests/GreyGray.Contracts.Tests/EventCatalogTests.cs
-allow: tests/GreyGray.Platform.Tests/EventTypeRegistryTests.cs
-allow: .dispatch/reports/BE-62.md
+(撤包) package: BE-62
+(撤包) note: 修訂既有檔——`0005_m1a_payment_ledger.sql` 與 `0008_m1a_line_refund.sql` 已部署，正式機每次部署都會重放；只改 `payment_status_known`、`payment_refund_status_consistent` 兩條 CHECK 定義加入 5，否則下次部署重放時會用舊定義擋掉已取號的資料
+(撤包) doc: docs/70-第四十四波BE-62付款已取號狀態派工書.md
+(撤包) allow: src/Modules/Payment/
+(撤包) allow: db/migrations/0024
+(撤包) allow: db/migrations/0005_m1a_payment_ledger.sql
+(撤包) allow: db/migrations/0008_m1a_line_refund.sql
+(撤包) allow: ops/install-dev-environment.ps1
+(撤包) allow: ops/verify-environment.ps1
+(撤包) allow: tests/GreyGray.M1a.PaymentLedger.Tests/
+(撤包) allow: tests/GreyGray.M1a.Migrations.Tests/
+(撤包) allow: tests/GreyGray.Contracts.Tests/EventCatalogTests.cs
+(撤包) allow: tests/GreyGray.Platform.Tests/EventTypeRegistryTests.cs
+(撤包) allow: .dispatch/reports/BE-62.md
 
 ---
+
+-->
 
 <!--
 ★ 2026-10-01 撤包：BE-61 驗收——Leader 重建 Release（0 警告 0 錯誤）並重跑七個測試執行檔共 366 條 0 失敗（PaymentLedger 91、CheckoutOrdering 143、Migrations 25、Architecture 28、IdentityCatalog 42、CustomerService 32、EndToEnd 5）；dev 端到端對照：舊版（Debug）送一次偽造通知後，舊 scope 留下 ABANDONED 列、真付款停在 Pending；新版（Release）偽造通知回 422 且冪等表零寫入，真付款走 webhook:ecpay:payment-result、key MerchantTradeNo:TradeNo:1、COMPLETED、Payment Captured；送往模擬器的表單 ChoosePayment=Credit。報告漏寫派工書 §1.2 第 6 點（InFlight 殘留的已知限制），已記在 03。原文保留供追溯。
