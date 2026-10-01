@@ -280,11 +280,12 @@ GET /v1/orders?cursor=0198c3d4e5f607189abc0123456789ab&limit=20
 | `POST` | `/v1/inquiries/{inquiryId}/reply` | M1b | LINE postback 打進來的漲價回覆 |
 | `POST` | `/v1/support/tickets` | M1a | 客服留言（**匿名可打**，ADR-040）。email 或手機至少一個；防灌超過回 429 |
 | `POST` | `/v1/webhooks/ecpay` | M1a | 綠界付款結果通知。**不是給前端的**，先驗簽、再以 `MerchantTradeNo`＋`TradeNo`＋`RtnCode` 去重（ADR-044） |
+| `POST` | `/v1/webhooks/ecpay/payment-info` | M1a | 綠界取號通知（ATM／超商代碼／條碼）。**不是給前端的**，先驗簽、再去重，scope `webhook:ecpay:payment-info`（ADR-044；第四十五波 BE-63 加路由） |
 
 ### Admin（:5001）
 
 一行一個端點，**與 `openapi.admin.yaml` 逐條對應**（合併寫法會讓兩邊對不起來，
-也沒辦法用腳本檢查）。`角色` 是該端點要求的最低角色；`里程碑` 是 live OpenAPI
+也沒辦法用腳本檢查）。`角色` 是該端點要求的最低角色（寫成「A／B」表示任一即可，Owner 一律可）；`里程碑` 是 live OpenAPI
 coverage gate 的唯一過濾來源，不再從 description 猜。
 
 | 方法 | 路徑 | 角色 | 里程碑 | 說明 |
@@ -318,6 +319,7 @@ coverage gate 的唯一過濾來源，不再從 description 猜。
 | `POST` | `/v1/orders/{orderId}/cancel` | Operator | M1a | 取消整張訂單並退款 |
 | `POST` | `/v1/orders/{orderId}/lines/{lineId}/cancel` | Operator | M1a | 取消單一品項並退款 |
 | `POST` | `/v1/orders/{orderId}/lines/{lineId}/refund-shortfall` | Operator | M1b | 部分買到的短缺數量退款（第十五波 BE-31 加，ADR-026） |
+| `POST` | `/v1/orders/{orderId}/payments/{paymentId}/manual-refunds` | Operator／Accountant | M1b | 登記非信用卡人工退款（可分次、只追加；第四十五波定契約、BE-65 實作，實作的同一個 commit 改成 M1a；ADR-044） |
 | `GET` | `/v1/campaigns/{campaignId}/purchase-items` | Operator | M1b | 該團的採購清單 |
 | `POST` | `/v1/purchase-items/{purchaseItemId}/purchased` | Operator | M1b | 標記買到 |
 | `POST` | `/v1/purchase-items/{purchaseItemId}/unavailable` | Operator | M1b | 標記缺貨 |
@@ -379,3 +381,4 @@ coverage gate 的唯一過濾來源，不再從 description 猜。
 | 2026-09-30 | 商品分類固定兩層：admin `CategoryInput`（連帶 `Category`）與 storefront `Category` 新增選填 `parentId`（`Id \| null`）；storefront `GET /v1/products` 新增選填 `includeDescendants`（預設 `false`）；admin `POST /v1/categories`、`PATCH /v1/categories/{categoryId}` 補列 `422`，新增 `catalog.invalid-parent-category`、`catalog.category-depth-exceeded`；**storefront `GET /v1/categories` 的發布條件改成「自己或任一直接子分類有可售商品」** | ADR-041（第四十二波 BE-58；前端 FE-54 接線） | 欄位與參數**純新增**；PATCH 是既有的整筆取代語意，舊客戶端不送 `parentId` 就是根分類。**唯一的語意變更是分類清單的發布條件**（ADR-041 明列為 ADR-032「只准純新增」的例外；回應只會變成原本的超集，不算 §1 的破壞性變更，不開 `/v2`）：平面分類行為不變，只有「有子分類的父分類」會多列出來，而後台在 FE-54 之前沒有設定上層分類的入口。`pnpm api:generate` 由 FE-54 跑 |
 | 2026-09-30 | `POST /v1/webhooks/ecpay` 的描述補「先驗簽、再去重；驗簽失敗 `422`、冪等表零寫入；scope 依事件類型分開」（operation 不變；本節補記 e60a914 那次的說明文字修改） | ADR-044（第四十三波 BE-61，#64） | 無：只改說明，實作同步改成先驗簽 |
 | 2026-10-01 | 純新增：兩份 yaml 新增 `PaymentMethod`、`PaymentInstructions`；`PaymentStatus` 新增 `InstructionsIssued`；storefront `Order` 新增選填 `paymentInstructions`（可為 `null`），`paymentDueAt` 說明補「取號後改成綠界期限」；`POST /v1/orders/{orderId}/payment` 的 `409` 新增 `payment.instructions-already-issued`；admin `PaymentSummary` 新增選填 `method`、`instructions`。webhook 去重鍵說明改成 `MerchantTradeNo`＋`TradeNo`＋`RtnCode` | ADR-044（第四十四波，路線 B） | 前端重新 `api:generate`；新列舉值前端必須容忍（§6）。取號通知端點 `POST /v1/webhooks/ecpay/payment-info` 於 BE-63 有路由時再加列 |
+| 2026-10-01 | 純新增（第四十五波）：storefront 新增 `POST /v1/webhooks/ecpay/payment-info`（綠界取號通知）；`Order` 新增選填 `paymentOverdue`、`cancelledAt`、`cancellationSource`，新增 schema `OrderCancellationSource`；`POST /v1/orders/{orderId}/payment` 新增 `422 ordering.payment-overdue`；`POST /v1/orders/{orderId}/cancel` 新增 `409 ordering.concurrent-update`。admin 新增 `POST /v1/orders/{orderId}/payments/{paymentId}/manual-refunds`（登記人工退款，可分次）；`PaymentSummary` 新增選填 `manualRefund`；新增 schema `ManualRefund`／`ManualRefundEntry`／`ManualRefundStatus`／`OrderCancellationSource`；`AdminOrder` 新增選填 `paymentDueAt`、`cancellationSource`；`x-required-role` 首次使用陣列（任一角色即可，Owner 一律可；檔頭定義同步改寫）；人工退款的 `Completed` 不是終態 | ADR-044（第四十五波補記；使用者 2026-10-01 拍板） | 前端重新 `api:generate`；取號通知路由由 BE-63 加（加之前 `check-openapi` 會報 live 缺少 M1a，預期的時間差）；人工退款端點 BE-65（第四十六波）實作前標 M1b、呼叫回 `404`，FE-58 先用 mock；新列舉值前端必須容忍（§6）；全部欄位選填、舊用戶端不受影響 |

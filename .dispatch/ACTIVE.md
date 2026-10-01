@@ -51,6 +51,26 @@ Leader 要明講。
 
 ---
 
+## FE-60　前端 mock 模式修復（#66）（第四十五波第 1 輪，2026-10-01）
+
+讓 `NEXT_PUBLIC_USE_MOCK=1` 重新可用：mock 下 apiClient 用 handler 的網址、server 端不載入 `MockBootstrap`、後台 middleware 在 mock 下放行。正式 build（`=0`）行為不變。不准起 dev server、不准裝套件。
+
+★★ 最容易做錯的三件事：
+① mock 網址用字面值並從 apiClient 匯出，不准 import handler 檔（會把 msw 打進正式 bundle），兩處相等用測試鎖住；
+② server 端（RSC 與 SSR）一律不載入 `MockBootstrap`，用 `vi.mock` 旗標測試證明；
+③ 後台 middleware 只在 `NEXT_PUBLIC_USE_MOCK=1` 時放行，非 mock 行為一字不變；正式 bundle 用「動手前後的基準比對」證明沒有新增 mock 相依。
+
+package: FE-60
+doc: docs/74-第四十五波FE-60前端mock模式修復派工書.md
+allow: frontend/apps/storefront/app/_lib/apiClient.ts
+allow: frontend/apps/admin/app/_lib/apiClient.ts
+allow: frontend/apps/admin/middleware.ts
+allow: frontend/apps/storefront/app/_lib/__tests__/
+allow: frontend/apps/admin/app/_lib/__tests__/
+allow: .dispatch/reports/FE-60.md
+
+---
+
 <!--
 ★ 2026-10-01 撤包：FE-57 驗收——範圍 14 檔全在 allow；Leader 重跑 typecheck exit 0、test api-client 52／storefront 651／admin 209；真瀏覽器回歸（dev，舊 Debug 後端）：分類樹與「註冊→加購→超商取貨→模擬器付款→付款成功」主流程正常、0 頁面錯誤。取號畫面在正式站休眠，真畫面走查排到 BE-66 之後。原文保留供追溯。
 

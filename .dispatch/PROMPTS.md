@@ -1,5 +1,41 @@
 # 啟動 prompt
 
+## BE-67 dev 員工種子腳本可指定密碼輸出位置（第四十五波第 1 輪，後端樹，2026-10-01）
+
+```text
+GG_PACKAGE=BE-67
+你是唯一實作者（Codex gpt-5.6-sol medium），不開子代理。專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform（後端樹）。
+開工前讀：AGENTS.md（六條鐵則）、.dispatch/ACTIVE.md 的 BE-67、docs/73-第四十五波BE-67開發員工種子密碼輸出位置派工書.md（整份）、.dispatch/reports/README.md。派工書以 ACTIVE 的 doc: 為準。
+只准寫 BE-67 的 allow（兩條）；不准改 src/、tests/、docs/、ops/ 其他檔（含 ops/lib/Secrets.ps1、ops/seed/）。
+最容易做錯的三件事：① 沒給 -CredentialsDir 時傳給工具的 --secrets-dir 必須和現在完全一樣；② repo 內路徑要在讀 secrets、設環境變數、dotnet run 之前就 throw，而且不准先建目錄；③ 檔案維持 UTF-8 無 BOM、原換行格式，不准改 src/Tools（正式機建 Owner 也用同一支工具）。
+dev 資料庫是停的，不准啟停任何 dev 服務；除了 T3 不准實跑這支腳本，需要資料庫的實跑由 Leader 驗收時做。ops/self-test.ps1 用 Windows PowerShell 5.1 與 pwsh 各跑一趟；T3 用不存在的 -InstallRoot 實跑四種 repo 內路徑，輸出必須是 repo 拒絕訊息、每次 Test-Path 為 False。本包不用跑 check-openapi（它目前會報取號通知 live 缺少 M1a，是已知時間差，不准處理）。
+先列目標，備份要改的既有檔（TEMP 底下 GUID 目錄）。不安裝、不 commit、不改閘門。報告 .dispatch/reports/BE-67.md，三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」，逐條自驗以派工書 §1 與 §3 T1～T5 為準。預算：工具 40／讀 15／搜 10／改 2 檔／測修 2 輪，達限回報。stop gate 如提示既有 dirty（.dispatch/PROMPTS.md.bak-20260921-211728），只回報不還原，最後重述本包交付證據。
+```
+
+## BE-63 取號接線：取號通知路由、訂單帶取號資訊、409、後台付款摘要（第四十五波第 1 輪，後端樹，2026-10-01）
+
+```text
+GG_PACKAGE=BE-63
+你是唯一實作者（Codex gpt-5.6-sol high），不開子代理。專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform（後端樹）。
+開工前讀：AGENTS.md（六條鐵則）、.dispatch/ACTIVE.md 的 BE-63、docs/75-第四十五波BE-63取號接線派工書.md（整份）、docs/00-decisions.md 的 ADR-044（含 2026-10-01 補記）、.dispatch/reports/BE-62.md、.dispatch/reports/README.md。派工書以 ACTIVE 的 doc: 為準。
+只准寫 BE-63 的 allow（六條）；不准改 docs/、src/Modules/、src/Hosts/GreyGray.Worker/、db/、ops/、其他測試專案。契約 Leader 已寫好，不准改。
+最容易做錯的三件事：① 取號通知路由的處理順序、key、hash、冪等五種結果全部照付款結果路由，只換 scope（webhook:ecpay:payment-info）與服務方法；付款結果路由的既有測試 W1～W10、D1 一條斷言都不准改；② 訂單詳情只在 AwaitingPayment 才查取號資訊，其他狀態一律 null 且不呼叫查詢，查詢失敗回 Problem；不動 ToOrderAsync 的簽章與結帳／取消兩條 render 路徑；③ StatusFor 只加三個碼的精確比對（string.Equals）→ 409：payment.instructions-already-issued、payment.concurrent-update、ordering.concurrent-update，既有規則一條都不改，用近似碼的反例測試證明；不准送 PaymentInfoURL 或非信用卡 ChoosePayment（BE-66）。
+以 Release 為準；Docker Desktop 要開著，沒開就停下來回報。dev 環境由 Leader 管，不准啟停。動手前先 Release 建置並跑 tests 底下全部 13 個測試執行檔（tests\<專案>\bin\Release\net10.0\<專案>.exe）記下現況，改完前景跑完（不要用 dotnet test、不要掛背景就結束），再跑 ops/check-openapi.ps1（派工前它會報取號通知 live 缺少 M1a，那是預期的時間差；你加路由後必須全綠），報告前→後。
+先列目標，備份要改的既有檔（TEMP 底下 GUID 目錄）。不安裝、不 commit、不 push、不部署、不改閘門。報告 .dispatch/reports/BE-63.md，三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」，逐條自驗以派工書 §1 與 §3 為準。預算：工具 150／讀 60／搜 30／改 20 檔／測修 2 輪，達限回報。stop gate 如提示既有 dirty（.dispatch/PROMPTS.md.bak-20260921-211728），只回報不還原，最後重述本包交付證據。
+```
+
+## FE-60 前端 mock 模式修復（#66）（第四十五波第 1 輪，前端樹，2026-10-01）
+
+```text
+GG_PACKAGE=FE-60
+你是唯一實作者（Codex gpt-5.6-sol medium），不開子代理。專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe（前端樹）。
+開工前讀：AGENTS.md、.dispatch/ACTIVE.md 的 FE-60、docs/74-第四十五波FE-60前端mock模式修復派工書.md（整份）、.dispatch/reports/README.md。派工書以 ACTIVE 的 doc: 為準。
+只准寫 FE-60 的 allow（六條）；不准改 docs/、packages/（含 handler 與 fixtures）、.env*、instrumentation.ts、_mock/、任何頁面。
+最容易做錯的三件事：① mock 網址用字面值，不准 import handler 檔（會把 msw 打進正式 bundle），兩處字面值相等用測試鎖住；② server 端（RSC 與 SSR）一律不載入 MockBootstrap；③ 後台 middleware 只在 NEXT_PUBLIC_USE_MOCK=1 時放行，非 mock 行為一字不變，用測試鎖住「非 mock 沒 cookie 一定導 /login」。
+vitest 是 node 環境、沒有 jsdom；環境變數寫全名、afterEach vi.unstubAllEnvs、stubEnv 後 resetModules 再動態 import。T6 是基準比對：動手前先用 HEAD build 兩個 app 記下清單，改完再比。前景跑 pnpm typecheck、pnpm test（全部套件）、兩個 app 的 build（跑前確認 5002、5003 沒有 dev server，有就停下來回報；admin build 以 0xC0000409／ENOENT／ENOTEMPTY 失敗就同參數重跑一次，第二次仍失敗才停），報告前→後條數，最多兩輪修正。不准起 dev server、不安裝套件。
+先列目標，備份要改的既有檔（TEMP 底下 GUID 目錄）。不 commit、不改閘門。報告 .dispatch/reports/FE-60.md，三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」，逐條自驗以派工書 §1 與 §3 T1～T7 為準，並附給 Leader 的 mock 走查步驟。預算：工具 80／讀 30／搜 15／改 6 檔／測修 2 輪，達限回報。stop gate 如提示既有 dirty（兩個 .bak 檔），只回報不還原，最後重述本包交付證據。
+```
+
 ## BE-62 Payment 已取號待繳費狀態＋取號資訊（第四十四波第 1 輪，後端樹，2026-10-01）
 
 ```text
