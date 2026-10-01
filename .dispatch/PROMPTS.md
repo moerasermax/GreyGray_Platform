@@ -1,5 +1,17 @@
 # 啟動 prompt
 
+## BE-64 Ordering 繳費期限與逾期取消（第四十五波第 2 輪，後端樹，2026-10-01）
+
+```text
+GG_PACKAGE=BE-64
+你是唯一實作者（Codex gpt-5.6-sol high），不開子代理。專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform（後端樹）。
+開工前讀：AGENTS.md（六條鐵則）、.dispatch/ACTIVE.md 的 BE-64、docs/77-第四十五波BE-64繳費期限與逾期取消派工書.md（整份）、docs/72-第四十五波計畫書.md 第五節、docs/00-decisions.md 的 ADR-044（含 2026-10-01 補記）、docs/02-事件與狀態機.md §4、.dispatch/reports/BE-63.md、.dispatch/reports/README.md。派工書以 ACTIVE 的 doc: 為準。
+只准寫 BE-64 的 allow（八條）；不准改 docs/、src/Hosts/、src/Platform/、其他模組（含 Payment）、tests/GreyGray.Architecture.Tests/ 與其他測試專案；不准動 IOrderingApplication 的方法清單。
+最容易做錯的三件事：① 計時器只排新的、不取消舊的（不准呼叫 CancelAllForSagaAsync／CancelAsync），舊計時器觸發時靠「now < PaymentAutoCancelAt → no-op」擋掉；逾期 handler 業務 no-op 不丟例外、樂觀鎖衝突往上拋；PaymentInstructionsIssued 的 handler 一定用 AddIdempotentIntegrationEventHandler 登記；② 0025 用單一 UPDATE … RETURNING 接 INSERT INTO platform.saga_timer（沒有 JOIN）、saga_id 用 replace(id::text,'-','')、fire_at 至少 migration 時間＋1 小時、可重放兩次；Migrations 測試的時間斷言用套用前先取的 t0；③ 取消後才入帳金額仍須等於 GrandTotal、只發一筆 RefundRequested（金額＝PaidAmount）、不發 OrderPaid／OrderReadyToShip；Order 加 xmin 而且只改品項的操作也要讓父 Order 參與版本檢查；設定用選填參數、null＝預設，不准 TimeSpan x = default。
+以 Release 為準；Docker Desktop 要開著，沒開就停下來回報。dev 環境由 Leader 管，不准啟停。動手前先 Release 建置並跑 tests 底下全部 13 個測試執行檔（tests\<專案>\bin\Release\net10.0\<專案>.exe）記下現況，改完前景跑完（不要用 dotnet test、不要掛背景就結束），再跑 ops/check-openapi.ps1，報告前→後；B1 每一條既有斷言的修改逐條寫「舊斷言 → 新斷言 → 依據」。
+先列目標，備份要改的既有檔（TEMP 底下 GUID 目錄）。不安裝、不 commit、不 push、不部署、不改閘門。報告 .dispatch/reports/BE-64.md，三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」，逐條自驗以派工書 §1 與 §3 為準。預算：工具 180／讀 70／搜 35／改 30 檔／測修 2 輪，達限回報。stop gate 如提示既有 dirty（.dispatch/PROMPTS.md.bak-20260921-211728），只回報不還原，最後重述本包交付證據。
+```
+
 ## FE-61 前台取消說明與確認中（mock）（第四十五波第 3 輪，前端樹，2026-10-01）
 
 ```text
