@@ -168,6 +168,36 @@ public sealed class WireFormatTests
         json.ShouldContain("\"aggregateId\":\"0198c3d4111170008000000000000002\"");
     }
 
+    [Fact(DisplayName = "OrderCancelled Source 是選填字串；舊事件沒有欄位仍可讀成 null")]
+    public void Order_cancelled_source_is_backward_compatible()
+    {
+        var current = new OrderCancelled(
+            Guid.Parse("0198c3d4-0000-7000-8000-000000000001"),
+            new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero),
+            TenantId.Default,
+            new OrderId(Guid.Parse("0198c3d4-1111-7000-8000-000000000002")),
+            "逾期未付款，系統自動取消",
+            Money.Zero(Currency.TWD),
+            RefundDestination.OriginalPaymentMethod)
+        {
+            Source = OrderCancellationSource.PaymentExpired,
+        };
+        var json = JsonSerializer.Serialize(current, Options);
+        json.ShouldContain("\"source\":\"PaymentExpired\"");
+
+        var oldJson = JsonSerializer.Serialize(current with { Source = null }, Options);
+        using var document = JsonDocument.Parse(oldJson);
+        var withoutSource = document.RootElement.EnumerateObject()
+            .Where(property => property.Name != "source")
+            .ToDictionary(property => property.Name, property => property.Value.Clone());
+        var restored = JsonSerializer.Deserialize<OrderCancelled>(
+            JsonSerializer.Serialize(withoutSource, Options),
+            Options);
+
+        restored.ShouldNotBeNull();
+        restored.Source.ShouldBeNull();
+    }
+
     private static OrderPlaced SampleOrderPlaced() => new(
         EventId: Guid.Parse("0198c3d4-0000-7000-8000-000000000001"),
         OccurredAt: new DateTimeOffset(2026, 8, 28, 14, 30, 0, TimeSpan.FromHours(8)),

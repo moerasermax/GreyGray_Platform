@@ -6,6 +6,7 @@ using GreyGray.Modules.Identity.Contracts;
 using GreyGray.Modules.Ordering.Contracts;
 using GreyGray.Modules.Ordering.Core;
 using GreyGray.Modules.Ordering.Infra;
+using GreyGray.Modules.Payment.Contracts;
 using GreyGray.Modules.Pricing.Contracts;
 using GreyGray.Platform.Abstractions.Saga;
 using GreyGray.Platform.Messaging;
@@ -46,6 +47,167 @@ public sealed class OrderingTests
         fixture.Publisher.Published.Count.ShouldBe(2);
         fixture.Publisher.Published[0].ShouldBeOfType<OrderPlaced>();
         fixture.Publisher.Published[1].ShouldBeOfType<PaymentRequested>();
+    }
+
+    [Fact(DisplayName = "BE-64 D1：建單期限預設 24 小時並排 ordering.payment-due timer")]
+    public async Task Checkout_sets_default_payment_deadline_and_schedules_timer()
+    {
+        var fixture = new OrderingFixture();
+
+        var created = await fixture.Service.CreateFromCheckoutAsync(
+            fixture.Checkout,
+            TestContext.Current.CancellationToken);
+
+        created.Value.PaymentDueAt.ShouldBe(Now + TimeSpan.FromHours(24));
+        var timer = fixture.TimerScheduler.Scheduled
+            .Where(candidate => candidate.SagaType == OrderingApplicationService.PaymentDueSagaType)
+            .ShouldHaveSingleItem();
+        timer.SagaId.ShouldBe(created.Value.Id.ToString());
+        timer.SagaId.ShouldBe(created.Value.Id.Value.ToString("N"));
+        timer.FireAt.ShouldBe(created.Value.PaymentDueAt!.Value);
+    }
+
+    [Fact(DisplayName = "BE-64 D2/D3：非卡取號延後期限，舊 timer no-op，新 timer 到期只取消一次")]
+    public async Task Non_card_instructions_reschedule_without_cancelling_old_timer()
+    {
+        var fixture = new OrderingFixture();
+        var created = await fixture.Service.CreateFromCheckoutAsync(
+            fixture.Checkout,
+            TestContext.Current.CancellationToken);
+        var originalTimer = fixture.TimerScheduler.Scheduled
+            .Single(candidate => candidate.SagaType == OrderingApplicationService.PaymentDueSagaType);
+        var providerExpiry = Now + TimeSpan.FromHours(48);
+
+        var transition = await fixture.Service.RecordPaymentInstructionsIssuedAsync(
+            new PaymentInstructionsIssued(
+                Guid.CreateVersion7(),
+                Now,
+                TenantId.Default,
+                PaymentId.New(),
+                created.Value.Id,
+                PaymentMethod.Atm,
+                providerExpiry),
+            TestContext.Current.CancellationToken);
+
+        transition.ShouldBe(PaymentInstructionsTransition.Rescheduled);
+        var detail = await fixture.Service.GetAdminAsync(
+            created.Value.Id,
+            TestContext.Current.CancellationToken);
+        detail.Value.PaymentDueAt.ShouldBe(providerExpiry);
+        var paymentTimers = fixture.TimerScheduler.Scheduled
+            .Where(candidate => candidate.SagaType == OrderingApplicationService.PaymentDueSagaType)
+            .ToArray();
+        paymentTimers.Length.ShouldBe(2, "取號只追加新 timer，不取消舊 timer。");
+        paymentTimers[1].FireAt.ShouldBe(providerExpiry + TimeSpan.FromDays(2));
+        fixture.TimerScheduler.CancelCalls.ShouldBe(0);
+        fixture.TimerScheduler.CancelAllForSagaCalls.ShouldBe(0);
+
+        fixture.Publisher.Reset();
+        fixture.Clock.UtcNow = originalTimer.FireAt;
+        await fixture.Service.ResolvePaymentDueTimeoutAsync(
+            created.Value.Id,
+            TestContext.Current.CancellationToken);
+        (await fixture.Service.GetAdminAsync(
+            created.Value.Id,
+            TestContext.Current.CancellationToken)).Value.Status.ShouldBe(OrderStatus.AwaitingPayment);
+
+        fixture.Clock.UtcNow = paymentTimers[1].FireAt;
+        await fixture.Service.ResolvePaymentDueTimeoutAsync(
+            created.Value.Id,
+            TestContext.Current.CancellationToken);
+        await fixture.Service.ResolvePaymentDueTimeoutAsync(
+            created.Value.Id,
+            TestContext.Current.CancellationToken);
+
+        var cancelled = (await fixture.Service.GetAdminAsync(
+            created.Value.Id,
+            TestContext.Current.CancellationToken)).Value;
+        cancelled.Status.ShouldBe(OrderStatus.Cancelled);
+        cancelled.CancellationSource.ShouldBe(OrderCancellationSource.PaymentExpired);
+        cancelled.CancellationReason.ShouldBe("逾期未付款，系統自動取消");
+        var cancelledEvent = fixture.Publisher.Published.OfType<OrderCancelled>().ShouldHaveSingleItem();
+        cancelledEvent.Source.ShouldBe(OrderCancellationSource.PaymentExpired);
+        fixture.Publisher.Published.OfType<RefundRequested>().ShouldBeEmpty();
+    }
+
+    [Fact(DisplayName = "BE-64 D2/D3：信用卡、非待付款、孤兒與未到期皆安靜 no-op")]
+    public async Task Irrelevant_payment_instructions_and_timeouts_are_silent_noops()
+    {
+        var fixture = new OrderingFixture();
+        var created = await fixture.Service.CreateFromCheckoutAsync(
+            fixture.Checkout,
+            TestContext.Current.CancellationToken);
+        var initialTimerCount = fixture.TimerScheduler.Scheduled.Count;
+        var expiresAt = Now + TimeSpan.FromHours(3);
+
+        (await fixture.Service.RecordPaymentInstructionsIssuedAsync(
+            new PaymentInstructionsIssued(
+                Guid.CreateVersion7(), Now, TenantId.Default, PaymentId.New(), created.Value.Id,
+                PaymentMethod.CreditCard, expiresAt),
+            TestContext.Current.CancellationToken)).ShouldBe(PaymentInstructionsTransition.Ignored);
+        await fixture.Service.RecordPaymentCapturedAsync(
+            created.Value.Id,
+            created.Value.GrandTotal,
+            TestContext.Current.CancellationToken);
+        (await fixture.Service.RecordPaymentInstructionsIssuedAsync(
+            new PaymentInstructionsIssued(
+                Guid.CreateVersion7(), Now, TenantId.Default, PaymentId.New(), created.Value.Id,
+                PaymentMethod.Atm, expiresAt),
+            TestContext.Current.CancellationToken)).ShouldBe(PaymentInstructionsTransition.Ignored);
+        (await fixture.Service.RecordPaymentInstructionsIssuedAsync(
+            new PaymentInstructionsIssued(
+                Guid.CreateVersion7(), Now, TenantId.Default, PaymentId.New(), OrderId.New(),
+                PaymentMethod.Atm, expiresAt),
+            TestContext.Current.CancellationToken)).ShouldBe(PaymentInstructionsTransition.OrderNotFound);
+        fixture.TimerScheduler.Scheduled.Count.ShouldBe(initialTimerCount);
+
+        fixture.Publisher.Reset();
+        await Should.NotThrowAsync(() => fixture.Service.ResolvePaymentDueTimeoutAsync(
+            OrderId.New(),
+            TestContext.Current.CancellationToken));
+        await Should.NotThrowAsync(() => fixture.Service.ResolvePaymentDueTimeoutAsync(
+            created.Value.Id,
+            TestContext.Current.CancellationToken));
+        fixture.Publisher.Published.ShouldBeEmpty();
+    }
+
+    [Fact(DisplayName = "BE-64 D4：取消後入帳只發一筆 PaidAmount 原路退款，不發已付款或待出貨")]
+    public async Task Capture_after_cancellation_only_requests_refund()
+    {
+        var fixture = new OrderingFixture();
+        var created = await fixture.Service.CreateFromCheckoutAsync(
+            fixture.Checkout,
+            TestContext.Current.CancellationToken);
+        await fixture.Service.CancelCustomerAsync(
+            fixture.CustomerId,
+            created.Value.Id,
+            "改變心意",
+            TestContext.Current.CancellationToken);
+        fixture.Publisher.Reset();
+
+        var wrongAmount = await fixture.Service.RecordPaymentCapturedAsync(
+            created.Value.Id,
+            new Money(created.Value.GrandTotal.AmountMinor - 1, created.Value.GrandTotal.Currency),
+            TestContext.Current.CancellationToken);
+        wrongAmount.IsFailure.ShouldBeTrue();
+
+        var captured = await fixture.Service.RecordPaymentCapturedAsync(
+            created.Value.Id,
+            created.Value.GrandTotal,
+            TestContext.Current.CancellationToken);
+
+        captured.IsSuccess.ShouldBeTrue();
+        var detail = (await fixture.Service.GetAdminAsync(
+            created.Value.Id,
+            TestContext.Current.CancellationToken)).Value;
+        detail.Status.ShouldBe(OrderStatus.Cancelled);
+        detail.PaidAmount.ShouldBe(created.Value.GrandTotal);
+        var refund = fixture.Publisher.Published.ShouldHaveSingleItem()
+            .ShouldBeOfType<RefundRequested>();
+        refund.Amount.ShouldBe(detail.PaidAmount!.Value);
+        refund.Destination.ShouldBe(RefundDestination.OriginalPaymentMethod);
+        fixture.Publisher.Published.OfType<OrderPaid>().ShouldBeEmpty();
+        fixture.Publisher.Published.OfType<OrderReadyToShip>().ShouldBeEmpty();
     }
 
     [Fact(DisplayName = "舊 CheckoutCompleted.v1 JSON 經事件登錄與真的 handler 建單，新門市欄位為 null")]
@@ -127,6 +289,7 @@ public sealed class OrderingTests
 
         cancelled.IsSuccess.ShouldBeTrue();
         cancelled.Value.Status.ShouldBe(OrderStatus.Cancelled);
+        cancelled.Value.CancellationSource.ShouldBe(OrderCancellationSource.Customer);
         fixture.Publisher.Published.ShouldHaveSingleItem()
             .ShouldBeOfType<OrderCancelled>();
         fixture.Publisher.Published.OfType<RefundRequested>().ShouldBeEmpty();
@@ -172,6 +335,7 @@ public sealed class OrderingTests
 
         cancelled.IsSuccess.ShouldBeTrue();
         cancelled.Value.Status.ShouldBe(OrderStatus.Cancelled);
+        cancelled.Value.CancellationSource.ShouldBe(OrderCancellationSource.Staff);
         fixture.Publisher.Published.Count.ShouldBe(2);
         var cancelledEvent = fixture.Publisher.Published.OfType<OrderCancelled>().Single();
         cancelledEvent.RefundAmount.ShouldBe(created.Value.GrandTotal);
@@ -333,7 +497,9 @@ public sealed class OrderingTests
             order.Id,
             TestContext.Current.CancellationToken);
         afterDelivery.Value.Status.ShouldBe(OrderStatus.Shipped);
-        var timer = fixture.TimerScheduler.Scheduled.ShouldHaveSingleItem();
+        var timer = fixture.TimerScheduler.Scheduled
+            .Where(candidate => candidate.SagaType == OrderingApplicationService.AppraisalSagaType)
+            .ShouldHaveSingleItem();
         timer.SagaType.ShouldBe("ordering.appraisal-period");
         timer.SagaId.ShouldBe(order.Id.ToString());
         timer.FireAt.ShouldBe(fixture.Clock.UtcNow + fixture.AppraisalPeriod);
@@ -368,7 +534,9 @@ public sealed class OrderingTests
             TestContext.Current.CancellationToken);
 
         firstDelivery.IsSuccess.ShouldBeTrue();
-        fixture.TimerScheduler.Scheduled.ShouldBeEmpty();
+        fixture.TimerScheduler.Scheduled
+            .Where(candidate => candidate.SagaType == OrderingApplicationService.AppraisalSagaType)
+            .ShouldBeEmpty();
         fixture.UnitOfWork.Saves.ShouldBe(0);
         var stillReadyToShip = await fixture.Service.GetAdminAsync(
             order.Id,
@@ -384,7 +552,9 @@ public sealed class OrderingTests
             TestContext.Current.CancellationToken);
 
         secondDelivery.IsSuccess.ShouldBeTrue();
-        fixture.TimerScheduler.Scheduled.ShouldHaveSingleItem();
+        fixture.TimerScheduler.Scheduled
+            .Where(candidate => candidate.SagaType == OrderingApplicationService.AppraisalSagaType)
+            .ShouldHaveSingleItem();
         var nowShipped = await fixture.Service.GetAdminAsync(
             order.Id,
             TestContext.Current.CancellationToken);
@@ -400,7 +570,8 @@ public sealed class OrderingTests
         await fixture.Service.RecordShipmentDeliveredAsync(
             [order.Id],
             TestContext.Current.CancellationToken);
-        var timer = fixture.TimerScheduler.Scheduled.Single();
+        var timer = fixture.TimerScheduler.Scheduled
+            .Single(candidate => candidate.SagaType == OrderingApplicationService.AppraisalSagaType);
 
         var cancelled = await fixture.Service.CancelAdminAsync(
             order.Id,
@@ -513,7 +684,9 @@ public sealed class OrderingTests
         await fixture.Service.RecordShipmentDeliveredAsync(
             [order.Id],
             TestContext.Current.CancellationToken);
-        var timer = fixture.TimerScheduler.Scheduled.ShouldHaveSingleItem();
+        var timer = fixture.TimerScheduler.Scheduled
+            .Where(candidate => candidate.SagaType == OrderingApplicationService.AppraisalSagaType)
+            .ShouldHaveSingleItem();
 
         fixture.Clock.UtcNow = timer.FireAt;
         await fixture.Service.ResolveAppraisalTimeoutAsync(
@@ -689,6 +862,10 @@ internal sealed class RecordingSagaTimerScheduler : ISagaTimerScheduler
 {
     public List<(string SagaType, string SagaId, DateTimeOffset FireAt)> Scheduled { get; } = [];
 
+    public int CancelCalls { get; private set; }
+
+    public int CancelAllForSagaCalls { get; private set; }
+
     public Task<Guid> ScheduleAsync(
         string sagaType,
         string sagaId,
@@ -701,10 +878,18 @@ internal sealed class RecordingSagaTimerScheduler : ISagaTimerScheduler
         return Task.FromResult(Guid.CreateVersion7());
     }
 
-    public Task CancelAsync(Guid timerId, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task CancelAsync(Guid timerId, CancellationToken cancellationToken)
+    {
+        CancelCalls++;
+        return Task.CompletedTask;
+    }
 
     public Task CancelAllForSagaAsync(
         string sagaType,
         string sagaId,
-        CancellationToken cancellationToken) => Task.CompletedTask;
+        CancellationToken cancellationToken)
+    {
+        CancelAllForSagaCalls++;
+        return Task.CompletedTask;
+    }
 }

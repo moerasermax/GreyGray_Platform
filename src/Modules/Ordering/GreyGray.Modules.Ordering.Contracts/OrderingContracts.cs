@@ -110,6 +110,14 @@ public enum RefundDestination
     StoredValue = 2,
 }
 
+/// <summary>整張訂單的取消來源；原因文字仍只作內部備註。</summary>
+public enum OrderCancellationSource
+{
+    Customer = 1,
+    Staff = 2,
+    PaymentExpired = 3,
+}
+
 // ── DTO ──────────────────────────────────────────────────────────────────
 
 public sealed record OrderLineView(
@@ -182,6 +190,10 @@ public sealed record OrderView(
     public Money? PaidAmount { get; init; }
 
     public DateTimeOffset? PaymentDueAt { get; init; }
+
+    public DateTimeOffset? CancelledAt { get; init; }
+
+    public OrderCancellationSource? CancellationSource { get; init; }
 
     public string? CancellationReason { get; init; }
 
@@ -419,6 +431,8 @@ public sealed record OrderCancelled(
     RefundDestination RefundTo)
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
+    public OrderCancellationSource? Source { get; init; }
+
     public static string EventType => "ordering.OrderCancelled.v1";
 
     public override string AggregateType => "Order";

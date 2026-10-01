@@ -3,6 +3,7 @@ using GreyGray.Modules.Checkout.Contracts;
 using GreyGray.Modules.Fulfillment.Contracts;
 using GreyGray.Modules.Identity.Contracts;
 using GreyGray.Modules.Ordering.Contracts;
+using GreyGray.Modules.Payment.Contracts;
 using GreyGray.Modules.Pricing.Contracts;
 using GreyGray.Platform.Abstractions.Messaging;
 using GreyGray.Platform.Abstractions.Saga;
@@ -19,12 +20,19 @@ internal sealed class OrderingApplicationService(
     ICorrelationContext correlationContext,
     Lazy<IFulfillmentQuery?>? fulfillmentQuery = null,
     ISagaTimerScheduler? timerScheduler = null,
-    TimeSpan appraisalPeriod = default)
+    TimeSpan appraisalPeriod = default,
+    OrderingPaymentDeadlines? paymentDeadlines = null)
     : IOrderingApplication, IOrderingGoodsReceipt, IOrderQuery, IOrderingShipmentDelivery,
         IOrderingShipmentDispatch
 {
     /// <summary>鑑賞期 Saga timer 的 saga type（ADR-025）。</summary>
     internal const string AppraisalSagaType = "ordering.appraisal-period";
+
+    /// <summary>繳費期限 Saga timer 的 saga type（ADR-044）。</summary>
+    internal const string PaymentDueSagaType = "ordering.payment-due";
+
+    private readonly OrderingPaymentDeadlines _paymentDeadlines =
+        paymentDeadlines ?? OrderingPaymentDeadlines.Default;
 
     /// <summary>
     /// 儲值金退款要到 M3 才開放（ADR-023 決定二／ADR-024 後半）。整條退款流程已經實作完成，
@@ -61,7 +69,12 @@ internal sealed class OrderingApplicationService(
             return Result<OrderView>.Failure(snapshot.Error);
         }
 
-        var placed = Order.Place(OrderId.New(), checkout, snapshot.Value, clock.UtcNow);
+        var placed = Order.Place(
+            OrderId.New(),
+            checkout,
+            snapshot.Value,
+            clock.UtcNow,
+            _paymentDeadlines);
         if (placed.IsFailure)
         {
             return Result<OrderView>.Failure(placed.Error);
@@ -80,6 +93,17 @@ internal sealed class OrderingApplicationService(
                 order.GrandTotal,
                 checkout.IdempotencyKey),
             cancellationToken);
+
+        if (timerScheduler is not null)
+        {
+            await timerScheduler.ScheduleAsync(
+                PaymentDueSagaType,
+                order.Id.ToString(),
+                order.PaymentAutoCancelAt!.Value,
+                "{}",
+                order.TenantId,
+                cancellationToken);
+        }
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return order.ToView();
@@ -150,7 +174,12 @@ internal sealed class OrderingApplicationService(
             cancelled.Value,
             RefundDestination.OriginalPaymentMethod,
             cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+        var saveError = await SaveHttpCancellationAsync(cancellationToken);
+        if (saveError is not null)
+        {
+            return Result<OrderView>.Failure(saveError);
+        }
+
         return order.ToView();
     }
 
@@ -223,7 +252,12 @@ internal sealed class OrderingApplicationService(
             cancelled.Value,
             refundTo,
             cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+        var saveError = await SaveHttpCancellationAsync(cancellationToken);
+        if (saveError is not null)
+        {
+            return Result<OrderView>.Failure(saveError);
+        }
+
         return order.ToView();
     }
 
@@ -291,7 +325,12 @@ internal sealed class OrderingApplicationService(
                 cancellationToken);
         }
 
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+        var saveError = await SaveHttpCancellationAsync(cancellationToken);
+        if (saveError is not null)
+        {
+            return Result<OrderView>.Failure(saveError);
+        }
+
         return order.ToView();
     }
 
@@ -348,7 +387,12 @@ internal sealed class OrderingApplicationService(
                 cancellationToken);
         }
 
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+        var saveError = await SaveHttpCancellationAsync(cancellationToken);
+        if (saveError is not null)
+        {
+            return Result<OrderView>.Failure(saveError);
+        }
+
         return order.ToView();
     }
 
@@ -378,6 +422,23 @@ internal sealed class OrderingApplicationService(
         }
 
         var occurredAt = clock.UtcNow;
+        if (captured.Value == PaymentCaptureTransition.CapturedAfterCancellation)
+        {
+            await eventPublisher.PublishAsync(
+                new RefundRequested(
+                    Guid.CreateVersion7(),
+                    occurredAt,
+                    order.TenantId,
+                    order.Id,
+                    null,
+                    order.PaidAmount!.Value,
+                    RefundDestination.OriginalPaymentMethod,
+                    "取消後才入帳，原路退款"),
+                cancellationToken);
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+            return Result.Success();
+        }
+
         await eventPublisher.PublishAsync(
             new OrderPaid(
                 Guid.CreateVersion7(),
@@ -402,6 +463,64 @@ internal sealed class OrderingApplicationService(
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return Result.Success();
+    }
+
+    internal async Task<PaymentInstructionsTransition> RecordPaymentInstructionsIssuedAsync(
+        PaymentInstructionsIssued instructions,
+        CancellationToken cancellationToken)
+    {
+        var order = await orders.GetAsync(
+            instructions.TenantId,
+            instructions.OrderId,
+            cancellationToken);
+        if (order is null)
+        {
+            return PaymentInstructionsTransition.OrderNotFound;
+        }
+
+        var changed = order.ApplyPaymentInstructions(
+            instructions.Method,
+            instructions.ExpiresAt,
+            _paymentDeadlines.NonCardGrace);
+        if (!changed)
+        {
+            return PaymentInstructionsTransition.Ignored;
+        }
+
+        if (timerScheduler is null)
+        {
+            throw new InvalidOperationException("Ordering 繳費期限已更新，但沒有可用的 Saga timer scheduler。");
+        }
+
+        await timerScheduler.ScheduleAsync(
+            PaymentDueSagaType,
+            order.Id.ToString(),
+            order.PaymentAutoCancelAt!.Value,
+            "{}",
+            order.TenantId,
+            cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return PaymentInstructionsTransition.Rescheduled;
+    }
+
+    /// <summary>繳費期限 timer 觸發；舊 timer、孤兒 timer 與非待付款狀態皆安靜 no-op。</summary>
+    internal async Task ResolvePaymentDueTimeoutAsync(
+        OrderId orderId,
+        CancellationToken cancellationToken)
+    {
+        var order = await orders.GetAsync(correlationContext.TenantId, orderId, cancellationToken);
+        if (order is null || !order.CancelIfPaymentExpired(clock.UtcNow))
+        {
+            return;
+        }
+
+        await PublishCancellationAsync(
+            order,
+            order.CancellationReason!,
+            Money.Zero(order.GrandTotal.Currency),
+            RefundDestination.OriginalPaymentMethod,
+            cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<Result> RecordPaymentFailedAsync(
@@ -680,6 +799,19 @@ internal sealed class OrderingApplicationService(
             ? new Error("ordering.stored-value-refund-not-available", "儲值金退款要到 M3 才開放，請改選原路退款。")
             : null;
 
+    private async Task<Error?> SaveHttpCancellationAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+            return null;
+        }
+        catch (OrderingConcurrencyException)
+        {
+            return new Error("ordering.concurrent-update", "訂單已被其他操作更新，請重新整理後再試。");
+        }
+    }
+
     private async Task PublishCancellationAsync(
         Order order,
         string reason,
@@ -696,7 +828,10 @@ internal sealed class OrderingApplicationService(
                 order.Id,
                 reason,
                 refundAmount,
-                refundTo),
+                refundTo)
+            {
+                Source = order.CancellationSource,
+            },
             cancellationToken);
 
         if (!refundAmount.IsZero)
@@ -748,4 +883,11 @@ internal sealed class OrderingApplicationService(
 
     private static Result<T> OrderNotFound<T>() =>
         Result<T>.Failure("ordering.order-not-found", "找不到訂單。");
+}
+
+internal enum PaymentInstructionsTransition
+{
+    OrderNotFound = 0,
+    Ignored = 1,
+    Rescheduled = 2,
 }

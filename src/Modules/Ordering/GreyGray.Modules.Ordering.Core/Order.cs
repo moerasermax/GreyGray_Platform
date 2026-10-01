@@ -4,6 +4,7 @@ using GreyGray.Modules.Checkout.Contracts;
 using GreyGray.Modules.Identity.Contracts;
 using GreyGray.Modules.Inventory.Contracts;
 using GreyGray.Modules.Ordering.Contracts;
+using GreyGray.Modules.Payment.Contracts;
 using GreyGray.Modules.Pricing.Contracts;
 using GreyGray.Shared.Kernel;
 using FulfillmentMode = GreyGray.Modules.Catalog.Contracts.FulfillmentMode;
@@ -23,7 +24,8 @@ internal sealed class Order
         TenantId tenantId,
         CheckoutCompleted checkout,
         PricingSnapshot pricing,
-        DateTimeOffset placedAt)
+        DateTimeOffset placedAt,
+        OrderingPaymentDeadlines deadlines)
     {
         Id = id;
         TenantId = tenantId;
@@ -49,6 +51,8 @@ internal sealed class Order
         ShippingFeeCurrency = pricing.ShippingFee.Currency;
         QuoteExplainJson = System.Text.Json.JsonSerializer.Serialize(pricing.Explain);
         PlacedAt = placedAt;
+        PaymentDueAt = placedAt + deadlines.PaymentDue;
+        PaymentAutoCancelAt = PaymentDueAt;
 
         foreach (var source in checkout.Lines)
         {
@@ -138,12 +142,16 @@ internal sealed class Order
 
     public DateTimeOffset? PaymentDueAt { get; private set; }
 
+    public DateTimeOffset? PaymentAutoCancelAt { get; private set; }
+
     /// <summary>鑑賞期到期時間。訂單掛的出貨單全部簽收後才設定（ADR-025），屆滿轉 <see cref="OrderStatus.Completed"/>。</summary>
     public DateTimeOffset? AppraisalDueAt { get; private set; }
 
     public DateTimeOffset? CancelledAt { get; private set; }
 
     public string? CancellationReason { get; private set; }
+
+    public OrderCancellationSource? CancellationSource { get; private set; }
 
     public string? LastPaymentFailureCode { get; private set; }
 
@@ -168,7 +176,8 @@ internal sealed class Order
         OrderId id,
         CheckoutCompleted checkout,
         PricingSnapshot pricing,
-        DateTimeOffset placedAt)
+        DateTimeOffset placedAt,
+        OrderingPaymentDeadlines? deadlines = null)
     {
         if (checkout.Lines.Count == 0)
         {
@@ -190,7 +199,13 @@ internal sealed class Order
 
         try
         {
-            return new Order(id, checkout.TenantId, checkout, pricing, placedAt);
+            return new Order(
+                id,
+                checkout.TenantId,
+                checkout,
+                pricing,
+                placedAt,
+                deadlines ?? OrderingPaymentDeadlines.Default);
         }
         catch (InvalidOperationException)
         {
@@ -202,11 +217,11 @@ internal sealed class Order
 
     public Result<PaymentCaptureTransition> CapturePayment(Money amount)
     {
-        if (Status is OrderStatus.Cancelled or OrderStatus.Completed)
+        if (Status == OrderStatus.Completed)
         {
             return Result<PaymentCaptureTransition>.Failure(
                 "ordering.order-not-payable",
-                "訂單已取消或完成，不能再付款。");
+                "訂單已完成，不能再付款。");
         }
 
         if (PaidAmount is not null)
@@ -218,7 +233,8 @@ internal sealed class Order
                     "付款金額與既有付款紀錄不一致。");
         }
 
-        if (Status != OrderStatus.AwaitingPayment || amount != GrandTotal)
+        if (Status is not (OrderStatus.AwaitingPayment or OrderStatus.Cancelled)
+            || amount != GrandTotal)
         {
             return Result<PaymentCaptureTransition>.Failure(
                 "ordering.payment-amount-mismatch",
@@ -228,6 +244,11 @@ internal sealed class Order
         PaidAmountMinor = amount.AmountMinor;
         PaidCurrency = amount.Currency;
         LastPaymentFailureCode = null;
+
+        if (Status == OrderStatus.Cancelled)
+        {
+            return PaymentCaptureTransition.CapturedAfterCancellation;
+        }
 
         var readyToShip = _lines.All(line => line.Mode == FulfillmentMode.Stock);
         Status = readyToShip ? OrderStatus.ReadyToShip : OrderStatus.PaidAwaitingClose;
@@ -253,10 +274,10 @@ internal sealed class Order
         {
             return Result<Money>.Failure(
                 "ordering.cannot-self-cancel-after-payment",
-                "已付款的訂單不能自助取消，請聯絡客服。");
+                "這筆訂單目前不能自助取消，如有問題請聯絡客服。");
         }
 
-        return Cancel(reason, cancelledAt);
+        return Cancel(reason, cancelledAt, OrderCancellationSource.Customer);
     }
 
     public Result<Money> CancelByAdmin(string reason, DateTimeOffset cancelledAt)
@@ -268,7 +289,40 @@ internal sealed class Order
                 "訂單已取消或完成，不能再次取消。");
         }
 
-        return Cancel(reason, cancelledAt);
+        return Cancel(reason, cancelledAt, OrderCancellationSource.Staff);
+    }
+
+    public bool ApplyPaymentInstructions(
+        PaymentMethod method,
+        DateTimeOffset expiresAt,
+        TimeSpan nonCardGrace)
+    {
+        if (Status != OrderStatus.AwaitingPayment
+            || method == PaymentMethod.CreditCard
+            || (PaymentDueAt is not null && expiresAt <= PaymentDueAt.Value))
+        {
+            return false;
+        }
+
+        PaymentDueAt = expiresAt;
+        PaymentAutoCancelAt = expiresAt + nonCardGrace;
+        return true;
+    }
+
+    public bool CancelIfPaymentExpired(DateTimeOffset now)
+    {
+        if (Status != OrderStatus.AwaitingPayment
+            || PaymentAutoCancelAt is null
+            || now < PaymentAutoCancelAt.Value)
+        {
+            return false;
+        }
+
+        Cancel(
+            "逾期未付款，系統自動取消",
+            now,
+            OrderCancellationSource.PaymentExpired);
+        return true;
     }
 
     public Result<Money> CancelLineByAdmin(OrderLineId orderLineId)
@@ -588,14 +642,20 @@ internal sealed class Order
             BuyerNote = BuyerNote,
             PaidAmount = PaidAmount,
             PaymentDueAt = PaymentDueAt,
+            CancelledAt = CancelledAt,
+            CancellationSource = CancellationSource,
             CancellationReason = CancellationReason,
             QuoteExplain = DeserializeExplain(),
         };
 
-    private Result<Money> Cancel(string reason, DateTimeOffset cancelledAt)
+    private Result<Money> Cancel(
+        string reason,
+        DateTimeOffset cancelledAt,
+        OrderCancellationSource source)
     {
         Status = OrderStatus.Cancelled;
         CancellationReason = reason;
+        CancellationSource = source;
         CancelledAt = cancelledAt;
         foreach (var line in _lines.Where(line => line.Status != OrderLineStatus.Completed))
         {
@@ -641,6 +701,7 @@ internal enum PaymentCaptureTransition
     AlreadyRecorded = 0,
     PaidAwaitingClose = 1,
     ReadyToShip = 2,
+    CapturedAfterCancellation = 3,
 }
 
 internal enum PurchaseLineTransition

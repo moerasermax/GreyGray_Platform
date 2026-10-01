@@ -20,6 +20,24 @@ internal sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> opti
 
     public DbSet<OrderLine> OrderLines => Set<OrderLine>();
 
+    public override async Task<int> SaveChangesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        MarkParentsOfChangedLinesForVersionCheck();
+
+        try
+        {
+            return await base.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException exception)
+        {
+            ChangeTracker.Clear();
+            throw new OrderingConcurrencyException(
+                "訂單已被其他操作更新。",
+                exception);
+        }
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -79,6 +97,8 @@ internal sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> opti
             .HasColumnName("id")
             .HasConversion(id => id.Value, value => new OrderId(value))
             .ValueGeneratedNever();
+        entity.Property<uint>("xmin")
+            .IsRowVersion();
         entity.Property(order => order.TenantId)
             .HasColumnName("tenant_id")
             .HasConversion(id => id.Value, value => new TenantId(value))
@@ -199,6 +219,9 @@ internal sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> opti
         entity.Property(order => order.PaymentDueAt)
             .HasColumnName("payment_due_at")
             .HasColumnType("timestamp with time zone");
+        entity.Property(order => order.PaymentAutoCancelAt)
+            .HasColumnName("payment_auto_cancel_at")
+            .HasColumnType("timestamp with time zone");
         entity.Property(order => order.AppraisalDueAt)
             .HasColumnName("appraisal_due_at")
             .HasColumnType("timestamp with time zone");
@@ -208,6 +231,9 @@ internal sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> opti
         entity.Property(order => order.CancellationReason)
             .HasColumnName("cancellation_reason")
             .HasMaxLength(200);
+        entity.Property(order => order.CancellationSource)
+            .HasColumnName("cancellation_source")
+            .HasConversion<short>();
         entity.Property(order => order.LastPaymentFailureCode)
             .HasColumnName("last_payment_failure_code")
             .HasMaxLength(100);
@@ -332,5 +358,27 @@ internal sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> opti
             .HasDatabaseName("ix_order_line_tenant_order");
         entity.HasIndex(line => new { line.TenantId, line.CampaignId, line.OrderId })
             .HasDatabaseName("ix_order_line_tenant_campaign_order");
+    }
+
+    private void MarkParentsOfChangedLinesForVersionCheck()
+    {
+        var changedOrderIds = ChangeTracker.Entries<OrderLine>()
+            .Where(entry => entry.State is EntityState.Modified or EntityState.Deleted)
+            .Select(entry => entry.Entity.OrderId)
+            .ToHashSet();
+
+        if (changedOrderIds.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var orderEntry in ChangeTracker.Entries<Order>())
+        {
+            if (orderEntry.State == EntityState.Unchanged
+                && changedOrderIds.Contains(orderEntry.Entity.Id))
+            {
+                orderEntry.Property(order => order.PlacedAt).IsModified = true;
+            }
+        }
     }
 }

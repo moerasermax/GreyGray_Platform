@@ -57,6 +57,23 @@ internal sealed class OrderingModule : IModuleRegistration
 
         var appraisalPeriod = TimeSpan.FromDays(
             configuration.GetValue("Ordering:AppraisalPeriodDays", 7));
+        var paymentDueHours = configuration.GetValue("Ordering:PaymentDueHours", 24);
+        var nonCardPaymentGraceDays = configuration.GetValue(
+            "Ordering:NonCardPaymentGraceDays",
+            2);
+        if (paymentDueHours <= 0)
+        {
+            throw new InvalidOperationException("Ordering:PaymentDueHours 必須大於 0。");
+        }
+
+        if (nonCardPaymentGraceDays <= 0)
+        {
+            throw new InvalidOperationException("Ordering:NonCardPaymentGraceDays 必須大於 0。");
+        }
+
+        var paymentDeadlines = new OrderingPaymentDeadlines(
+            TimeSpan.FromHours(paymentDueHours),
+            TimeSpan.FromDays(nonCardPaymentGraceDays));
 
         services.TryAddSingleton<EventTypeRegistry>();
         services.AddScoped<OrderingApplicationService>(serviceProvider =>
@@ -87,7 +104,8 @@ internal sealed class OrderingModule : IModuleRegistration
                 new SagaTimerScheduler<OrderingDbContext>(
                     dbContext,
                     serviceProvider.GetRequiredService<IClock>()),
-                appraisalPeriod);
+                appraisalPeriod,
+                paymentDeadlines);
         });
         services.AddScoped<IOrderingApplication>(serviceProvider =>
             serviceProvider.GetRequiredService<OrderingApplicationService>());
@@ -108,6 +126,10 @@ internal sealed class OrderingModule : IModuleRegistration
         services.AddIdempotentIntegrationEventHandler<
             PaymentCaptured,
             PaymentCapturedHandler,
+            OrderingDbContext>();
+        services.AddIdempotentIntegrationEventHandler<
+            PaymentInstructionsIssued,
+            PaymentInstructionsIssuedHandler,
             OrderingDbContext>();
         services.AddIdempotentIntegrationEventHandler<
             PaymentFailed,
@@ -135,6 +157,7 @@ internal sealed class OrderingModule : IModuleRegistration
             OrderingDbContext>();
 
         services.AddSagaTimeoutHandler<AppraisalPeriodTimeoutHandler>();
+        services.AddSagaTimeoutHandler<PaymentDueTimeoutHandler>();
 
         return services;
     }

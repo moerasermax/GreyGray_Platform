@@ -1,9 +1,11 @@
 using GreyGray.Modules.Checkout.Contracts;
 using GreyGray.Modules.Fulfillment.Contracts;
 using GreyGray.Modules.Ordering.Contracts;
+using GreyGray.Modules.Ordering.Core;
 using GreyGray.Modules.Payment.Contracts;
 using GreyGray.Modules.Procurement.Contracts;
 using GreyGray.Platform.Abstractions.Messaging;
+using Microsoft.Extensions.Logging;
 
 namespace GreyGray.Modules.Ordering.Infra;
 
@@ -43,6 +45,28 @@ internal sealed class PaymentCapturedHandler(IOrderingApplication ordering)
         {
             throw new InvalidOperationException(
                 $"PaymentCaptured 無法更新訂單：{result.Error.Code} {result.Error.Message}");
+        }
+    }
+}
+
+internal sealed class PaymentInstructionsIssuedHandler(
+    OrderingApplicationService ordering,
+    ILogger<PaymentInstructionsIssuedHandler> logger)
+    : IIntegrationEventHandler<PaymentInstructionsIssued>
+{
+    public async Task HandleAsync(
+        PaymentInstructionsIssued @event,
+        CancellationToken cancellationToken)
+    {
+        var transition = await ordering.RecordPaymentInstructionsIssuedAsync(
+            @event,
+            cancellationToken);
+        if (transition == PaymentInstructionsTransition.OrderNotFound)
+        {
+            logger.LogWarning(
+                "PaymentInstructionsIssued 找不到訂單 {OrderId}，事件 {EventId} 安靜略過。",
+                @event.OrderId,
+                @event.EventId);
         }
     }
 }

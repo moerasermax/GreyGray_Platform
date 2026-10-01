@@ -271,11 +271,11 @@ if ($isLocal) {
     $migrationsDetail = "找不到 $migrationsStateFile"
     if (Test-Path -LiteralPath $migrationsStateFile -PathType Leaf) {
         $state = Get-Content -LiteralPath $migrationsStateFile -Raw | ConvertFrom-Json
-        $expectedCount = 24
+        $expectedCount = 25
         $migrationsApplied = @($state.files).Count -eq $expectedCount
-        $migrationsDetail = "appliedAt=$($state.appliedAt); files=$(@($state.files).Count)（期望 $expectedCount：0001_~0024_）"
+        $migrationsDetail = "appliedAt=$($state.appliedAt); files=$(@($state.files).Count)（期望 $expectedCount：0001_~0025_）"
     }
-    Report 'migrations 0001~0024 已套用' $migrationsApplied $migrationsDetail
+    Report 'migrations 0001~0025 已套用' $migrationsApplied $migrationsDetail
 
     foreach ($pair in @(@('storefront', $StorefrontPort), @('admin', $AdminPort))) {
         $name, $port = $pair
