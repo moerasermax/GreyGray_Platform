@@ -31,6 +31,7 @@ import {
   paymentResultPresentation,
   shouldPollPaymentResult,
 } from '../../_lib/paymentInstructions';
+import { CancellationNotice, PaymentOverdueNotice } from '../../_lib/orderPaymentNotices';
 
 type S = components['schemas'];
 
@@ -126,7 +127,9 @@ function PaymentResultContent() {
     if (loading || error || !order) return;
     if (!shouldPollPaymentResult(order, attempt)) {
       // 還是 AwaitingPayment 但排程用完了——停手，把下一步交給使用者。
-      if (order.status === 'AwaitingPayment' && order.paymentInstructions == null) setPollExhausted(true);
+      if (order.status === 'AwaitingPayment' && order.paymentInstructions == null && order.paymentOverdue !== true) {
+        setPollExhausted(true);
+      }
       return;
     }
 
@@ -216,9 +219,10 @@ function PaymentResultContent() {
         {isCancelled && (
           <>
             <h1 className="font-display text-[length:var(--gg-text-xl)] font-bold text-fg">訂單已取消</h1>
-            <p className="text-fg-muted">訂單 {order.orderNumber} 已取消，如已扣款會依原路退還。</p>
+            <CancellationNotice order={order} />
           </>
         )}
+        {presentation.showOverdue && <PaymentOverdueNotice />}
         {presentation.hasInstructions && (
           <h1 className="font-display text-[length:var(--gg-text-xl)] font-bold text-fg">
             {presentation.title}
@@ -257,6 +261,10 @@ function PaymentResultContent() {
               </Link>
             </div>
           </>
+        ) : isCancelled ? (
+          <Link href="/orders">
+            <Button variant="secondary">查看我的訂單</Button>
+          </Link>
         ) : presentation.hasInstructions ? (
           <>
             <PaymentInstructionsCard order={order} />
@@ -264,6 +272,10 @@ function PaymentResultContent() {
               <Button variant="secondary">查看我的訂單</Button>
             </Link>
           </>
+        ) : presentation.showOverdue ? (
+          <Link href="/orders">
+            <Button variant="secondary">查看我的訂單</Button>
+          </Link>
         ) : (
           <>
             {presentation.showPrice && <PriceDisplay amount={order.grandTotal} size="lg" />}

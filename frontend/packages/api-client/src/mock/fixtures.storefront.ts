@@ -693,12 +693,21 @@ interface OrderSeed {
   readonly lineStatuses: readonly S['OrderLineStatus'][];
   readonly paymentDueAt?: string | null;
   readonly paymentInstructions?: S['PaymentInstructions'] | null;
+  readonly paymentOverdue?: boolean;
+  readonly cancellationSource?: S['OrderCancellationSource'] | null;
+  readonly cancelledAt?: string | null;
+  readonly paid?: boolean;
 }
 
 const ATM_PAYMENT_DUE_AT = hoursFromNow(72);
 
 const ORDER_SEEDS: readonly OrderSeed[] = [
-  { status: 'AwaitingPayment', daysAgo: 0, lineStatuses: ['Pending', 'Pending'] },
+  {
+    status: 'AwaitingPayment',
+    daysAgo: 0,
+    lineStatuses: ['Pending', 'Pending'],
+    paymentDueAt: hoursFromNow(1 / 120),
+  },
   { status: 'PaidAwaitingClose', daysAgo: 1, lineStatuses: ['Reserved', 'Reserved'] },
   { status: 'ClosedAwaitingDeparture', daysAgo: 3, lineStatuses: ['Reserved', 'Reserved'] },
   { status: 'Purchasing', daysAgo: 10, lineStatuses: ['Purchased', 'Unavailable'] },
@@ -712,6 +721,7 @@ const ORDER_SEEDS: readonly OrderSeed[] = [
     daysAgo: 0,
     lineStatuses: ['Pending', 'Pending'],
     paymentDueAt: ATM_PAYMENT_DUE_AT,
+    paymentOverdue: false,
     paymentInstructions: {
       method: 'Atm',
       bankCode: '822',
@@ -719,6 +729,40 @@ const ORDER_SEEDS: readonly OrderSeed[] = [
       expiresAt: ATM_PAYMENT_DUE_AT,
       issuedAt: new Date().toISOString(),
     },
+  },
+  {
+    status: 'AwaitingPayment',
+    daysAgo: 1,
+    lineStatuses: ['Pending', 'Pending'],
+    paymentDueAt: hoursFromNow(-1),
+    paymentInstructions: null,
+    paymentOverdue: true,
+  },
+  {
+    status: 'Cancelled',
+    daysAgo: 4,
+    lineStatuses: ['Cancelled', 'Cancelled'],
+    paymentDueAt: hoursFromNow(-72),
+    paymentOverdue: false,
+    cancellationSource: 'PaymentExpired',
+    cancelledAt: hoursFromNow(-48),
+  },
+  {
+    status: 'Cancelled',
+    daysAgo: 3,
+    lineStatuses: ['Cancelled', 'Cancelled'],
+    paymentOverdue: false,
+    cancellationSource: 'Staff',
+    cancelledAt: hoursFromNow(-24),
+    paid: true,
+  },
+  {
+    status: 'Cancelled',
+    daysAgo: 2,
+    lineStatuses: ['Cancelled', 'Cancelled'],
+    paymentOverdue: false,
+    cancellationSource: 'Customer',
+    cancelledAt: hoursFromNow(-12),
   },
 ];
 
@@ -753,7 +797,7 @@ function buildOrder(seed: OrderSeed, index: number): S['Order'] {
   ];
   const goodsTotalMinor = lines.reduce((sum, line) => sum + line.lineTotal.amountMinor, 0);
   const grandTotalMinor = goodsTotalMinor + SHIPPING_FEE_CONVENIENCE.amountMinor;
-  const isPaid = seed.status !== 'AwaitingPayment' && seed.status !== 'Cancelled';
+  const isPaid = seed.paid ?? (seed.status !== 'AwaitingPayment' && seed.status !== 'Cancelled');
 
   return {
     id: hexId(`order:${seed.status}:${index}`),
@@ -779,6 +823,9 @@ function buildOrder(seed: OrderSeed, index: number): S['Order'] {
           ? hoursFromNow(2)
           : null,
     paymentInstructions: seed.paymentInstructions ?? null,
+    ...(seed.paymentOverdue === undefined ? {} : { paymentOverdue: seed.paymentOverdue }),
+    cancelledAt: seed.cancelledAt ?? null,
+    cancellationSource: seed.cancellationSource ?? null,
     quoteExplain: ['超商取貨一口價 NT$60（ADR-010）。'],
   };
 }

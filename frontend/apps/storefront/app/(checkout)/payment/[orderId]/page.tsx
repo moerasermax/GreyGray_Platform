@@ -27,6 +27,7 @@ import {
   paymentRedirectAction,
 } from '../../_lib/paymentInstructions';
 import { PaymentInstructionsCard } from '../../../(account)/orders/_components/PaymentInstructionsCard';
+import { CancellationNotice, PaymentOverdueNotice } from '../../_lib/orderPaymentNotices';
 
 type S = components['schemas'];
 
@@ -64,7 +65,10 @@ export default function PaymentRedirectPage() {
         api
           .getOrder(browserApi(), orderId)
           .then((refreshed) => {
-            if (paymentConflictRefreshAction(refreshed) === 'show-instructions') setOrder(refreshed);
+            const refreshedAction = paymentConflictRefreshAction(refreshed);
+            if (refreshed.status === 'Cancelled' || refreshedAction === 'show-instructions' || refreshedAction === 'show-overdue') {
+              setOrder(refreshed);
+            }
             else setError(describeError(cause));
           })
           .catch((reloadCause: unknown) => {
@@ -84,7 +88,10 @@ export default function PaymentRedirectPage() {
     api
       .getOrder(browserApi(), orderId)
       .then((loadedOrder) => {
-        if (paymentRedirectAction(loadedOrder) === 'show-instructions') setOrder(loadedOrder);
+        const redirectAction = paymentRedirectAction(loadedOrder);
+        if (loadedOrder.status === 'Cancelled' || redirectAction === 'show-instructions' || redirectAction === 'show-overdue') {
+          setOrder(loadedOrder);
+        }
         else requestPayment();
       })
       .catch((cause: unknown) => {
@@ -101,6 +108,31 @@ export default function PaymentRedirectPage() {
   useEffect(() => {
     if (initiation) formRef.current?.submit();
   }, [initiation]);
+
+  if (order?.status === 'Cancelled') {
+    return (
+      <main className="mx-auto flex max-w-[var(--gg-container-max)] flex-col gap-[var(--gg-space-4)] px-[var(--gg-space-4)] py-[var(--gg-space-8)]">
+        <h1 className="font-display text-[length:var(--gg-text-xl)] font-bold text-fg">訂單已取消</h1>
+        <CancellationNotice order={order} />
+        <div className="flex flex-col gap-[var(--gg-space-3)] sm:flex-row sm:justify-center">
+          <Link href={`/orders/${orderId}`}><Button variant="secondary" className="w-full sm:w-auto">查看訂單明細</Button></Link>
+          <Link href="/"><Button variant="secondary" className="w-full sm:w-auto">回首頁</Button></Link>
+        </div>
+      </main>
+    );
+  }
+
+  if (order?.paymentOverdue === true) {
+    return (
+      <main className="mx-auto flex max-w-[var(--gg-container-max)] flex-col gap-[var(--gg-space-4)] px-[var(--gg-space-4)] py-[var(--gg-space-8)]">
+        <PaymentOverdueNotice />
+        <div className="flex flex-col gap-[var(--gg-space-3)] sm:flex-row sm:justify-center">
+          <Link href={`/orders/${orderId}`}><Button variant="secondary" className="w-full sm:w-auto">查看訂單明細</Button></Link>
+          <Link href="/"><Button variant="secondary" className="w-full sm:w-auto">回首頁</Button></Link>
+        </div>
+      </main>
+    );
+  }
 
   if (order?.paymentInstructions != null) {
     return (

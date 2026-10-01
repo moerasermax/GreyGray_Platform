@@ -12,6 +12,7 @@ import {
   paymentRedirectAction,
   paymentResultPresentation,
   shouldPollPaymentResult,
+  shouldReloadOrderAfterCancelError,
   shouldReloadOrderAfterPaymentError,
 } from '../paymentInstructions';
 
@@ -124,12 +125,33 @@ describe('FE-57 T4：付款結果頁判斷', () => {
       showManualRefresh: true,
     });
   });
+
+  it('FE-61 T3：逾期優先停止輪詢，只顯示確認中所需欄位', () => {
+    const order = { ...paymentOrder(instructions('Atm')), paymentOverdue: true };
+    expect(shouldPollPaymentResult(order, 0)).toBe(false);
+    expect(paymentResultPresentation(order, false)).toEqual({
+      hasInstructions: false,
+      title: '繳費期限已過，正在確認付款',
+      showConfirmingMessage: false,
+      showUnconfirmedMessage: false,
+      showRetryPayment: false,
+      showManualRefresh: false,
+      showPrice: false,
+      showOverdue: true,
+    });
+  });
 });
 
 describe('FE-57 T5：付款發動頁判斷', () => {
   it('有取號資訊不發動；沒有才發動', () => {
     expect(paymentRedirectAction({ paymentInstructions: instructions('Atm') })).toBe('show-instructions');
     expect(paymentRedirectAction({})).toBe('initiate-payment');
+  });
+
+  it('FE-61 T2：逾期優先於既有取號資訊', () => {
+    const overdue = { paymentInstructions: instructions('Atm'), paymentOverdue: true };
+    expect(paymentRedirectAction(overdue)).toBe('show-overdue');
+    expect(paymentConflictRefreshAction(overdue)).toBe('show-overdue');
   });
 
   it('讀訂單 401 去登入，其他錯誤照常發動', () => {
@@ -143,6 +165,12 @@ describe('FE-57 T5：付款發動頁判斷', () => {
     expect(paymentConflictRefreshAction({ paymentInstructions: instructions('Atm') })).toBe('show-instructions');
     expect(paymentConflictRefreshAction({ paymentInstructions: null })).toBe('show-error');
   });
+
+  it('FE-61 T2：付款逾期錯誤先重讀，重讀後顯示確認中', () => {
+    const overdue = apiError(422, 'ordering.payment-overdue');
+    expect(paymentInitiationFailureAction(overdue)).toBe('reload-order');
+    expect(paymentConflictRefreshAction({ paymentInstructions: null, paymentOverdue: true })).toBe('show-overdue');
+  });
 });
 
 describe('FE-57 T6：訂單詳情付款判斷', () => {
@@ -153,8 +181,28 @@ describe('FE-57 T6：訂單詳情付款判斷', () => {
     });
   });
 
+  it('FE-61 T6：取消同時更新要重讀，其他取消失敗不重讀', () => {
+    expect(shouldReloadOrderAfterCancelError(apiError(409, 'ordering.concurrent-update'))).toBe(true);
+    expect(shouldReloadOrderAfterCancelError(apiError(422, 'ordering.concurrent-update'))).toBe(false);
+    expect(shouldReloadOrderAfterCancelError(apiError(422, 'ordering.cannot-self-cancel-after-payment'))).toBe(false);
+  });
+
   it('payment.instructions-already-issued 要重讀，其他錯誤不重讀', () => {
     expect(shouldReloadOrderAfterPaymentError(apiError(409, 'payment.instructions-already-issued'))).toBe(true);
+    expect(shouldReloadOrderAfterPaymentError(apiError(422, 'ordering.payment-overdue'))).toBe(true);
+    expect(shouldReloadOrderAfterPaymentError(apiError(409, 'ordering.payment-overdue'))).toBe(false);
     expect(shouldReloadOrderAfterPaymentError(apiError(409, 'ordering.order-cancelled'))).toBe(false);
+  });
+
+  it('FE-61 T1：逾期不能付款、不顯示倒數，只在逾期結果新增 showOverdue', () => {
+    expect(orderPaymentPresentation({ ...paymentOrder(undefined), paymentOverdue: true })).toEqual({
+      canPay: false,
+      showCountdown: false,
+      showOverdue: true,
+    });
+    expect(orderPaymentPresentation(paymentOrder(undefined))).toEqual({
+      canPay: true,
+      showCountdown: true,
+    });
   });
 });

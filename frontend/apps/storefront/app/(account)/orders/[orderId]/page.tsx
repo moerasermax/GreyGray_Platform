@@ -21,9 +21,11 @@ import { submitPaymentForm } from '../../_lib/submitPaymentForm';
 import { OrderSummary } from '../_components/OrderSummary';
 import {
   orderPaymentPresentation,
+  shouldReloadOrderAfterCancelError,
   shouldReloadOrderAfterPaymentError,
 } from '../../../(checkout)/_lib/paymentInstructions';
 import { formatPlacedAtInTaipei } from '../../../(checkout)/_lib/paymentResultSummary';
+import { CancellationNotice, PaymentOverdueNotice } from '../../../(checkout)/_lib/orderPaymentNotices';
 
 type Order = components['schemas']['Order'];
 
@@ -39,13 +41,14 @@ export default function OrderDetailPage() {
   const [paying, setPaying] = useState(false);
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
   const [actionError, setActionError] = useState<unknown>(null);
+  const [expiredPaymentKey, setExpiredPaymentKey] = useState<string | null>(null);
   const paymentIdempotency = usePayloadIdempotency();
   const cancelIdempotency = usePayloadIdempotency();
 
-  const load = useCallback(() => {
-    setLoading(true);
+  const load = useCallback((background = false) => {
+    if (!background) setLoading(true);
     setError(null);
-    storefrontApi
+    return storefrontApi
       .getOrder(browserApi(), orderId)
       .then(setOrder)
       .catch((caught: unknown) => {
@@ -55,11 +58,13 @@ export default function OrderDetailPage() {
         }
         setError(caught);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!background) setLoading(false);
+      });
   }, [orderId, router]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   async function handleCancel() {
@@ -81,10 +86,10 @@ export default function OrderDetailPage() {
         router.replace(loginHrefForCurrentPage());
         return;
       }
-      if (shouldReloadOrderAfterPaymentError(caught)) {
-        paymentIdempotency.complete();
-        setPaying(false);
-        load();
+      if (shouldReloadOrderAfterCancelError(caught)) {
+        cancelIdempotency.complete();
+        setConfirmCancelOpen(false);
+        await load(true);
         return;
       }
       setActionError(caught);
@@ -108,9 +113,23 @@ export default function OrderDetailPage() {
         router.replace(loginHrefForCurrentPage());
         return;
       }
+      if (shouldReloadOrderAfterPaymentError(caught)) {
+        paymentIdempotency.complete();
+        setPaying(false);
+        await load(true);
+        return;
+      }
       setActionError(caught);
       setPaying(false);
     }
+  }
+
+  function handlePaymentCountdownExpire() {
+    if (!order?.paymentDueAt) return;
+    const key = `${order.id}:${order.paymentDueAt}`;
+    if (expiredPaymentKey === key) return;
+    setExpiredPaymentKey(key);
+    void load(true);
   }
 
   if (loading) {
@@ -125,7 +144,7 @@ export default function OrderDetailPage() {
     return (
       <main className="mx-auto flex max-w-[640px] flex-col px-[var(--gg-space-4)] py-[var(--gg-space-8)]">
         <Card padding="none">
-          <ErrorState title={generalErrorMessage(error)} traceId={traceIdOf(error)} onRetry={load} />
+          <ErrorState title={generalErrorMessage(error)} traceId={traceIdOf(error)} onRetry={() => void load()} />
         </Card>
       </main>
     );
@@ -153,11 +172,16 @@ export default function OrderDetailPage() {
           {formatPlacedAtInTaipei(order.placedAt)}（台灣時間）建立
         </p>
         {paymentPresentation.showCountdown && order.paymentDueAt && (
-          <PaymentCountdown paymentDueAt={order.paymentDueAt} onExpire={load} />
+          expiredPaymentKey === `${order.id}:${order.paymentDueAt}`
+            ? <p className="text-[length:var(--gg-text-sm)] text-fg-muted">付款期限已到，系統處理中</p>
+            : <PaymentCountdown paymentDueAt={order.paymentDueAt} onExpire={handlePaymentCountdownExpire} />
         )}
       </header>
 
-      {order.paymentInstructions != null && <PaymentInstructionsCard order={order} />}
+      {order.status === 'Cancelled' && <CancellationNotice order={order} />}
+      {paymentPresentation.showOverdue && <PaymentOverdueNotice />}
+
+      {!paymentPresentation.showOverdue && order.paymentInstructions != null && <PaymentInstructionsCard order={order} />}
 
       <Card>
         <OrderTimeline status={order.status} />
@@ -200,7 +224,9 @@ export default function OrderDetailPage() {
       <ConfirmDialog
         open={confirmCancelOpen}
         title="取消這張訂單？"
-        description="取消後無法復原，商品需要的話請重新下單。"
+        description={paymentPresentation.showOverdue
+          ? '取消後無法復原，商品需要的話請重新下單。如果你已經繳費，取消後款項會由我們辦理退款。'
+          : '取消後無法復原，商品需要的話請重新下單。'}
         confirmLabel="確定取消"
         danger
         loading={cancelling}

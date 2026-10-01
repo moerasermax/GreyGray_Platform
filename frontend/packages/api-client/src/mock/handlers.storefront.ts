@@ -43,7 +43,28 @@ let me: S['Me'] = { ...meFixture };
 let addressList: S['ShippingAddress'][] = addressFixtures.map((a) => ({ ...a }));
 let cartLines: S['CartLine'][] = initialCartLines();
 let cartQuote: S['QuoteResult'] | null = null;
-let ordersStore: S['Order'][] = orderFixtures.map((o) => ({ ...o }));
+function cloneOrders(): S['Order'][] {
+  return orderFixtures.map((order) => ({
+    ...order,
+    goodsTotal: { ...order.goodsTotal },
+    shippingFee: { ...order.shippingFee },
+    grandTotal: { ...order.grandTotal },
+    paidAmount: order.paidAmount ? { ...order.paidAmount } : null,
+    lines: order.lines.map((line) => ({
+      ...line,
+      unitPrice: { ...line.unitPrice },
+      lineTotal: { ...line.lineTotal },
+      refundedAmount: line.refundedAmount ? { ...line.refundedAmount } : null,
+    })),
+    shippingAddress: order.shippingAddress ? { ...order.shippingAddress } : null,
+    paymentInstructions: order.paymentInstructions
+      ? { ...order.paymentInstructions, barcodes: order.paymentInstructions.barcodes ? [...order.paymentInstructions.barcodes] : null }
+      : null,
+    quoteExplain: order.quoteExplain ? [...order.quoteExplain] : [],
+  }));
+}
+
+let ordersStore: S['Order'][] = cloneOrders();
 const initialFavoriteProductIds = () =>
   productListItems.filter((product) => product.isFavorited).map((product) => product.id).reverse();
 let favoriteProductIds: string[] = initialFavoriteProductIds();
@@ -71,7 +92,7 @@ export function resetStorefrontMockState(): void {
   addressList = addressFixtures.map((a) => ({ ...a }));
   cartLines = initialCartLines();
   cartQuote = null;
-  ordersStore = orderFixtures.map((o) => ({ ...o }));
+  ordersStore = cloneOrders();
   favoriteProductIds = initialFavoriteProductIds();
   cvsSelectionIds = [];
   cvsSelectionSequence = 0;
@@ -134,6 +155,20 @@ if (typeof window !== 'undefined') {
 
 function currentCart(): S['Cart'] {
   return buildCart(CART_ID, cartLines, cartQuote);
+}
+
+function orderWithDynamicPaymentOverdue(order: S['Order'], now = Date.now()): S['Order'] {
+  if (order.paymentOverdue !== undefined) return order;
+  const dueAt = order.paymentDueAt ? Date.parse(order.paymentDueAt) : Number.NaN;
+  const instructionsExpireAt = order.paymentInstructions?.expiresAt
+    ? Date.parse(order.paymentInstructions.expiresAt)
+    : Number.NaN;
+  const hasValidInstructions = Number.isFinite(instructionsExpireAt) && instructionsExpireAt > now;
+  const paymentOverdue = order.status === 'AwaitingPayment'
+    && Number.isFinite(dueAt)
+    && dueAt <= now
+    && !hasValidInstructions;
+  return paymentOverdue ? { ...order, paymentOverdue: true, paymentInstructions: null } : order;
 }
 
 const SHIPPING_FEE_BY_METHOD: Record<S['DeliveryMethod'], number> = {
@@ -514,7 +549,7 @@ export const storefrontHandlers = [
   http.get(url('/v1/orders/:orderId'), ({ params }) => {
     const order = ordersStore.find((o) => o.id === params.orderId);
     if (!order) return jsonProblem(problem(404, 'platform.not-found', '找不到這張訂單。'));
-    return HttpResponse.json(order);
+    return HttpResponse.json(orderWithDynamicPaymentOverdue(order));
   }),
 
   http.post(url('/v1/orders/:orderId/cancel'), ({ params }) => {
@@ -527,20 +562,31 @@ export const storefrontHandlers = [
         problem(422, 'ordering.cannot-self-cancel-after-payment', '已付款的訂單無法自助取消，請聯繫客服。'),
       );
     }
-    const cancelled: S['Order'] = { ...order, status: 'Cancelled' };
+    const cancelled: S['Order'] = {
+      ...order,
+      status: 'Cancelled',
+      cancellationSource: 'Customer',
+      cancelledAt: new Date().toISOString(),
+      paymentOverdue: false,
+      paymentInstructions: null,
+    };
     ordersStore = ordersStore.map((o, i) => (i === index ? cancelled : o));
     return HttpResponse.json(cancelled);
   }),
 
   // ── payment ───────────────────────────────────────────────────────────
   http.post(url('/v1/orders/:orderId/payment'), ({ params }) => {
-    const order = ordersStore.find((o) => o.id === params.orderId);
-    if (!order) return jsonProblem(problem(404, 'platform.not-found', '找不到這張訂單。'));
-    if (order.status === 'Cancelled') {
+    const storedOrder = ordersStore.find((o) => o.id === params.orderId);
+    if (!storedOrder) return jsonProblem(problem(404, 'platform.not-found', '找不到這張訂單。'));
+    if (storedOrder.status === 'Cancelled') {
       return jsonProblem(problem(409, 'ordering.order-cancelled', '這筆訂單已經取消。'));
     }
-    if (order.status !== 'AwaitingPayment') {
+    if (storedOrder.status !== 'AwaitingPayment') {
       return jsonProblem(problem(409, 'ordering.order-already-paid', '這筆訂單已經付款了。'));
+    }
+    const order = orderWithDynamicPaymentOverdue(storedOrder);
+    if (order.paymentOverdue === true) {
+      return jsonProblem(problem(422, 'ordering.payment-overdue', '繳費期限已過，正在確認付款。'));
     }
     const initiation: S['PaymentInitiation'] = {
       provider: 'ECPay',

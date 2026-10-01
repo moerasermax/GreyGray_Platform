@@ -3,7 +3,7 @@ import { orders } from '../fixtures.storefront';
 
 describe('FE-57 mock 取號訂單', () => {
   it('新種子接在最後，ATM 期限與訂單付款期限完全相同', () => {
-    const order = orders.at(-1);
+    const order = orders.find((candidate) => candidate.paymentInstructions?.method === 'Atm');
     expect(order?.status).toBe('AwaitingPayment');
     expect(order?.paymentInstructions?.method).toBe('Atm');
     expect(order?.paymentInstructions?.bankCode).toBe('822');

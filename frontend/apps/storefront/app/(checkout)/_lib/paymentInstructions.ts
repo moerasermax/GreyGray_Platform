@@ -4,7 +4,9 @@ import { shouldKeepPolling } from './paymentResultPolling';
 import { formatDateTimeInTaipei } from './paymentResultSummary';
 
 type S = components['schemas'];
-type OrderPaymentFields = Pick<S['Order'], 'status' | 'paymentDueAt' | 'paymentInstructions'>;
+type OrderPaymentFields = Pick<S['Order'], 'status' | 'paymentDueAt' | 'paymentInstructions' | 'paymentOverdue'>;
+
+export const PAYMENT_OVERDUE_TITLE = '繳費期限已過，正在確認付款';
 
 export interface PaymentInstructionRow {
   readonly key: string;
@@ -26,6 +28,7 @@ export interface PaymentResultPresentation {
   readonly showRetryPayment: boolean;
   readonly showManualRefresh: boolean;
   readonly showPrice: boolean;
+  readonly showOverdue?: true;
 }
 
 export function hasOutstandingInstructions(
@@ -100,13 +103,26 @@ export function paymentInstructionsDisplay(
 }
 
 export function shouldPollPaymentResult(order: OrderPaymentFields, attempt: number): boolean {
-  return !hasOutstandingInstructions(order) && shouldKeepPolling(order.status, attempt);
+  return order.paymentOverdue !== true && !hasOutstandingInstructions(order) && shouldKeepPolling(order.status, attempt);
 }
 
 export function paymentResultPresentation(
   order: OrderPaymentFields,
   pollExhausted: boolean,
 ): PaymentResultPresentation {
+  if (order.paymentOverdue === true) {
+    return {
+      hasInstructions: false,
+      title: PAYMENT_OVERDUE_TITLE,
+      showConfirmingMessage: false,
+      showUnconfirmedMessage: false,
+      showRetryPayment: false,
+      showManualRefresh: false,
+      showPrice: false,
+      showOverdue: true,
+    };
+  }
+
   const hasInstructions = hasOutstandingInstructions(order);
   const awaiting = order.status === 'AwaitingPayment';
 
@@ -134,8 +150,9 @@ export function paymentResultPresentation(
 }
 
 export function paymentRedirectAction(
-  order: Pick<S['Order'], 'paymentInstructions'>,
-): 'show-instructions' | 'initiate-payment' {
+  order: Pick<S['Order'], 'paymentInstructions' | 'paymentOverdue'>,
+): 'show-instructions' | 'show-overdue' | 'initiate-payment' {
+  if (order.paymentOverdue === true) return 'show-overdue';
   return hasOutstandingInstructions(order) ? 'show-instructions' : 'initiate-payment';
 }
 
@@ -144,26 +161,35 @@ export function paymentOrderLoadFailureAction(error: unknown): 'login' | 'initia
 }
 
 export function isInstructionsAlreadyIssuedError(error: unknown): boolean {
-  return error instanceof ApiError && error.is('payment.instructions-already-issued');
+  return error instanceof ApiError && error.status === 409 && error.is('payment.instructions-already-issued');
+}
+
+export function isPaymentOverdueError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 422 && error.is('ordering.payment-overdue');
 }
 
 export function paymentInitiationFailureAction(
   error: unknown,
 ): 'login' | 'reload-order' | 'show-error' {
   if (error instanceof ApiError && error.isUnauthorized) return 'login';
-  return isInstructionsAlreadyIssuedError(error) ? 'reload-order' : 'show-error';
+  return isInstructionsAlreadyIssuedError(error) || isPaymentOverdueError(error) ? 'reload-order' : 'show-error';
 }
 
 export function paymentConflictRefreshAction(
-  order: Pick<S['Order'], 'paymentInstructions'>,
-): 'show-instructions' | 'show-error' {
+  order: Pick<S['Order'], 'paymentInstructions' | 'paymentOverdue'>,
+): 'show-instructions' | 'show-overdue' | 'show-error' {
+  if (order.paymentOverdue === true) return 'show-overdue';
   return hasOutstandingInstructions(order) ? 'show-instructions' : 'show-error';
 }
 
 export function orderPaymentPresentation(order: OrderPaymentFields): {
   readonly canPay: boolean;
   readonly showCountdown: boolean;
+  readonly showOverdue?: true;
 } {
+  if (order.paymentOverdue === true) {
+    return { canPay: false, showCountdown: false, showOverdue: true };
+  }
   const awaiting = order.status === 'AwaitingPayment';
   return {
     canPay: awaiting && !hasOutstandingInstructions(order),
@@ -172,5 +198,9 @@ export function orderPaymentPresentation(order: OrderPaymentFields): {
 }
 
 export function shouldReloadOrderAfterPaymentError(error: unknown): boolean {
-  return isInstructionsAlreadyIssuedError(error);
+  return isInstructionsAlreadyIssuedError(error) || isPaymentOverdueError(error);
+}
+
+export function shouldReloadOrderAfterCancelError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 409 && error.is('ordering.concurrent-update');
 }
