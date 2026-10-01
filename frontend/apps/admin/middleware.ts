@@ -57,6 +57,10 @@ export function middleware(request: NextRequest): NextResponse {
     return NextResponse.next();
   }
 
+  if (process.env['NEXT_PUBLIC_USE_MOCK'] === '1') {
+    return NextResponse.next();
+  }
+
   if (request.cookies.has(SESSION_COOKIE)) {
     return NextResponse.next();
   }

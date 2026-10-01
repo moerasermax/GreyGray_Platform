@@ -13,8 +13,14 @@
  */
 import { ApiClient } from '@greygray/api-client';
 
-/** BFF 位址。mock 開著（`NEXT_PUBLIC_USE_MOCK=1`）時不會真的打出去。 */
-const BASE_URL = process.env['NEXT_PUBLIC_API_BASE_URL'] ?? 'http://localhost:5000';
+/** 與 storefront mock handlers 完整網址比對一致；刻意不用 import，避免把 MSW 帶進正式 bundle。 */
+export const MOCK_API_BASE_URL = 'http://localhost:5000';
+
+/** BFF 位址。mock 開著時固定對準 handlers，正式模式維持環境值與原本 fallback。 */
+const BASE_URL =
+  process.env['NEXT_PUBLIC_USE_MOCK'] === '1'
+    ? MOCK_API_BASE_URL
+    : (process.env['NEXT_PUBLIC_API_BASE_URL'] ?? MOCK_API_BASE_URL);
 
 /**
  * **Server component／route handler 用。**
@@ -58,7 +64,7 @@ let browserSingleton: ApiClient | null = null;
  * `NEXT_PUBLIC_USE_MOCK` 是編譯期字面值，關掉時整段會被搖掉，正式環境沒有成本。
  */
 const mockReady =
-  process.env['NEXT_PUBLIC_USE_MOCK'] === '1'
+  process.env['NEXT_PUBLIC_USE_MOCK'] === '1' && typeof window !== 'undefined'
     ? import('../_mock/MockBootstrap').then((m) => m.startMock())
     : undefined;
 
