@@ -51,7 +51,28 @@ Leader 要明講。
 
 ---
 
-## 生效中：BE-64　Ordering：繳費期限、逾期自動取消（含非信用卡寬限）、舊訂單回填、樂觀鎖、取消後才入帳、取消來源（第四十五波第 2 輪，2026-10-01）
+## 生效中：BE-68　期限、逾期與取消來源接到 Host（第四十五波第 3 輪，2026-10-02；BE-64 撤包後才派）
+
+storefront 訂單回應帶 `paymentOverdue`、`cancelledAt`、`cancellationSource`；付款端點在繳費期限已過時回 `422 ordering.payment-overdue`；後台訂單回應帶 `paymentDueAt`、`cancellationSource`。只動兩支 Host 檔與 CheckoutOrdering 測試；契約 Leader 已寫好、不准改 `docs/`；不碰 `src/Modules/`、`src/Platform/`。以 Release 為準。
+
+★★ 最容易做錯的三件事：
+① 逾期只准用同檔新增的一個 `IsPaymentOverdue(OrderView, DateTimeOffset)`：只看待付款、`now >= PaymentDueAt + 1 秒`；訂單詳情逾期時**不查取號**、`paymentInstructions` 為 `null`；結帳與取消回應一律 `false`；
+② 付款端點原樣抽成 `internal static InitiateCustomerPaymentAsync(…, IClock clock, …)`，route **維持 lambda 包法**（不准改 method group）；順序：已取消 409 → 逾期 422 → 才交給 Payment；已付款的訂單即使過期也不是逾期；
+③ Host 測試一律用 `FakeClock`、不准用真實時鐘；`PaymentInstructionsHostTests.cs` 第 91、201 行只准補 `new FakeClock(Now)`，O1～O5 斷言一字不改；`ToOrderAsync`／`ToAdminOrderAsync` 簽章不改。
+
+package: BE-68
+doc: docs/79-第四十五波BE-68期限與取消資訊接到Host派工書.md
+allow: src/Hosts/GreyGray.Api.Storefront/M1aEndpoints.cs
+allow: src/Hosts/GreyGray.Api.Admin/M1aEndpoints.cs
+allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
+allow: .dispatch/reports/BE-68.md
+
+---
+
+<!--
+★ 2026-10-02 撤包：BE-64 驗收——範圍 18 檔全在 allow（docs/00-decisions.md、docs/72 為 Leader 依驗收審查另行修正）；四角度唯讀審查退回 5 項已修（M2 的 t0 改取資料庫時間並以 59 分鐘負向注入證明會紅、種子補已取消／Completed／新版形狀、0025 回填條件改 payment_auto_cancel_at IS NULL、衝突丟出前清 ChangeTracker、取號事件只准延後期限）；Leader 重建 Release 0 警告 0 錯誤、13 個測試執行檔 592 條 0 失敗（2 個既有 skip）、check-openapi storefront 34／34、admin 30／30；dev 重放 0001→0025：7 筆舊待付款回填期限並各排 1 個計時器、非待付款未動；計時器到期 → 取消（PaymentExpired）→ OrderCancelled 派送 → 庫存預留釋放，無新死信。原文保留供追溯。
+
+## 已撤包：BE-64　Ordering：繳費期限、逾期自動取消（含非信用卡寬限）、舊訂單回填、樂觀鎖、取消後才入帳、取消來源（第四十五波第 2 輪，2026-10-01）
 
 建單 24 小時期限、取號後改綠界期限＋2 天寬限、逾期計時器 `ordering.payment-due`、`0025` 回填舊待付款訂單並排計時器、Order 樂觀鎖（品項層級也要參與）、取消後才入帳只發退款要求、取消來源寫進訂單與事件。只動 Ordering、一支 migration、ops 兩支清單；不碰 Hosts（BE-68）與 Payment（BE-65）。以 Release 為準。
 
@@ -60,18 +81,21 @@ Leader 要明講。
 ② `0025` 用單一 `UPDATE … RETURNING` 接 `INSERT INTO platform.saga_timer`、`saga_id` N 格式、`fire_at` 至少 migration 時間＋1 小時、可重放；測試的時間斷言用套用前取的 `t0`；
 ③ 取消後才入帳金額仍須等於 `GrandTotal`、只發一筆 `RefundRequested`（金額＝`PaidAmount`）、不發 `OrderPaid`／`OrderReadyToShip`；樂觀鎖要涵蓋只改品項的操作；不准動 `IOrderingApplication` 的方法清單。
 
-package: BE-64
-doc: docs/77-第四十五波BE-64繳費期限與逾期取消派工書.md
-allow: src/Modules/Ordering/
-allow: db/migrations/0025
-allow: ops/install-dev-environment.ps1
-allow: ops/verify-environment.ps1
-allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
-allow: tests/GreyGray.M1a.Migrations.Tests/
-allow: tests/GreyGray.Contracts.Tests/
-allow: .dispatch/reports/BE-64.md
+(撤包) package: BE-64
+(撤包) doc: docs/77-第四十五波BE-64繳費期限與逾期取消派工書.md
+(撤包) allow: src/Modules/Ordering/
+(撤包) allow: db/migrations/0025
+(撤包) allow: ops/install-dev-environment.ps1
+(撤包) allow: ops/verify-environment.ps1
+(撤包) allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
+(撤包) allow: tests/GreyGray.M1a.Migrations.Tests/
+(撤包) allow: tests/GreyGray.Contracts.Tests/
+(撤包) allow: .dispatch/reports/BE-64.md
 
 ---
+
+-->
+
 
 <!--
 ★ 2026-10-01 撤包：BE-67 驗收——範圍只有 ops/seed-dev-staff.ps1＋報告；diff 確認沒給參數時 --secrets-dir 仍是 $secretsDir、順序 repo 檢查→讀 secrets→建目錄＋ACL→dotnet run；Leader 實跑：用 -CredentialsDir 新建 claude.owner／claude.readonly 兩筆（exit 0），新目錄 AreAccessRulesProtected=True、只剩 SYSTEM／Administrators／目前使用者，AI 讀得到密碼檔；同指令重跑 2 筆略過、檔案雜湊不變；不帶參數跑預設種子 4 筆已存在；repo 內路徑＋不存在的 InstallRoot 在第 44 行 throw、沒建任何目錄。原文保留供追溯。

@@ -1,5 +1,17 @@
 # 啟動 prompt
 
+## BE-68 期限、逾期與取消來源接到 Host（第四十五波第 3 輪，後端樹，2026-10-02）
+
+```text
+GG_PACKAGE=BE-68
+你是唯一實作者（Codex gpt-5.6-sol medium），不開子代理。專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform（後端樹）。
+開工前讀：AGENTS.md（六條鐵則）、.dispatch/ACTIVE.md 的 BE-68、docs/79-第四十五波BE-68期限與取消資訊接到Host派工書.md（整份）、docs/00-decisions.md 的 ADR-044（含 2026-10-01 補記）、docs/api/openapi.storefront.yaml 與 openapi.admin.yaml 裡 paymentOverdue／cancelledAt／cancellationSource／paymentDueAt 相關段落、.dispatch/reports/BE-63.md、.dispatch/reports/BE-64.md、.dispatch/reports/README.md。派工書以 ACTIVE 的 doc: 為準。
+只准寫 BE-68 的 allow（四條）；不准改 docs/、src/Modules/、src/Platform/、其他 Host 檔、其他測試專案；不准改 ModuleShapeTests。
+最容易做錯的三件事：① 逾期只准用同檔新增的一個 private static bool IsPaymentOverdue(OrderView order, DateTimeOffset now)＝待付款 && PaymentDueAt 有值 && now >= due.AddSeconds(1)；訂單詳情逾期時不查取號、paymentInstructions 為 null；結帳與取消回應的 PaymentOverdue 一律 false；CancelledAt／CancellationSource 從 OrderView 照原樣帶；② 付款端點原樣抽成 internal static Task<IResult> InitiateCustomerPaymentAsync(…, IClock clock, …)，route 維持 lambda 包法（參數綁 IClock 後 await 呼叫，不准改 method group），順序：已取消 409 → 逾期 422 ordering.payment-overdue（訊息「繳費期限已過，正在等待確認付款，不能再付款。」）→ 才呼叫 payments.InitiateAsync；③ Host 測試一律 FakeClock、不准用真實時鐘；PaymentInstructionsHostTests.cs 第 91、201 行只准補 new FakeClock(Now)，O1～O5 斷言一字不改；ToOrderAsync／ToAdminOrderAsync 簽章不改。
+以 Release 為準；Docker Desktop 要開著，沒開就停下來回報。dev 環境由 Leader 管，不准啟停（dev Host 正在跑，佔用 5000／5001／5009；EndToEnd 測試若因 port 被佔而失敗，停下來回報，不要去關 dev）。動手前先 Release 建置並跑 tests 底下全部 13 個測試執行檔（tests\<專案>\bin\Release\net10.0\<專案>.exe）記下現況，改完前景跑完（不要用 dotnet test、不要掛背景就結束），再跑 ops/check-openapi.ps1，報告前→後；B1 每一條既有斷言的修改逐條寫「舊斷言 → 新斷言 → 依據」。
+先列目標，備份要改的既有檔（TEMP 底下 GUID 目錄）。不安裝、不 commit、不 push、不部署、不改閘門。報告 .dispatch/reports/BE-68.md，三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」，逐條自驗以派工書 §1 與 §3（H1～H6、B1、docs/45 邊界六類）為準。預算：工具 120／讀 45／搜 25／改 6 檔／測修 2 輪，達限回報。stop gate 如提示既有 dirty（.dispatch/PROMPTS.md.bak-20260921-211728），只回報不還原，最後重述本包交付證據。
+```
+
 ## BE-64 Ordering 繳費期限與逾期取消（第四十五波第 2 輪，後端樹，2026-10-01）
 
 ```text
