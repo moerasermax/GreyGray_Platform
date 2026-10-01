@@ -69,11 +69,11 @@ public sealed class EventCatalogTests
         ModuleAnchors.Select(t => t.Assembly).Distinct().Count().ShouldBe(14);
     }
 
-    [Fact(DisplayName = "事件數量與 docs/02 的事件目錄一致（44 個）")]
+    [Fact(DisplayName = "事件數量與 docs/02 的事件目錄一致（45 個）")]
     public void Event_count_matches_the_catalog()
     {
         EventTypes.Count.ShouldBe(
-            44,
+            45,
             "新增或刪除事件時，docs/02-事件與狀態機.md 的事件目錄要同步更新——" +
             $"目前掃到 {EventTypes.Count} 個：{string.Join(", ", EventTypeNames())}");
     }

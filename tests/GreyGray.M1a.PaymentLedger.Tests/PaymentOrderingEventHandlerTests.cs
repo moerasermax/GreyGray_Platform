@@ -248,7 +248,9 @@ public sealed class PaymentOrderingEventHandlerTests
             string description,
             Uri returnUrl,
             Uri clientBackUrl,
-            DateTimeOffset createdAt) => new Dictionary<string, string>();
+            DateTimeOffset createdAt,
+            PaymentMethod method,
+            Uri? paymentInfoUrl) => new Dictionary<string, string>();
 
         public bool VerifyCallback(IReadOnlyDictionary<string, string> fields) => true;
 

@@ -5,6 +5,7 @@ namespace GreyGray.Modules.Payment.Contracts;
 [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
 [JsonSerializable(typeof(PaymentCaptured))]
 [JsonSerializable(typeof(PaymentFailed))]
+[JsonSerializable(typeof(PaymentInstructionsIssued))]
 [JsonSerializable(typeof(PaymentRefunded))]
 [JsonSerializable(typeof(PayoutSettled))]
 [JsonSerializable(typeof(ReconciliationDiscrepancyFound))]

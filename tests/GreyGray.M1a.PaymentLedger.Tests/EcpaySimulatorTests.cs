@@ -126,7 +126,9 @@ public sealed class EcpaySimulatorTests
             "GreyGray GG-20260902-0001",
             new Uri("http://127.0.0.1:5000/v1/webhooks/ecpay"),
             new Uri("http://127.0.0.1:5002/payment/result?orderId=deadbeef"),
-            Now);
+            Now,
+            PaymentMethod.CreditCard,
+            paymentInfoUrl: null);
 
         fields["ChoosePayment"].ShouldBe("Credit");
         fields.ShouldNotContainKey("IgnorePayment");
@@ -254,7 +256,9 @@ public sealed class EcpaySimulatorTests
             "GreyGray GG-20260902-0001",
             new Uri("http://127.0.0.1:5000/v1/webhooks/ecpay"),
             clientBackUrl,
-            Now);
+            Now,
+            PaymentMethod.CreditCard,
+            paymentInfoUrl: null);
 
         fields.ShouldContainKey("ClientBackURL");
         fields["ClientBackURL"].ShouldBe(clientBackUrl.AbsoluteUri);

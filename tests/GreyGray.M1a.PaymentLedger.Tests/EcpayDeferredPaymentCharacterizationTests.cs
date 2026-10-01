@@ -12,8 +12,7 @@ using PaymentEntity = GreyGray.Modules.Payment.Core.Payment;
 namespace GreyGray.M1a.PaymentLedger.Tests;
 
 /// <summary>
-/// BE-59：釘住 ATM／超商等非即時付款通知在現行 Payment 服務中的行為。
-/// 這些斷言描述現況，不代表現況是正確的產品設計；後續修法應刻意翻轉對應測試。
+/// BE-59 建立的非即時付款 characterization；BE-62 依 ADR-044 翻轉取號與晚到通知行為。
 /// </summary>
 public sealed class EcpayDeferredPaymentCharacterizationTests
 {
@@ -44,11 +43,13 @@ public sealed class EcpayDeferredPaymentCharacterizationTests
         harness.Publisher.Events.ShouldHaveSingleItem().ShouldBeOfType<PaymentCaptured>();
     }
 
-    [Fact(DisplayName = "C1 現況：ATM 取號 RtnCode=2 會 Failed 並發 PaymentFailed")]
-    public async Task C1_atm_code_retrieval_notification_fails_pending_payment()
+    [Fact(DisplayName = "C1 ATM 取號走 PaymentInfo handler，轉 InstructionsIssued 並發事件")]
+    public async Task C1_atm_code_retrieval_issues_payment_instructions()
     {
         var harness = CreateHarness();
-        var payment = await harness.InitiateAsync();
+        var payment = await harness.InitiateAsync(
+            PaymentMethod.Atm,
+            new Uri("https://api.example.test/v1/webhooks/ecpay/payment-info"));
         var notification = harness.BuildNotification(
             payment,
             2,
@@ -58,26 +59,29 @@ public sealed class EcpayDeferredPaymentCharacterizationTests
             {
                 ["BankCode"] = "812",
                 ["vAccount"] = "1234567890123456",
-                ["ExpireDate"] = "2026/10/03",
-            });
+                ["ExpireDate"] = "2026/10/04",
+            },
+            callbackInstant: InitialNow.AddHours(-2),
+            includePaymentDate: false);
 
-        harness.AssertValidProductionCallback(notification);
-        var result = await harness.Service.HandleEcpayCallbackAsync(
+        var result = await harness.Service.HandleEcpayPaymentInfoAsync(
             notification,
             TestContext.Current.CancellationToken);
 
         result.IsSuccess.ShouldBeTrue();
-        payment.Status.ShouldBe(PaymentStatus.Failed);
+        payment.Status.ShouldBe(PaymentStatus.InstructionsIssued);
         payment.ProviderTransactionId.ShouldBe(AtmTradeNo);
-        var failed = harness.Publisher.Events.ShouldHaveSingleItem().ShouldBeOfType<PaymentFailed>();
-        failed.FailureCode.ShouldBe("2");
+        payment.ProviderExpiresAt.ShouldBe(new DateTimeOffset(2026, 10, 4, 15, 59, 59, TimeSpan.Zero));
+        harness.Publisher.Events.ShouldHaveSingleItem().ShouldBeOfType<PaymentInstructionsIssued>();
     }
 
-    [Fact(DisplayName = "C2 現況：CVS 取號 RtnCode=10100073 會 Failed 並發 PaymentFailed")]
-    public async Task C2_cvs_code_retrieval_notification_fails_pending_payment()
+    [Fact(DisplayName = "C2 CVS 取號走 PaymentInfo handler，轉 InstructionsIssued 並發事件")]
+    public async Task C2_cvs_code_retrieval_issues_payment_instructions()
     {
         var harness = CreateHarness();
-        var payment = await harness.InitiateAsync();
+        var payment = await harness.InitiateAsync(
+            PaymentMethod.ConvenienceStoreCode,
+            new Uri("https://api.example.test/v1/webhooks/ecpay/payment-info"));
         var notification = harness.BuildNotification(
             payment,
             10100073,
@@ -90,41 +94,46 @@ public sealed class EcpayDeferredPaymentCharacterizationTests
                 ["Barcode1"] = string.Empty,
                 ["Barcode2"] = string.Empty,
                 ["Barcode3"] = string.Empty,
-            });
+            },
+            includePaymentDate: false);
 
-        harness.AssertValidProductionCallback(notification);
-        var result = await harness.Service.HandleEcpayCallbackAsync(
+        var result = await harness.Service.HandleEcpayPaymentInfoAsync(
             notification,
             TestContext.Current.CancellationToken);
 
         result.IsSuccess.ShouldBeTrue();
-        payment.Status.ShouldBe(PaymentStatus.Failed);
+        payment.Status.ShouldBe(PaymentStatus.InstructionsIssued);
         payment.ProviderTransactionId.ShouldBe(CvsTradeNo);
-        var failed = harness.Publisher.Events.ShouldHaveSingleItem().ShouldBeOfType<PaymentFailed>();
-        failed.FailureCode.ShouldBe("10100073");
+        harness.Publisher.Events.ShouldHaveSingleItem().ShouldBeOfType<PaymentInstructionsIssued>();
     }
 
-    [Fact(DisplayName = "C3 現況：取號已把付款設 Failed 後，同單號付款完成會由 Capture 丟例外")]
-    public async Task C3_paid_notification_after_code_retrieval_throws_from_capture()
+    [Fact(DisplayName = "C3 取號後同 TradeNo 付款完成會 Captured")]
+    public async Task C3_paid_notification_after_code_retrieval_captures_payment()
     {
         var harness = CreateHarness();
-        var payment = await harness.InitiateAsync();
-        var retrieval = harness.BuildNotification(payment, 2, "ATM_TAISHIN", AtmTradeNo);
-        harness.AssertValidProductionCallback(retrieval);
-        (await harness.Service.HandleEcpayCallbackAsync(
+        var payment = await harness.InitiateAsync(
+            PaymentMethod.Atm,
+            new Uri("https://api.example.test/v1/webhooks/ecpay/payment-info"));
+        var retrieval = harness.BuildNotification(
+            payment,
+            2,
+            "ATM_TAISHIN",
+            AtmTradeNo,
+            new Dictionary<string, string> { ["BankCode"] = "812", ["vAccount"] = "1234567890123456", ["ExpireDate"] = "2026/10/04" },
+            includePaymentDate: false);
+        (await harness.Service.HandleEcpayPaymentInfoAsync(
             retrieval,
             TestContext.Current.CancellationToken)).IsSuccess.ShouldBeTrue();
 
         var paid = harness.BuildNotification(payment, 1, "ATM_TAISHIN", AtmTradeNo);
-        harness.AssertValidProductionCallback(paid);
-        var exception = await Should.ThrowAsync<InvalidOperationException>(() =>
-            harness.Service.HandleEcpayCallbackAsync(
-                paid,
-                TestContext.Current.CancellationToken));
+        var result = await harness.Service.HandleEcpayCallbackAsync(
+            paid,
+            TestContext.Current.CancellationToken);
 
-        exception.Message.ShouldContain("付款狀態 Failed 不可轉為 Captured");
-        payment.Status.ShouldBe(PaymentStatus.Failed);
-        harness.Publisher.Events.Count.ShouldBe(1);
+        result.IsSuccess.ShouldBeTrue();
+        payment.Status.ShouldBe(PaymentStatus.Captured);
+        harness.Publisher.Events.Count.ShouldBe(2);
+        harness.Publisher.Events[1].ShouldBeOfType<PaymentCaptured>();
     }
 
     [Fact(DisplayName = "C4 現況：31 分鐘後重新付款會 Expire 舊筆、不發事件並開新單號")]
@@ -144,23 +153,23 @@ public sealed class EcpayDeferredPaymentCharacterizationTests
         harness.Publisher.Events.ShouldBeEmpty();
     }
 
-    [Fact(DisplayName = "C5 現況：舊筆 Expire 後收到時間窗內付款完成，Capture 仍丟例外")]
-    public async Task C5_paid_notification_for_expired_attempt_throws_from_capture()
+    [Fact(DisplayName = "C5 舊筆 Expire 後收到付款完成，寫晚到紀錄且不發收款事件")]
+    public async Task C5_paid_notification_for_expired_attempt_records_late_capture()
     {
         var harness = CreateHarness();
         var oldPayment = await harness.InitiateAsync();
         harness.Clock.UtcNow = InitialNow.AddMinutes(31);
         await harness.InitiateAsync();
 
-        var paid = harness.BuildNotification(oldPayment, 1, "ATM_TAISHIN", AtmTradeNo);
-        harness.AssertValidProductionCallback(paid);
-        var exception = await Should.ThrowAsync<InvalidOperationException>(() =>
-            harness.Service.HandleEcpayCallbackAsync(
-                paid,
-                TestContext.Current.CancellationToken));
+        var paid = harness.BuildNotification(oldPayment, 1, "Credit_CreditCard", AtmTradeNo);
+        var result = await harness.Service.HandleEcpayCallbackAsync(
+            paid,
+            TestContext.Current.CancellationToken);
 
-        exception.Message.ShouldContain("付款狀態 Failed 不可轉為 Captured");
+        result.IsSuccess.ShouldBeTrue();
         oldPayment.Status.ShouldBe(PaymentStatus.Failed);
+        oldPayment.LateCaptureTradeNo.ShouldBe(AtmTradeNo);
+        oldPayment.LateCapturedAt.ShouldNotBeNull();
         harness.Publisher.Events.ShouldBeEmpty();
     }
 
@@ -176,7 +185,7 @@ public sealed class EcpayDeferredPaymentCharacterizationTests
         var notification = harness.BuildNotification(
             payment,
             1,
-            "ATM_TAISHIN",
+            "Credit_CreditCard",
             AtmTradeNo,
             callbackInstant: harness.Clock.UtcNow.AddMinutes(-minutesOld));
 
@@ -200,22 +209,21 @@ public sealed class EcpayDeferredPaymentCharacterizationTests
         }
     }
 
-    [Fact(DisplayName = "C7 現況：舊筆 Expire 後收到 RtnCode=2，Fail 因不同 TradeNo 丟例外")]
-    public async Task C7_failure_notification_for_expired_attempt_throws_from_fail()
+    [Fact(DisplayName = "C7 舊筆 Expire 後收到失敗通知，回業務失敗而不丟例外")]
+    public async Task C7_failure_notification_for_expired_attempt_returns_business_failure()
     {
         var harness = CreateHarness();
         var oldPayment = await harness.InitiateAsync();
         harness.Clock.UtcNow = InitialNow.AddMinutes(31);
         await harness.InitiateAsync();
 
-        var failed = harness.BuildNotification(oldPayment, 2, "ATM_TAISHIN", AtmTradeNo);
-        harness.AssertValidProductionCallback(failed);
-        var exception = await Should.ThrowAsync<InvalidOperationException>(() =>
-            harness.Service.HandleEcpayCallbackAsync(
-                failed,
-                TestContext.Current.CancellationToken));
+        var failed = harness.BuildNotification(oldPayment, 7, "Credit_CreditCard", AtmTradeNo);
+        var result = await harness.Service.HandleEcpayCallbackAsync(
+            failed,
+            TestContext.Current.CancellationToken);
 
-        exception.Message.ShouldContain("同一付款收到不同的綠界交易編號");
+        result.IsFailure.ShouldBeTrue();
+        result.Error.Code.ShouldBe("payment.provider-trade-no-mismatch");
         oldPayment.Status.ShouldBe(PaymentStatus.Failed);
         harness.Publisher.Events.ShouldBeEmpty();
     }
@@ -226,7 +234,7 @@ public sealed class EcpayDeferredPaymentCharacterizationTests
         var harness = CreateHarness();
         var payment = await harness.InitiateAsync();
         harness.Clock.UtcNow = InitialNow.AddDays(3);
-        var paid = harness.BuildNotification(payment, 1, "ATM_TAISHIN", AtmTradeNo);
+        var paid = harness.BuildNotification(payment, 1, "Credit_CreditCard", AtmTradeNo);
 
         harness.AssertValidProductionCallback(paid);
         var result = await harness.Service.HandleEcpayCallbackAsync(
@@ -246,7 +254,7 @@ public sealed class EcpayDeferredPaymentCharacterizationTests
         var paid = harness.BuildNotification(
             payment,
             1,
-            "ATM_TAISHIN",
+            "Credit_CreditCard",
             AtmTradeNo,
             simulatePaid: "1");
 
@@ -326,7 +334,9 @@ public sealed class EcpayDeferredPaymentCharacterizationTests
 
         public SettableClock Clock { get; } = clock;
 
-        public async Task<PaymentEntity> InitiateAsync()
+        public async Task<PaymentEntity> InitiateAsync(
+            PaymentMethod method = PaymentMethod.CreditCard,
+            Uri? paymentInfoUrl = null)
         {
             var result = await Service.InitiateAsync(
                 new PaymentInitiationRequest(
@@ -335,7 +345,9 @@ public sealed class EcpayDeferredPaymentCharacterizationTests
                     Money.OfMajor(60, Currency.TWD),
                     "GreyGray BE-59 characterization",
                     new Uri("https://api.example.test/v1/webhooks/ecpay"),
-                    new Uri($"https://shop.example.test/payment/result?orderId={orderId.Value:N}")),
+                    new Uri($"https://shop.example.test/payment/result?orderId={orderId.Value:N}"),
+                    method,
+                    paymentInfoUrl),
                 TestContext.Current.CancellationToken);
 
             result.IsSuccess.ShouldBeTrue();
@@ -351,7 +363,8 @@ public sealed class EcpayDeferredPaymentCharacterizationTests
             string tradeNo,
             IReadOnlyDictionary<string, string>? additionalFields = null,
             DateTimeOffset? callbackInstant = null,
-            string simulatePaid = "0")
+            string simulatePaid = "0",
+            bool includePaymentDate = true)
         {
             var callbackTime = ToTaipeiWallTime(callbackInstant ?? Clock.UtcNow);
             var tradeTime = ToTaipeiWallTime(Clock.UtcNow);
@@ -365,10 +378,13 @@ public sealed class EcpayDeferredPaymentCharacterizationTests
                 ["TradeAmt"] = "160",
                 ["PaymentType"] = paymentType,
                 ["TradeDate"] = tradeTime,
-                ["PaymentDate"] = callbackTime,
                 ["PaymentTypeChargeFee"] = "0",
                 ["SimulatePaid"] = simulatePaid,
             };
+            if (includePaymentDate)
+            {
+                fields["PaymentDate"] = callbackTime;
+            }
             if (additionalFields is not null)
             {
                 foreach (var pair in additionalFields)

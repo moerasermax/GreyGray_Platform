@@ -231,7 +231,7 @@ public sealed class AccountingInvariantTests
             index.IsUnique &&
             index.Properties.Select(property => property.Name).SequenceEqual(
                 new[] { nameof(Payment.TenantId), nameof(Payment.OrderId) }) &&
-            index.GetFilter() == "status IN (0, 1, 4)");
+            index.GetFilter() == "status IN (0, 1, 4, 5)");
     }
 
     [Fact(DisplayName = "Infra 只匯出各自組合根且缺設定時登錄仍為 lazy")]

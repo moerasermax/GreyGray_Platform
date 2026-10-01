@@ -48,6 +48,15 @@ public enum PaymentStatus
     Failed = 2,
     Refunded = 3,
     PartiallyRefunded = 4,
+    InstructionsIssued = 5,
+}
+
+public enum PaymentMethod
+{
+    CreditCard = 0,
+    Atm = 1,
+    ConvenienceStoreCode = 2,
+    Barcode = 3,
 }
 
 // ── DTO ──────────────────────────────────────────────────────────────────
@@ -61,7 +70,18 @@ public sealed record PaymentSummary(
     Money? Fee,
     string? ProviderTransactionId,
     DateTimeOffset? CapturedAt,
-    DateTimeOffset? SettledAt);
+    DateTimeOffset? SettledAt,
+    PaymentMethod? Method = null,
+    PaymentInstructionsView? Instructions = null);
+
+public sealed record PaymentInstructionsView(
+    PaymentMethod Method,
+    string? BankCode,
+    string? VirtualAccount,
+    string? PaymentNo,
+    IReadOnlyList<string>? Barcodes,
+    DateTimeOffset ExpiresAt,
+    DateTimeOffset IssuedAt);
 
 /// <summary>
 /// 付款方式 × 配送方式的相容性。<b>這是一條真實的業務規則，不是 UI 細節</b>——
@@ -96,7 +116,9 @@ public sealed record PaymentInitiationRequest(
     Money ShippingAmount,
     string Description,
     Uri ReturnUrl,
-    Uri ClientBackUrl);
+    Uri ClientBackUrl,
+    PaymentMethod Method = PaymentMethod.CreditCard,
+    Uri? PaymentInfoUrl = null);
 
 /// <summary>已通過綠界驗簽與必要欄位檢查的付款結果通知身分。</summary>
 public sealed record EcpayCallbackEnvelope(
@@ -127,6 +149,20 @@ public interface IPaymentCommand
         CancellationToken cancellationToken);
 
     Task<Result> HandleEcpayCallbackAsync(
+        IReadOnlyDictionary<string, string> fields,
+        CancellationToken cancellationToken);
+}
+
+public interface IPaymentInstructionsQuery
+{
+    Task<Result<PaymentInstructionsView?>> GetOutstandingInstructionsAsync(
+        OrderId orderId,
+        CancellationToken cancellationToken);
+}
+
+public interface IEcpayPaymentInfoHandler
+{
+    Task<Result> HandleEcpayPaymentInfoAsync(
         IReadOnlyDictionary<string, string> fields,
         CancellationToken cancellationToken);
 }
@@ -180,6 +216,23 @@ public sealed record PaymentFailed(
     : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
 {
     public static string EventType => "payment.PaymentFailed.v1";
+
+    public override string AggregateType => "Payment";
+
+    public override string AggregateId => PaymentId.ToString();
+}
+
+public sealed record PaymentInstructionsIssued(
+    Guid EventId,
+    DateTimeOffset OccurredAt,
+    TenantId TenantId,
+    PaymentId PaymentId,
+    OrderId OrderId,
+    PaymentMethod Method,
+    DateTimeOffset ExpiresAt)
+    : IntegrationEventBase(EventId, OccurredAt, TenantId), IIntegrationEvent
+{
+    public static string EventType => "payment.PaymentInstructionsIssued.v1";
 
     public override string AggregateType => "Payment";
 

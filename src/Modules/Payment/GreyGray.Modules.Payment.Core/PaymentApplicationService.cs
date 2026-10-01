@@ -35,7 +35,9 @@ internal interface IEcpayGateway
         string description,
         Uri returnUrl,
         Uri clientBackUrl,
-        DateTimeOffset createdAt);
+        DateTimeOffset createdAt,
+        PaymentMethod method,
+        Uri? paymentInfoUrl);
 
     bool VerifyCallback(IReadOnlyDictionary<string, string> fields);
 
@@ -57,7 +59,12 @@ internal sealed class PaymentApplicationService(
     IEcpayGateway ecpay,
     EcpaySettings settings,
     IClock clock,
-    ICorrelationContext correlationContext) : IPaymentCommand, IPaymentQuery, IEcpayCallbackVerifier
+    ICorrelationContext correlationContext) :
+    IPaymentCommand,
+    IPaymentQuery,
+    IPaymentInstructionsQuery,
+    IEcpayPaymentInfoHandler,
+    IEcpayCallbackVerifier
 {
     // 為什麼不直接 FindSystemTimeZoneById("Asia/Taipei")：見 TaipeiTime 的註解——
     // InvariantGlobalization 關掉 ICU 之後，Windows 上查不到 IANA 那個名字。
@@ -67,6 +74,20 @@ internal sealed class PaymentApplicationService(
         PaymentInitiationRequest request,
         CancellationToken cancellationToken)
     {
+        if (!Enum.IsDefined(request.Method))
+        {
+            return Result<PaymentInitiation>.Failure(
+                "payment.invalid-payment-method",
+                "付款方式無效。");
+        }
+
+        if (request.Method != PaymentMethod.CreditCard && request.PaymentInfoUrl is null)
+        {
+            return Result<PaymentInitiation>.Failure(
+                "payment.payment-info-url-required",
+                "非信用卡付款必須提供綠界取號通知網址。");
+        }
+
         if (request.GoodsAmount.Currency != Currency.TWD ||
             request.ShippingAmount.Currency != Currency.TWD)
         {
@@ -97,23 +118,58 @@ internal sealed class PaymentApplicationService(
         }
 
         var now = clock.UtcNow;
-        Payment payment;
-        if (existing is { Status: PaymentStatus.Pending } && existing.ExpiresAt > now)
+        if (existing is { Status: PaymentStatus.InstructionsIssued })
         {
-            payment = existing;
-            if (payment.Amount != total)
+            if (existing.ProviderExpiresAt is not { } providerExpiresAt)
             {
                 return Result<PaymentInitiation>.Failure(
-                    "payment.amount-mismatch",
-                    "付款要求金額與訂單原應付金額不符。");
+                    "payment.invalid-instructions-state",
+                    "已取號付款缺少綠界繳費期限。");
             }
 
-            if (payment.SetBreakdown(request.GoodsAmount, request.ShippingAmount))
+            if (now < providerExpiresAt.AddSeconds(1))
             {
+                return Result<PaymentInitiation>.Failure(
+                    "payment.instructions-already-issued",
+                    "這張訂單已有尚未逾期的繳費資訊。");
+            }
+
+            var expired = existing.ExpireInstructions(now);
+            if (expired.IsFailure)
+            {
+                return Result<PaymentInitiation>.Failure(expired.Error);
+            }
+
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        Payment? payment = null;
+        if (existing is { Status: PaymentStatus.Pending } && existing.ExpiresAt > now)
+        {
+            if (existing.Method != request.Method)
+            {
+                existing.Supersede(now);
+                // active-payment partial unique 是 immediate；先作廢舊 attempt 再建新單。
                 await unitOfWork.SaveChangesAsync(cancellationToken);
             }
+            else
+            {
+                payment = existing;
+                if (payment.Amount != total)
+                {
+                    return Result<PaymentInitiation>.Failure(
+                        "payment.amount-mismatch",
+                        "付款要求金額與訂單原應付金額不符。");
+                }
+
+                if (payment.SetBreakdown(request.GoodsAmount, request.ShippingAmount))
+                {
+                    await unitOfWork.SaveChangesAsync(cancellationToken);
+                }
+            }
         }
-        else
+
+        if (payment is null)
         {
             if (existing is { Status: PaymentStatus.Pending })
             {
@@ -133,7 +189,8 @@ internal sealed class PaymentApplicationService(
                 request.ShippingAmount,
                 merchantTradeNo,
                 now,
-                now.Add(settings.InitiationLifetime));
+                now.Add(settings.InitiationLifetime),
+                request.Method);
             payments.Add(payment);
             await unitOfWork.SaveChangesAsync(cancellationToken);
         }
@@ -144,7 +201,9 @@ internal sealed class PaymentApplicationService(
             request.Description,
             request.ReturnUrl,
             request.ClientBackUrl,
-            payment.CreatedAt);
+            payment.CreatedAt,
+            payment.Method ?? request.Method,
+            request.PaymentInfoUrl);
 
         return new PaymentInitiation(
             PaymentProvider.ECPay,
@@ -175,14 +234,6 @@ internal sealed class PaymentApplicationService(
             return Result.Failure("payment.payment-not-found", "找不到綠界回呼對應的付款。");
         }
 
-        if ((payment.Status is PaymentStatus.Captured
-                or PaymentStatus.PartiallyRefunded
-                or PaymentStatus.Refunded) &&
-            StringComparer.Ordinal.Equals(payment.ProviderTransactionId, callback.TradeNo))
-        {
-            return Result.Success();
-        }
-
         if (fields.TryGetValue("SimulatePaid", out var simulated) &&
             simulated == "1" &&
             !settings.AllowSimulatedPaid)
@@ -196,7 +247,39 @@ internal sealed class PaymentApplicationService(
             return Result.Failure("payment.amount-mismatch", "綠界回呼金額與訂單應付金額不符。");
         }
 
-        if (!TryGetCallbackTime(fields, out var callbackTime) ||
+        var callbackMethod = PaymentMethodFromPaymentType(fields.GetValueOrDefault("PaymentType"));
+        if (payment.Method is { } expectedMethod &&
+            callbackMethod is { } actualMethod &&
+            actualMethod != expectedMethod)
+        {
+            return Result.Failure(
+                "payment.payment-method-mismatch",
+                "綠界通知的付款方式與這筆付款不一致。");
+        }
+
+        if (callback.RtnCode is 2 or 10100073)
+        {
+            return Result.Failure(
+                "payment.unexpected-payment-info",
+                "取號結果必須送到綠界取號通知端點。");
+        }
+
+        if ((payment.Status is PaymentStatus.Captured
+                or PaymentStatus.PartiallyRefunded
+                or PaymentStatus.Refunded) &&
+            StringComparer.Ordinal.Equals(payment.ProviderTransactionId, callback.TradeNo))
+        {
+            return Result.Success();
+        }
+
+        if (!TryGetCallbackTime(fields, out var callbackTime))
+        {
+            return Result.Failure("payment.invalid-callback", "綠界回呼付款時間格式錯誤。");
+        }
+
+        var appliesCallbackAge = callbackMethod is not (
+            PaymentMethod.Atm or PaymentMethod.ConvenienceStoreCode or PaymentMethod.Barcode);
+        if (appliesCallbackAge &&
             (clock.UtcNow - callbackTime).Duration() > settings.CallbackMaxAge)
         {
             return Result.Failure("payment.stale-callback", "綠界回呼時間超出容忍範圍。");
@@ -206,7 +289,13 @@ internal sealed class PaymentApplicationService(
         if (callback.RtnCode == 1)
         {
             var fee = ParseFee(fields, payment.Amount.Currency);
-            if (payment.Capture(callback.TradeNo, fee, callbackTime))
+            var captured = payment.Capture(callback.TradeNo, fee, callbackTime);
+            if (captured.IsFailure)
+            {
+                return Result.Failure(captured.Error);
+            }
+
+            if (captured.Value == CaptureTransition.Captured)
             {
                 await eventPublisher.PublishAsync(
                     new PaymentCaptured(
@@ -223,24 +312,145 @@ internal sealed class PaymentApplicationService(
                     cancellationToken);
             }
         }
-        else if (payment.Fail(callback.TradeNo))
+        else
         {
-            fields.TryGetValue("RtnMsg", out var message);
+            var failed = payment.Fail(callback.TradeNo);
+            if (failed.IsFailure)
+            {
+                return Result.Failure(failed.Error);
+            }
+
+            if (failed.Value)
+            {
+                fields.TryGetValue("RtnMsg", out var message);
+                await eventPublisher.PublishAsync(
+                    new PaymentFailed(
+                        Guid.CreateVersion7(),
+                        occurredAt,
+                        payment.TenantId,
+                        payment.Id,
+                        payment.OrderId,
+                        payment.Provider,
+                        callback.RtnCodeText,
+                        message ?? "綠界回報付款失敗。"),
+                    cancellationToken);
+            }
+        }
+
+        return await SaveNotificationChangesAsync(cancellationToken);
+    }
+
+    public async Task<Result> HandleEcpayPaymentInfoAsync(
+        IReadOnlyDictionary<string, string> fields,
+        CancellationToken cancellationToken)
+    {
+        var verification = VerifyCallback(fields);
+        if (verification.IsFailure)
+        {
+            return Result.Failure(verification.Error);
+        }
+
+        var callback = verification.Value;
+        var payment = await payments.FindByMerchantTradeNoAsync(
+            correlationContext.TenantId,
+            callback.MerchantTradeNo,
+            cancellationToken);
+        if (payment is null)
+        {
+            return Result.Failure("payment.payment-not-found", "找不到綠界取號通知對應的付款。");
+        }
+
+        if (fields.TryGetValue("SimulatePaid", out var simulated) &&
+            simulated == "1" &&
+            !settings.AllowSimulatedPaid)
+        {
+            return Result.Failure("payment.simulated-callback-rejected", "正式流程不可接受模擬付款通知。");
+        }
+
+        var expectedMajor = payment.Amount.AmountMinor / Currency.TWD.MinorUnitsPerUnit();
+        if (callback.TradeAmountMajor != expectedMajor)
+        {
+            return Result.Failure("payment.amount-mismatch", "綠界取號通知金額與訂單應付金額不符。");
+        }
+
+        var callbackMethod = PaymentMethodFromPaymentType(fields.GetValueOrDefault("PaymentType"));
+        if (payment.Method is not { } expectedMethod ||
+            callbackMethod is not { } actualMethod ||
+            expectedMethod != actualMethod ||
+            expectedMethod == PaymentMethod.CreditCard)
+        {
+            return Result.Failure(
+                "payment.payment-method-mismatch",
+                "綠界取號通知的付款方式與這筆付款不一致。");
+        }
+
+        var occurredAt = clock.UtcNow;
+        var expectedSuccessCode = expectedMethod == PaymentMethod.Atm ? 2 : 10100073;
+        if (callback.RtnCode != expectedSuccessCode)
+        {
+            var failed = payment.Fail(callback.TradeNo);
+            if (failed.IsFailure)
+            {
+                return Result.Failure(failed.Error);
+            }
+
+            if (failed.Value)
+            {
+                fields.TryGetValue("RtnMsg", out var message);
+                await eventPublisher.PublishAsync(
+                    new PaymentFailed(
+                        Guid.CreateVersion7(),
+                        occurredAt,
+                        payment.TenantId,
+                        payment.Id,
+                        payment.OrderId,
+                        payment.Provider,
+                        callback.RtnCodeText,
+                        message ?? "綠界回報取號失敗。"),
+                    cancellationToken);
+            }
+
+            return await SaveNotificationChangesAsync(cancellationToken);
+        }
+
+        if (!TryGetProviderExpiry(expectedMethod, fields, out var providerExpiresAt))
+        {
+            return Result.Failure(
+                "payment.invalid-payment-instructions",
+                "綠界取號通知的繳費期限格式錯誤。");
+        }
+
+        var issued = payment.IssueInstructions(
+            callback.TradeNo,
+            new PaymentInstructionData(
+                NullIfWhiteSpace(fields.GetValueOrDefault("BankCode")),
+                NullIfWhiteSpace(fields.GetValueOrDefault("vAccount")),
+                NullIfWhiteSpace(fields.GetValueOrDefault("PaymentNo")),
+                NullIfWhiteSpace(fields.GetValueOrDefault("Barcode1")),
+                NullIfWhiteSpace(fields.GetValueOrDefault("Barcode2")),
+                NullIfWhiteSpace(fields.GetValueOrDefault("Barcode3"))),
+            providerExpiresAt,
+            occurredAt);
+        if (issued.IsFailure)
+        {
+            return Result.Failure(issued.Error);
+        }
+
+        if (issued.Value)
+        {
             await eventPublisher.PublishAsync(
-                new PaymentFailed(
+                new PaymentInstructionsIssued(
                     Guid.CreateVersion7(),
                     occurredAt,
                     payment.TenantId,
                     payment.Id,
                     payment.OrderId,
-                    payment.Provider,
-                    callback.RtnCodeText,
-                    message ?? "綠界回報付款失敗。"),
+                    expectedMethod,
+                    providerExpiresAt),
                 cancellationToken);
         }
 
-        await unitOfWork.SaveChangesAsync(cancellationToken);
-        return Result.Success();
+        return await SaveNotificationChangesAsync(cancellationToken);
     }
 
     public Result<EcpayCallbackEnvelope> Verify(IReadOnlyDictionary<string, string> fields)
@@ -278,6 +488,24 @@ internal sealed class PaymentApplicationService(
         return found.Select(payment => payment.ToSummary()).ToArray();
     }
 
+    public async Task<Result<PaymentInstructionsView?>> GetOutstandingInstructionsAsync(
+        OrderId orderId,
+        CancellationToken cancellationToken)
+    {
+        var payment = await payments.FindByOrderAsync(
+            correlationContext.TenantId,
+            orderId,
+            cancellationToken);
+        if (payment is not { Status: PaymentStatus.InstructionsIssued } ||
+            payment.ProviderExpiresAt is not { } providerExpiresAt ||
+            clock.UtcNow >= providerExpiresAt.AddSeconds(1))
+        {
+            return Result<PaymentInstructionsView?>.Success(null);
+        }
+
+        return Result<PaymentInstructionsView?>.Success(payment.ToSummary().Instructions);
+    }
+
     public Task<Result<IReadOnlyList<ProviderCapability>>> GetEnabledProvidersAsync(
         CancellationToken cancellationToken)
     {
@@ -285,6 +513,82 @@ internal sealed class PaymentApplicationService(
         [new(PaymentProvider.ECPay, true, true, true)];
         return Task.FromResult(Result<IReadOnlyList<ProviderCapability>>.Success(providers));
     }
+
+    private async Task<Result> SaveNotificationChangesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+            return Result.Success();
+        }
+        catch (PaymentConcurrencyException)
+        {
+            return Result.Failure(
+                "payment.concurrent-update",
+                "付款通知與另一筆更新同時發生，請由綠界重送後再依最新狀態處理。");
+        }
+    }
+
+    private static PaymentMethod? PaymentMethodFromPaymentType(string? paymentType)
+    {
+        if (string.IsNullOrWhiteSpace(paymentType))
+        {
+            return null;
+        }
+
+        if (paymentType.StartsWith("Credit_", StringComparison.OrdinalIgnoreCase))
+        {
+            return PaymentMethod.CreditCard;
+        }
+
+        if (paymentType.StartsWith("ATM_", StringComparison.OrdinalIgnoreCase))
+        {
+            return PaymentMethod.Atm;
+        }
+
+        if (paymentType.StartsWith("CVS_", StringComparison.OrdinalIgnoreCase))
+        {
+            return PaymentMethod.ConvenienceStoreCode;
+        }
+
+        return paymentType.StartsWith("BARCODE_", StringComparison.OrdinalIgnoreCase)
+            ? PaymentMethod.Barcode
+            : null;
+    }
+
+    private static bool TryGetProviderExpiry(
+        PaymentMethod method,
+        IReadOnlyDictionary<string, string> fields,
+        out DateTimeOffset providerExpiresAt)
+    {
+        var raw = fields.GetValueOrDefault("ExpireDate");
+        var format = method == PaymentMethod.Atm
+            ? "yyyy/MM/dd"
+            : "yyyy/MM/dd HH:mm:ss";
+        if (!DateTime.TryParseExact(
+                raw,
+                format,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var local))
+        {
+            providerExpiresAt = default;
+            return false;
+        }
+
+        if (method == PaymentMethod.Atm)
+        {
+            local = local.Date.AddHours(23).AddMinutes(59).AddSeconds(59);
+        }
+
+        providerExpiresAt = new DateTimeOffset(
+            local,
+            TaipeiTimeZone.GetUtcOffset(local)).ToUniversalTime();
+        return true;
+    }
+
+    private static string? NullIfWhiteSpace(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value;
 
     private static bool Required(
         IReadOnlyDictionary<string, string> fields,

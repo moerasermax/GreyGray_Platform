@@ -66,7 +66,7 @@ ALTER TABLE payment.payment
 
 ALTER TABLE payment.payment
     ADD CONSTRAINT payment_status_known
-        CHECK (status IN (0, 1, 2, 3, 4)),
+        CHECK (status IN (0, 1, 2, 3, 4, 5)),
     ADD CONSTRAINT payment_amounts_valid
         CHECK (goods_amount_minor >= 0
             AND shipping_amount_minor >= 0

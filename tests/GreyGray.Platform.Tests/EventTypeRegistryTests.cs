@@ -26,11 +26,11 @@ namespace GreyGray.Platform.Tests;
 public sealed class EventTypeRegistryTests
 {
     [Fact]
-    public void Registry_contains_the_exact_44_event_catalog_entries()
+    public void Registry_contains_the_exact_45_event_catalog_entries()
     {
         var registry = EventTypeRegistry.FromAssemblies(EventCatalog.ContractAssemblies);
 
-        registry.KnownEventTypes.Count.ShouldBe(44);
+        registry.KnownEventTypes.Count.ShouldBe(45);
         registry.KnownEventTypes
             .ToHashSet(StringComparer.Ordinal)
             .SetEquals(EventCatalog.ExpectedEventTypes)
@@ -104,6 +104,7 @@ internal static class EventCatalog
         "fulfillment.ShipmentDispatched.v1", "fulfillment.ShipmentDelivered.v1",
         "fulfillment.ReturnReceived.v1", "fulfillment.ShipmentLost.v1",
         "payment.PaymentCaptured.v1", "payment.PaymentFailed.v1", "payment.PaymentRefunded.v1",
+        "payment.PaymentInstructionsIssued.v1",
         "payment.PayoutSettled.v1", "payment.ReconciliationDiscrepancyFound.v1",
         "ledger.JournalPosted.v1", "ledger.LiabilityExceededCash.v1",
         "notify.NotificationSent.v1", "notify.NotificationFailed.v1",

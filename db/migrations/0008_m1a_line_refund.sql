@@ -47,7 +47,7 @@ ALTER TABLE payment.payment
         refunded_amount_minor >= 0
         AND refunded_amount_minor <= goods_amount_minor + shipping_amount_minor),
     ADD CONSTRAINT payment_refund_status_consistent CHECK (
-        (status IN (0, 1, 2) AND refunded_amount_minor = 0)
+        (status IN (0, 1, 2, 5) AND refunded_amount_minor = 0)
         OR (status = 3 AND refunded_amount_minor = goods_amount_minor + shipping_amount_minor)
         OR (status = 4
             AND refunded_amount_minor > 0

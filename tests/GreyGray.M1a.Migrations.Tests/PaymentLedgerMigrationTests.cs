@@ -12,7 +12,7 @@ using Xunit;
 
 namespace GreyGray.M1a.Migrations.Tests;
 
-public sealed class PaymentLedgerMigrationTests : IAsyncLifetime
+public sealed partial class PaymentLedgerMigrationTests : IAsyncLifetime
 {
     private const string TenantId = "00000000-0000-0000-0000-000000000001";
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17-alpine")
@@ -154,7 +154,7 @@ public sealed class PaymentLedgerMigrationTests : IAsyncLifetime
     public async Task Ef_retries_after_expired_pending_without_hitting_active_unique()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var connectionString = await CreateMigratedDatabaseAsync(8, cancellationToken);
+        var connectionString = await CreateMigratedDatabaseAsync(24, cancellationToken);
         var now = new DateTimeOffset(2026, 8, 28, 8, 0, 0, TimeSpan.Zero);
         var orderId = OrderId.New();
         await using (var seed = CreatePaymentDbContext(connectionString))
@@ -228,7 +228,7 @@ public sealed class PaymentLedgerMigrationTests : IAsyncLifetime
     public async Task Ecpay_callback_captures_the_payment_in_a_real_database()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
-        var connectionString = await CreateMigratedDatabaseAsync(8, cancellationToken);
+        var connectionString = await CreateMigratedDatabaseAsync(24, cancellationToken);
 
         // 台北 2026/09/02 12:00:00 ＝ UTC 2026-09-02T04:00:00Z（同一個瞬間，換算結果不變）。
         var paidAtTaipei = new DateTimeOffset(2026, 9, 2, 12, 0, 0, TimeSpan.FromHours(8));
@@ -481,7 +481,9 @@ public sealed class PaymentLedgerMigrationTests : IAsyncLifetime
             string description,
             Uri returnUrl,
             Uri clientBackUrl,
-            DateTimeOffset createdAt) => new Dictionary<string, string>();
+            DateTimeOffset createdAt,
+            PaymentMethod method,
+            Uri? paymentInfoUrl) => new Dictionary<string, string>();
 
         public bool VerifyCallback(IReadOnlyDictionary<string, string> fields) => true;
 

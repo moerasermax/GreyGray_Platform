@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using GreyGray.Modules.Payment.Contracts;
 using GreyGray.Modules.Payment.Core;
 using GreyGray.Shared.Kernel;
 
@@ -13,7 +14,9 @@ internal sealed class EcpayGateway(
     string hashIv,
     HttpClient httpClient) : IEcpayGateway
 {
-    private const string TransitionalPaymentMethod = "Credit";
+    private const string AtmExpireDays = "3";
+    private const string ConvenienceStoreExpireMinutes = "4320";
+    private const string BarcodeExpireDays = "3";
 
     public IReadOnlyDictionary<string, string> CreateCheckoutFields(
         string merchantTradeNo,
@@ -21,7 +24,9 @@ internal sealed class EcpayGateway(
         string description,
         Uri returnUrl,
         Uri clientBackUrl,
-        DateTimeOffset createdAt)
+        DateTimeOffset createdAt,
+        PaymentMethod method,
+        Uri? paymentInfoUrl)
     {
         // 為什麼不用 ConvertTimeBySystemTimeZoneId(createdAt, "Asia/Taipei")：見 TaipeiTime 的註解。
         // 那個寫法在 Windows ＋ InvariantGlobalization 下丟 TimeZoneNotFoundException，
@@ -41,10 +46,40 @@ internal sealed class EcpayGateway(
             // 綠界完成頁的「返回商店」按鈕。少了它，客人付完款就停在綠界頁上沒有路回來（#33）。
             // 它跟其他欄位一樣要進 CheckMacValue，所以放在算簽章之前。
             ["ClientBackURL"] = clientBackUrl.AbsoluteUri,
-            // ADR-044 過渡期只收信用卡；BE-66 重新開放時不能只把字串改回 ALL。
-            ["ChoosePayment"] = TransitionalPaymentMethod,
+            // ADR-044：每筆只送單一方式，不用 ALL／IgnorePayment；過渡期由 Host 只送信用卡。
+            ["ChoosePayment"] = method switch
+            {
+                PaymentMethod.CreditCard => "Credit",
+                PaymentMethod.Atm => "ATM",
+                PaymentMethod.ConvenienceStoreCode => "CVS",
+                PaymentMethod.Barcode => "BARCODE",
+                _ => throw new InvalidOperationException("不支援的綠界付款方式。"),
+            },
             ["EncryptType"] = "1",
         };
+
+        if (method != PaymentMethod.CreditCard)
+        {
+            if (paymentInfoUrl is null)
+            {
+                throw new InvalidOperationException("非信用卡付款必須提供 PaymentInfoURL。");
+            }
+
+            fields["PaymentInfoURL"] = paymentInfoUrl.AbsoluteUri;
+            switch (method)
+            {
+                case PaymentMethod.Atm:
+                    fields["ExpireDate"] = AtmExpireDays;
+                    break;
+                case PaymentMethod.ConvenienceStoreCode:
+                    fields["StoreExpireDate"] = ConvenienceStoreExpireMinutes;
+                    break;
+                case PaymentMethod.Barcode:
+                    fields["StoreExpireDate"] = BarcodeExpireDays;
+                    break;
+            }
+        }
+
         fields["CheckMacValue"] = ComputeCheckMacValue(fields, hashKey, hashIv);
         return fields;
     }

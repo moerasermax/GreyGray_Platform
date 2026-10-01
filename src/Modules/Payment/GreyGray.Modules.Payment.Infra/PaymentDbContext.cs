@@ -14,6 +14,18 @@ internal sealed class PaymentDbContext(DbContextOptions<PaymentDbContext> option
 {
     public DbSet<PaymentEntity> Payments => Set<PaymentEntity>();
 
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await base.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException exception)
+        {
+            throw new PaymentConcurrencyException("付款資料已被另一個作業更新。", exception);
+        }
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -67,6 +79,27 @@ internal sealed class PaymentDbContext(DbContextOptions<PaymentDbContext> option
         payment.Property(value => value.ProviderTransactionId)
             .HasColumnName("provider_transaction_id")
             .HasMaxLength(32);
+        payment.Property(value => value.Method)
+            .HasColumnName("method")
+            .HasConversion<short?>();
+        payment.Property(value => value.BankCode)
+            .HasColumnName("bank_code")
+            .HasMaxLength(32);
+        payment.Property(value => value.VirtualAccount)
+            .HasColumnName("virtual_account")
+            .HasMaxLength(32);
+        payment.Property(value => value.PaymentNo)
+            .HasColumnName("payment_no")
+            .HasMaxLength(32);
+        payment.Property(value => value.Barcode1)
+            .HasColumnName("barcode_1")
+            .HasMaxLength(32);
+        payment.Property(value => value.Barcode2)
+            .HasColumnName("barcode_2")
+            .HasMaxLength(32);
+        payment.Property(value => value.Barcode3)
+            .HasColumnName("barcode_3")
+            .HasMaxLength(32);
         payment.Property(value => value.CreatedAt)
             .HasColumnName("created_at")
             .HasColumnType("timestamp with time zone")
@@ -81,12 +114,24 @@ internal sealed class PaymentDbContext(DbContextOptions<PaymentDbContext> option
         payment.Property(value => value.SettledAt)
             .HasColumnName("settled_at")
             .HasColumnType("timestamp with time zone");
+        payment.Property(value => value.ProviderExpiresAt)
+            .HasColumnName("provider_expires_at")
+            .HasColumnType("timestamp with time zone");
+        payment.Property(value => value.InstructionsIssuedAt)
+            .HasColumnName("instructions_issued_at")
+            .HasColumnType("timestamp with time zone");
+        payment.Property(value => value.LateCaptureTradeNo)
+            .HasColumnName("late_capture_trade_no")
+            .HasMaxLength(32);
+        payment.Property(value => value.LateCapturedAt)
+            .HasColumnName("late_captured_at")
+            .HasColumnType("timestamp with time zone");
         payment.HasIndex(value => value.MerchantTradeNo)
             .IsUnique()
             .HasDatabaseName("ux_payment_merchant_trade_no");
         payment.HasIndex(value => new { value.TenantId, value.OrderId })
             .IsUnique()
-            .HasFilter("status IN (0, 1, 4)")
+            .HasFilter("status IN (0, 1, 4, 5)")
             .HasDatabaseName("ux_payment_tenant_order_active");
 
         modelBuilder.AddPlatformTables();
