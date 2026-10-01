@@ -51,7 +51,10 @@ Leader 要明講。
 
 ---
 
-## 生效中：FE-61　前台：訂單取消說明、繳費期限已過的「確認中」（先用 mock）（第四十五波第 3 輪，2026-10-01）
+<!--
+★ 2026-10-01 撤包：FE-61 驗收——範圍 13 檔全在 allow（ATM 那條既有 mock 測試只改挑選方式、斷言不變；結果頁已無「原路退還」）；Leader 重跑 typecheck exit 0、test api-client 63／admin 245／storefront 668；mock 走查：逾期單確認中（文案一字不差、無付款鈕、仍可取消）、付款發動頁不導收銀台、結果頁確認中無重新付款；三種取消說明正確（已付款才有退款句、客服句一次、台灣時間）；倒數到期只重讀 1 次後變確認中；ATM 單自助取消後顯示客人取消說明、取號卡消失。第一次起 dev 撞 turbopack 字型錯誤（.next 已搬走仍發生），重啟一次正常。原文保留供追溯。
+
+## 已撤包：FE-61　前台：訂單取消說明、繳費期限已過的「確認中」（先用 mock）（第四十五波第 3 輪，2026-10-01）
 
 已取消的訂單依來源顯示固定說明（不顯示後台原因）；寬限期間顯示「確認中」、不能再付款、仍可自助取消；付款發動頁與結果頁同規則。型別已由 FE-58 重產，不准再 generate。
 
@@ -60,17 +63,20 @@ Leader 要明講。
 ② 倒數到期改背景重讀且只重讀一次（不改倒數元件）；`handlePay` 接住 409 已取號／422 逾期並重讀（把 `handleCancel` 裡的死碼搬回來）；結果頁已取消分支拿掉「依原路退還」；
 ③ mock 新種子接在最後，只准改 ATM 那條既有測試的挑選方式；handler 動態算逾期、取消時清掉 `paymentInstructions`、一律不可變更新。
 
-package: FE-61
-doc: docs/78-第四十五波FE-61前台取消說明與確認中派工書.md
-allow: frontend/apps/storefront/app/(account)/orders/
-allow: frontend/apps/storefront/app/(checkout)/payment/
-allow: frontend/apps/storefront/app/(checkout)/_lib/
-allow: frontend/packages/api-client/src/mock/fixtures.storefront.ts
-allow: frontend/packages/api-client/src/mock/handlers.storefront.ts
-allow: frontend/packages/api-client/src/mock/__tests__/
-allow: .dispatch/reports/FE-61.md
+(撤包) package: FE-61
+(撤包) doc: docs/78-第四十五波FE-61前台取消說明與確認中派工書.md
+(撤包) allow: frontend/apps/storefront/app/(account)/orders/
+(撤包) allow: frontend/apps/storefront/app/(checkout)/payment/
+(撤包) allow: frontend/apps/storefront/app/(checkout)/_lib/
+(撤包) allow: frontend/packages/api-client/src/mock/fixtures.storefront.ts
+(撤包) allow: frontend/packages/api-client/src/mock/handlers.storefront.ts
+(撤包) allow: frontend/packages/api-client/src/mock/__tests__/
+(撤包) allow: .dispatch/reports/FE-61.md
 
 ---
+
+-->
+
 
 <!--
 ★ 2026-10-01 撤包：FE-58 驗收——範圍 18 檔全在 allow（另改 OrderShipmentsSection.tsx 的時間成台北時間，符合「同一頁不要兩種時區」）；Leader 重跑 typecheck exit 0、test api-client 58／admin 245／storefront 655；mock 走查：058 ATM 已取號（822、台灣時間期限）、059 逾期取消＋人工退款 Pending（已登記 300）→ 登記 200 仍 Pending 尚待 500 → 登記 500 變已全額登記、按鈕消失、說明「之後可能再出現」；060 後台取消＋條碼＋Completed 無按鈕。058 第一次量點擊沒換頁（冷編譯）全 false，等網址變化重量後全對。原文保留供追溯。
