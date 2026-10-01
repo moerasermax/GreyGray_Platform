@@ -1,5 +1,29 @@
 # 啟動 prompt
 
+## BE-62 Payment 已取號待繳費狀態＋取號資訊（第四十四波第 1 輪，後端樹，2026-10-01）
+
+```text
+GG_PACKAGE=BE-62
+你是唯一實作者（Codex gpt-5.6-sol high），不開子代理。專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform（後端樹）。
+開工前讀：AGENTS.md（六條鐵則）、.dispatch/ACTIVE.md 的 BE-62、docs/70-第四十四波BE-62付款已取號狀態派工書.md（整份）、docs/00-decisions.md 的 ADR-044（2026-10-01 更新版）、.dispatch/reports/BE-59.md、.dispatch/reports/README.md。派工書以 ACTIVE 的 doc: 為準，CLAUDE.md／AGENTS.md 提到的 docs/13 已過期。
+只准寫 BE-62 的 allow（十一條）；不准改 docs/、src/Hosts/、src/Platform/、其他模組、其他測試專案。0005／0008 屬修訂既有檔，只准改派工書 1.5 指定的兩條 CHECK。
+最容易做錯的三件事：① 新功能掛在新介面（IPaymentInstructionsQuery、IEcpayPaymentInfoHandler），不加到既有介面；不改 PaymentApplicationService 建構子與 EcpaySettings；PaymentSummary／PaymentInitiationRequest 只在最後加有預設值的參數；② ATM ExpireDate 只有日期 → 當天 23:59:59 台北時間，所有綠界時間先取台北偏移再 ToUniversalTime()；取號通知與非即時付款不套 20 分鐘時間窗；信用卡送出的欄位必須和現在完全一樣；③ 部署每次重放全部 migration：0005／0008 那兩條 CHECK 改成含 5，0024 只加新欄位與新 CHECK、重建部分唯一索引（DROP INDEX 帶 payment.）；PaymentDbContext 的 HasFilter 同步；派工書 1.6 列的既有測試變更逐條寫「舊斷言 → 新斷言 → 依據」；業務失敗回 Result，不丟例外，併發衝突回 payment.concurrent-update。
+以 Release 為準（reports/README 的 -c Debug 不適用）；dev 環境已停。Docker Desktop 要開著，沒開就停下來回報。動手前先 Release 建置並跑 tests 底下全部 13 個測試執行檔（tests\<專案>\bin\Release\net10.0\<專案>.exe）記下現況，改完前景跑完（不要用 dotnet test、不要掛背景就結束），再跑 ops/check-openapi.ps1，報告前→後。
+先列目標，備份要改的既有檔（TEMP 底下 GUID 目錄）。不啟停 dev 服務、不安裝、不 commit、不 push、不部署、不改閘門。報告 .dispatch/reports/BE-62.md，三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」，逐條自驗以派工書 §1 與 §3 為準。預算：工具 150／讀 60／搜 30／改 30 檔／測修 2 輪，達限回報。stop gate 如提示既有 dirty（.dispatch/PROMPTS.md.bak-20260921-211728），只回報不還原，最後重述本包交付證據。
+```
+
+## FE-57 前台取號資訊呈現（第四十四波第 1 輪，前端樹，2026-10-01）
+
+```text
+GG_PACKAGE=FE-57
+你是唯一實作者（Codex gpt-5.6-sol medium），不開子代理。專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe（前端樹）。
+開工前讀：AGENTS.md、.dispatch/ACTIVE.md 的 FE-57、docs/71-第四十四波FE-57前台取號資訊派工書.md（整份）、docs/00-decisions.md 的 ADR-044、.dispatch/reports/README.md。派工書以 ACTIVE 的 doc: 為準。
+只准寫 FE-57 的 allow（十條）；不准改 docs/、_lib/tabs.ts、_lib/topBar.ts、frontend/packages/ui/、apps/admin/、fixtures.admin*、handlers.*。先跑 pnpm api:generate，產物不手改。
+最容易做錯的三件事：① 擋兩個付款入口（付款結果頁「重新前往付款」、訂單詳情頁「前往付款」），付款發動頁先讀訂單、409 payment.instructions-already-issued 也改顯示取號卡；詳情頁倒數改成和 canPay 脫鉤，否則取號訂單看不到倒數；② 時間一律 Asia/Taipei，應繳金額用後端給的含運總額，條碼只顯示三段文字不畫圖；③ 頁面元件測不到——顯示邏輯抽成純函式＋只吃 props 的元件來測，mock 新種子接在陣列最後，undefined 當 null。
+vitest 是 node 環境、沒有 jsdom：元件用 renderToStaticMarkup，測試檔要設 globalThis.React。前景跑 pnpm typecheck、pnpm test（全部套件）、pnpm --filter @greygray/storefront build（跑前確認 5002 沒有 dev server，有就停下來回報），報告前→後條數，最多兩輪修正。
+先列目標，備份要改的既有檔（TEMP 底下 GUID 目錄）。不起 dev server、不安裝、不 commit、不改閘門。報告 .dispatch/reports/FE-57.md，三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」，逐條自驗以派工書 §1 與 §3 T1～T9 為準。預算：工具 110／讀 45／搜 15／改 24 檔／測修 2 輪，達限回報。stop gate 如提示既有 dirty（兩個 .bak 檔），只回報不還原，最後重述本包交付證據。
+```
+
 ## FE-56 過渡期付款文案（第四十三波第 2 輪，前端樹，2026-10-01）
 
 ```text
