@@ -1,5 +1,17 @@
 # 啟動 prompt
 
+## FE-61 前台取消說明與確認中（mock）（第四十五波第 3 輪，前端樹，2026-10-01）
+
+```text
+GG_PACKAGE=FE-61
+你是唯一實作者（Codex gpt-5.6-sol medium），不開子代理。專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform-fe（前端樹）。
+開工前讀：AGENTS.md、.dispatch/ACTIVE.md 的 FE-61、docs/78-第四十五波FE-61前台取消說明與確認中派工書.md（整份）、docs/00-decisions.md 的 ADR-044（含 2026-10-01 補記）、.dispatch/reports/README.md。派工書以 ACTIVE 的 doc: 為準。
+只准寫 FE-61 的 allow（七條）；不准改 docs/、types.*.ts、frontend/packages/ui/、frontend/apps/admin/、(account)/_components/、(account)/_lib/、_lib/tabs.ts、_lib/topBar.ts。不准跑 api:generate（型別已就緒）。
+最容易做錯的三件事：① 純函式只准加：選填 paymentOverdue、新 union 值 'show-overdue'、showOverdue?: true 只在逾期時出現，非逾期的回傳鍵集合不變，既有 toEqual 測試不改仍綠；② 倒數到期改背景重讀且只重讀一次（不改倒數元件）；handlePay 接住 409 payment.instructions-already-issued 與 422 ordering.payment-overdue 並重讀，把 handleCancel 裡第 84～89 行的死碼搬回來，handleCancel 接 409 ordering.concurrent-update 重讀；結果頁已取消分支改用取消說明、拿掉「依原路退還」；③ 取消說明與確認中文案照派工書一字不差、不顯示後端任何原因文字；mock 新種子接在最後，只准改 ATM 那條既有測試的挑選方式（斷言不變），handler 動態算逾期、取消時清掉 paymentInstructions、一律不可變更新。
+vitest 是 node 環境、沒有 jsdom：元件用 renderToStaticMarkup，測試檔要設 globalThis.React。前景跑 pnpm typecheck、pnpm test（全部套件）、pnpm --filter @greygray/storefront build（跑前確認 5002 沒有 dev server，有就停下來回報；build 以 0xC0000409／ENOENT／ENOTEMPTY 失敗就同參數重跑一次，第二次仍失敗才停），報告前→後條數，最多兩輪修正。不准起 dev server、不安裝套件。
+先列目標，備份要改的既有檔（TEMP 底下 GUID 目錄）。不 commit、不改閘門。報告 .dispatch/reports/FE-61.md，三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」，逐條自驗以派工書 §1 與 §3 T1～T9 為準，並附 mock 走查步驟。預算：工具 140／讀 50／搜 20／改 20 檔／測修 2 輪，達限回報。stop gate 如提示既有 dirty（兩個 .bak 檔），只回報不還原，最後重述本包交付證據。
+```
+
 ## FE-58 後台取號資訊與人工退款（mock）（第四十五波第 2 輪，前端樹，2026-10-01）
 
 ```text
