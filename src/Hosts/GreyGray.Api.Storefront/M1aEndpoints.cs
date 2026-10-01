@@ -35,6 +35,7 @@ internal static class M1aEndpoints
     private const string SessionCookie = "gg_session";
     private const string CartCookie = "gg_cart";
     private const string EcpayPaymentResultScope = "webhook:ecpay:payment-result";
+    private const string EcpayPaymentInfoScope = "webhook:ecpay:payment-info";
 
     public static IEndpointRouteBuilder MapM1aStorefrontEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -916,29 +917,18 @@ internal static class M1aEndpoints
             IOrderingApplication ordering,
             ICatalogQuery catalog,
             ICustomerDirectory customers,
+            IPaymentInstructionsQuery paymentInstructions,
             CancellationToken cancellationToken) =>
-        {
-            var customer = await GetCustomerAsync(context, sessions, cancellationToken);
-            if (customer is null)
-            {
-                return BffHttp.Unauthorized();
-            }
-
-            if (!TryId(orderId, out var parsed))
-            {
-                return BffHttp.Problem(new Error("ordering.order-not-found", "找不到訂單。"));
-            }
-
-            var result = await ordering.GetCustomerAsync(customer.Value, new OrderId(parsed), cancellationToken);
-            if (result.IsFailure)
-            {
-                return BffHttp.Problem(result.Error);
-            }
-
-            // BE-35：ToOrderAsync 不再會失敗，讀不到 SKU 時回退化值並留下 log。
-            return Results.Ok(
-                await ToOrderAsync(result.Value, catalog, customers, logger, cancellationToken));
-        });
+            await GetCustomerOrderAsync(
+                orderId,
+                context,
+                sessions,
+                ordering,
+                catalog,
+                customers,
+                paymentInstructions,
+                logger,
+                cancellationToken));
 
         api.MapPost("/orders/{orderId}/cancel", async (
             string orderId,
@@ -961,6 +951,53 @@ internal static class M1aEndpoints
                 idempotency,
                 logger,
                 cancellationToken));
+    }
+
+    internal static async Task<IResult> GetCustomerOrderAsync(
+        string orderId,
+        HttpContext context,
+        ISessionStore sessions,
+        IOrderingApplication ordering,
+        ICatalogQuery catalog,
+        ICustomerDirectory customers,
+        IPaymentInstructionsQuery paymentInstructions,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+        if (customer is null)
+        {
+            return BffHttp.Unauthorized();
+        }
+
+        if (!TryId(orderId, out var parsed))
+        {
+            return BffHttp.Problem(new Error("ordering.order-not-found", "找不到訂單。"));
+        }
+
+        var result = await ordering.GetCustomerAsync(customer.Value, new OrderId(parsed), cancellationToken);
+        if (result.IsFailure)
+        {
+            return BffHttp.Problem(result.Error);
+        }
+
+        PaymentInstructionsResponse? instructions = null;
+        if (result.Value.Status == OrderStatus.AwaitingPayment)
+        {
+            var queried = await paymentInstructions.GetOutstandingInstructionsAsync(
+                result.Value.Id,
+                cancellationToken);
+            if (queried.IsFailure)
+            {
+                return BffHttp.Problem(queried.Error);
+            }
+
+            instructions = queried.Value is null ? null : ToPaymentInstructions(queried.Value);
+        }
+
+        // BE-35：ToOrderAsync 不再會失敗，讀不到 SKU 時回退化值並留下 log。
+        var response = await ToOrderAsync(result.Value, catalog, customers, logger, cancellationToken);
+        return Results.Ok(response with { PaymentInstructions = instructions });
     }
 
     /// <summary>
@@ -1091,6 +1128,23 @@ internal static class M1aEndpoints
                 idempotency,
                 cancellationToken);
         });
+
+        api.MapPost("/webhooks/ecpay/payment-info", async (
+            HttpContext context,
+            [FromServices] IEcpayCallbackVerifier verifier,
+            [FromServices] IEcpayPaymentInfoHandler paymentInfo,
+            [FromServices] IIdempotencyStore idempotency,
+            CancellationToken cancellationToken) =>
+        {
+            var form = await context.Request.ReadFormAsync(cancellationToken);
+            var fields = form.ToDictionary(pair => pair.Key, pair => pair.Value.ToString(), StringComparer.Ordinal);
+            return await HandleEcpayPaymentInfoWebhookAsync(
+                fields,
+                verifier,
+                paymentInfo,
+                idempotency,
+                cancellationToken);
+        });
     }
 
     internal static async Task<IResult> HandleEcpayWebhookAsync(
@@ -1151,6 +1205,68 @@ internal static class M1aEndpoints
         catch
         {
             await idempotency.AbandonAsync(key, EcpayPaymentResultScope, CancellationToken.None);
+            throw;
+        }
+    }
+
+    internal static async Task<IResult> HandleEcpayPaymentInfoWebhookAsync(
+        IReadOnlyDictionary<string, string> fields,
+        IEcpayCallbackVerifier verifier,
+        IEcpayPaymentInfoHandler paymentInfo,
+        IIdempotencyStore idempotency,
+        CancellationToken cancellationToken)
+    {
+        var verification = verifier.Verify(fields);
+        if (verification.IsFailure)
+        {
+            return BffHttp.Problem(verification.Error);
+        }
+
+        var envelope = verification.Value;
+        var key = $"{envelope.MerchantTradeNo}:{envelope.TradeNo}:{envelope.RtnCode}";
+        var canonical =
+            $"MerchantTradeNo={envelope.MerchantTradeNo}&TradeNo={envelope.TradeNo}&RtnCode={envelope.RtnCode}";
+        var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
+        var (outcome, _) = await idempotency.TryBeginAsync(
+            key,
+            EcpayPaymentInfoScope,
+            hash,
+            cancellationToken);
+        if (outcome == IdempotencyOutcome.AlreadyCompleted)
+        {
+            return Results.Text("1|OK", "text/plain", Encoding.UTF8);
+        }
+
+        if (outcome == IdempotencyOutcome.InFlight)
+        {
+            return Results.StatusCode(StatusCodes.Status409Conflict);
+        }
+
+        if (outcome == IdempotencyOutcome.KeyReusedWithDifferentPayload)
+        {
+            return BffHttp.Problem(
+                new Error("payment.callback-payload-mismatch", "同一交易編號的回呼內容不一致。"));
+        }
+
+        try
+        {
+            var result = await paymentInfo.HandleEcpayPaymentInfoAsync(fields, cancellationToken);
+            if (result.IsFailure)
+            {
+                await idempotency.AbandonAsync(key, EcpayPaymentInfoScope, cancellationToken);
+                return BffHttp.Problem(result.Error);
+            }
+
+            await idempotency.CompleteAsync(
+                key,
+                EcpayPaymentInfoScope,
+                "1|OK",
+                cancellationToken);
+            return Results.Text("1|OK", "text/plain", Encoding.UTF8);
+        }
+        catch
+        {
+            await idempotency.AbandonAsync(key, EcpayPaymentInfoScope, CancellationToken.None);
             throw;
         }
     }
@@ -1475,6 +1591,16 @@ internal static class M1aEndpoints
             order.PlacedAt,
             order.Lines.Count,
             null);
+
+    private static PaymentInstructionsResponse ToPaymentInstructions(PaymentInstructionsView instructions) =>
+        new(
+            instructions.Method,
+            instructions.BankCode,
+            instructions.VirtualAccount,
+            instructions.PaymentNo,
+            instructions.Barcodes ?? [],
+            instructions.ExpiresAt,
+            instructions.IssuedAt);
 
     /// <summary>把 <see cref="OrderView"/> 組成前台 <c>Order</c> 回應。</summary>
     /// <remarks>
@@ -1875,5 +2001,15 @@ internal static class M1aEndpoints
         string? RecipientPhone,
         DateTimeOffset PlacedAt,
         DateTimeOffset? PaymentDueAt,
-        IReadOnlyList<string> QuoteExplain);
+        IReadOnlyList<string> QuoteExplain,
+        PaymentInstructionsResponse? PaymentInstructions = null);
+
+    private sealed record PaymentInstructionsResponse(
+        PaymentMethod Method,
+        string? BankCode,
+        string? VirtualAccount,
+        string? PaymentNo,
+        IReadOnlyList<string> Barcodes,
+        DateTimeOffset ExpiresAt,
+        DateTimeOffset IssuedAt);
 }

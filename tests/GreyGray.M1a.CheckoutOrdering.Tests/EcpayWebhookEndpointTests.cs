@@ -21,6 +21,7 @@ public sealed class EcpayWebhookEndpointTests
     private const string MerchantTradeNo = "GG0000000000000000A1";
     private const string TradeNo = "DEVFAKE2609301200001";
     private const string PaymentResultScope = "webhook:ecpay:payment-result";
+    private const string PaymentInfoScope = "webhook:ecpay:payment-info";
 
     [Fact(DisplayName = "D1：Payment 組合根把驗簽器與命令註冊成同一個 scoped 實例")]
     public void Verifier_and_command_resolve_to_the_same_scoped_instance()
@@ -229,6 +230,129 @@ public sealed class EcpayWebhookEndpointTests
         store.EntryCount.ShouldBe(1);
     }
 
+    [Fact(DisplayName = "P1：取號通知驗簽失敗時不碰冪等與服務")]
+    public async Task Payment_info_invalid_signature_does_not_touch_idempotency_or_service()
+    {
+        using var harness = VerifierHarness.Create();
+        var store = new CountingIdempotencyStore();
+        var handler = new RecordingPaymentInfoHandler();
+        var forged = SignedNotification();
+        forged["TradeAmt"] = "1";
+
+        var response = await SendPaymentInfoAsync(forged, harness.Verifier, handler, store);
+
+        response.StatusCode.ShouldBe(StatusCodes.Status422UnprocessableEntity);
+        response.Body.ShouldContain("payment.invalid-signature");
+        store.TryBeginCalls.ShouldBe(0);
+        store.EntryCount.ShouldBe(0);
+        handler.Calls.ShouldBe(0);
+    }
+
+    [Fact(DisplayName = "P2：取號通知成功使用原始表單、事件鍵與獨立 scope，並完成 1|OK")]
+    public async Task Payment_info_success_completes_plain_text_acknowledgement()
+    {
+        using var harness = VerifierHarness.Create();
+        var store = new CountingIdempotencyStore();
+        var handler = new RecordingPaymentInfoHandler();
+        var notification = SignedNotification();
+
+        var response = await SendPaymentInfoAsync(notification, harness.Verifier, handler, store);
+
+        response.StatusCode.ShouldBe(StatusCodes.Status200OK);
+        response.Body.ShouldBe("1|OK");
+        response.ContentType.ShouldStartWith("text/plain");
+        handler.Calls.ShouldBe(1);
+        handler.ReceivedFields.ShouldBeSameAs(notification);
+        store.Identities.ShouldHaveSingleItem().ShouldBe((EventKey("1"), PaymentInfoScope));
+        store.CompleteCalls.ShouldBe(1);
+        store.LastCompletedResponse.ShouldBe("1|OK");
+    }
+
+    [Theory(DisplayName = "P3：取號通知三種冪等早退結果不呼叫服務")]
+    [InlineData(IdempotencyOutcome.AlreadyCompleted, StatusCodes.Status200OK, "1|OK")]
+    [InlineData(IdempotencyOutcome.InFlight, StatusCodes.Status409Conflict, "")]
+    [InlineData(IdempotencyOutcome.KeyReusedWithDifferentPayload, StatusCodes.Status422UnprocessableEntity, "payment.callback-payload-mismatch")]
+    public async Task Payment_info_idempotency_early_results_skip_service(
+        IdempotencyOutcome outcome,
+        int expectedStatus,
+        string expectedBody)
+    {
+        using var harness = VerifierHarness.Create();
+        var store = new CountingIdempotencyStore { ForcedOutcome = outcome };
+        var handler = new RecordingPaymentInfoHandler();
+
+        var response = await SendPaymentInfoAsync(SignedNotification(), harness.Verifier, handler, store);
+
+        response.StatusCode.ShouldBe(expectedStatus);
+        response.Body.ShouldContain(expectedBody);
+        handler.Calls.ShouldBe(0);
+        store.CompleteCalls.ShouldBe(0);
+        store.AbandonCalls.ShouldBe(0);
+    }
+
+    [Fact(DisplayName = "P4a：取號服務失敗先 Abandon，concurrent-update 回 409")]
+    public async Task Payment_info_failure_is_abandoned_and_mapped_to_conflict()
+    {
+        using var harness = VerifierHarness.Create();
+        var store = new CountingIdempotencyStore();
+        var handler = new RecordingPaymentInfoHandler
+        {
+            Result = Result.Failure("payment.concurrent-update", "付款資料同時更新。"),
+        };
+
+        var response = await SendPaymentInfoAsync(SignedNotification(), harness.Verifier, handler, store);
+
+        response.StatusCode.ShouldBe(StatusCodes.Status409Conflict);
+        response.Body.ShouldContain("payment.concurrent-update");
+        store.AbandonCalls.ShouldBe(1);
+        store.StatusOf(EventKey("1"), PaymentInfoScope)
+            .ShouldBe(InspectableIdempotencyStore.EntryStatus.Abandoned);
+    }
+
+    [Fact(DisplayName = "P4b：取號服務例外用 CancellationToken.None Abandon 後原樣拋出")]
+    public async Task Payment_info_exception_is_abandoned_without_request_cancellation()
+    {
+        using var harness = VerifierHarness.Create();
+        var store = new CountingIdempotencyStore();
+        var handler = new RecordingPaymentInfoHandler { Exception = new InvalidOperationException("payment-info-boom") };
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(
+            () => SendPaymentInfoAsync(SignedNotification(), harness.Verifier, handler, store));
+
+        exception.Message.ShouldBe("payment-info-boom");
+        store.AbandonCalls.ShouldBe(1);
+        store.LastAbandonCancellationToken.ShouldBe(CancellationToken.None);
+        store.StatusOf(EventKey("1"), PaymentInfoScope)
+            .ShouldBe(InspectableIdempotencyStore.EntryStatus.Abandoned);
+    }
+
+    [Fact(DisplayName = "P5：付款結果與取號通知同 key 雙向互不阻擋")]
+    public async Task Payment_result_and_payment_info_scopes_are_independent_in_both_orders()
+    {
+        using var harness = VerifierHarness.Create();
+        var notification = SignedNotification();
+
+        var resultFirstStore = new CountingIdempotencyStore();
+        var resultCommand = new RecordingPaymentCommand();
+        var infoHandler = new RecordingPaymentInfoHandler();
+        await SendAsync(notification, harness.Verifier, resultCommand, resultFirstStore);
+        await SendPaymentInfoAsync(notification, harness.Verifier, infoHandler, resultFirstStore);
+
+        resultCommand.CallbackCalls.ShouldBe(1);
+        infoHandler.Calls.ShouldBe(1);
+        resultFirstStore.Identities.ShouldContain((EventKey("1"), PaymentResultScope));
+        resultFirstStore.Identities.ShouldContain((EventKey("1"), PaymentInfoScope));
+
+        var infoFirstStore = new CountingIdempotencyStore();
+        resultCommand = new RecordingPaymentCommand();
+        infoHandler = new RecordingPaymentInfoHandler();
+        await SendPaymentInfoAsync(notification, harness.Verifier, infoHandler, infoFirstStore);
+        await SendAsync(notification, harness.Verifier, resultCommand, infoFirstStore);
+
+        infoHandler.Calls.ShouldBe(1);
+        resultCommand.CallbackCalls.ShouldBe(1);
+    }
+
     private static Dictionary<string, string> SignedNotification(string rtnCode = "1")
     {
         var fields = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -276,6 +400,30 @@ public sealed class EcpayWebhookEndpointTests
         using var reader = new StreamReader(context.Response.Body);
         var body = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
         return (context.Response.StatusCode, body);
+    }
+
+    private static async Task<(int StatusCode, string Body, string? ContentType)> SendPaymentInfoAsync(
+        IReadOnlyDictionary<string, string> fields,
+        IEcpayCallbackVerifier verifier,
+        IEcpayPaymentInfoHandler handler,
+        IIdempotencyStore store)
+    {
+        var result = await M1aEndpoints.HandleEcpayPaymentInfoWebhookAsync(
+            fields,
+            verifier,
+            handler,
+            store,
+            TestContext.Current.CancellationToken);
+        var context = new DefaultHttpContext
+        {
+            RequestServices = new ServiceCollection().AddLogging().BuildServiceProvider(),
+        };
+        context.Response.Body = new MemoryStream();
+        await result.ExecuteAsync(context);
+        context.Response.Body.Position = 0;
+        using var reader = new StreamReader(context.Response.Body);
+        var body = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
+        return (context.Response.StatusCode, body, context.Response.ContentType);
     }
 
     private sealed class VerifierHarness(ServiceProvider provider, IServiceScope scope) : IDisposable
@@ -342,12 +490,47 @@ public sealed class EcpayWebhookEndpointTests
         }
     }
 
+    private sealed class RecordingPaymentInfoHandler : IEcpayPaymentInfoHandler
+    {
+        public int Calls { get; private set; }
+
+        public IReadOnlyDictionary<string, string>? ReceivedFields { get; private set; }
+
+        public Result Result { get; init; } = Result.Success();
+
+        public Exception? Exception { get; init; }
+
+        public Task<Result> HandleEcpayPaymentInfoAsync(
+            IReadOnlyDictionary<string, string> fields,
+            CancellationToken cancellationToken)
+        {
+            Calls++;
+            ReceivedFields = fields;
+            if (Exception is not null)
+            {
+                throw Exception;
+            }
+
+            return Task.FromResult(Result);
+        }
+    }
+
     private sealed class CountingIdempotencyStore : IIdempotencyStore
     {
         private readonly InspectableIdempotencyStore _inner = new();
         private readonly HashSet<(string Key, string Scope)> _identities = [];
 
         public int TryBeginCalls { get; private set; }
+
+        public int CompleteCalls { get; private set; }
+
+        public int AbandonCalls { get; private set; }
+
+        public IdempotencyOutcome? ForcedOutcome { get; init; }
+
+        public string? LastCompletedResponse { get; private set; }
+
+        public CancellationToken LastAbandonCancellationToken { get; private set; }
 
         public int EntryCount => _identities.Count;
 
@@ -363,6 +546,11 @@ public sealed class EcpayWebhookEndpointTests
             CancellationToken cancellationToken)
         {
             TryBeginCalls++;
+            if (ForcedOutcome is { } forcedOutcome)
+            {
+                return (forcedOutcome, forcedOutcome == IdempotencyOutcome.AlreadyCompleted ? "1|OK" : null);
+            }
+
             var result = await _inner.TryBeginAsync(key, scope, requestHash, cancellationToken);
             if (result.Outcome == IdempotencyOutcome.Proceed)
             {
@@ -376,13 +564,21 @@ public sealed class EcpayWebhookEndpointTests
             string key,
             string scope,
             string responseSnapshot,
-            CancellationToken cancellationToken) =>
-            _inner.CompleteAsync(key, scope, responseSnapshot, cancellationToken);
+            CancellationToken cancellationToken)
+        {
+            CompleteCalls++;
+            LastCompletedResponse = responseSnapshot;
+            return _inner.CompleteAsync(key, scope, responseSnapshot, cancellationToken);
+        }
 
         public Task AbandonAsync(
             string key,
             string scope,
-            CancellationToken cancellationToken) =>
-            _inner.AbandonAsync(key, scope, cancellationToken);
+            CancellationToken cancellationToken)
+        {
+            AbandonCalls++;
+            LastAbandonCancellationToken = cancellationToken;
+            return _inner.AbandonAsync(key, scope, cancellationToken);
+        }
     }
 }

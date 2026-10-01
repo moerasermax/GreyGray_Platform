@@ -419,6 +419,13 @@ public static class BffHttp
 
     private static int StatusFor(string code)
     {
+        if (string.Equals(code, "payment.instructions-already-issued", StringComparison.Ordinal) ||
+            string.Equals(code, "payment.concurrent-update", StringComparison.Ordinal) ||
+            string.Equals(code, "ordering.concurrent-update", StringComparison.Ordinal))
+        {
+            return StatusCodes.Status409Conflict;
+        }
+
         if (code.Contains("invalid-credentials", StringComparison.Ordinal))
         {
             return StatusCodes.Status401Unauthorized;

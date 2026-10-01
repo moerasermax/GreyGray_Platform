@@ -1164,7 +1164,18 @@ internal static class M1aEndpoints
                     payment.Fee,
                     payment.ProviderTransactionId,
                     payment.CapturedAt,
-                    payment.SettledAt)).ToArray()
+                    payment.SettledAt,
+                    payment.Method,
+                    payment.Instructions is null
+                        ? null
+                        : new AdminPaymentInstructionsResponse(
+                            payment.Instructions.Method,
+                            payment.Instructions.BankCode,
+                            payment.Instructions.VirtualAccount,
+                            payment.Instructions.PaymentNo,
+                            payment.Instructions.Barcodes ?? [],
+                            payment.Instructions.ExpiresAt,
+                            payment.Instructions.IssuedAt))).ToArray()
                 : [],
             order.QuoteExplain,
             // ADR-039：後台全員直接看得到明文，不遮罩、不加解鎖閘門。出貨要用這兩個值——
@@ -1331,7 +1342,18 @@ internal static class M1aEndpoints
         Money? Fee,
         string? ProviderTransactionId,
         DateTimeOffset? CapturedAt,
-        DateTimeOffset? SettledAt);
+        DateTimeOffset? SettledAt,
+        PaymentMethod? Method = null,
+        AdminPaymentInstructionsResponse? Instructions = null);
+
+    internal sealed record AdminPaymentInstructionsResponse(
+        PaymentMethod Method,
+        string? BankCode,
+        string? VirtualAccount,
+        string? PaymentNo,
+        IReadOnlyList<string> Barcodes,
+        DateTimeOffset ExpiresAt,
+        DateTimeOffset IssuedAt);
 
     internal sealed record AdminOrderResponse(
         OrderId Id,
