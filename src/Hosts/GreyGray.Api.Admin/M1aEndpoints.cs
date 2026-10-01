@@ -1187,7 +1187,9 @@ internal static class M1aEndpoints
             order.RecipientAddress,
             // 契約保留這個欄位只為相容既有用戶端，恆為 null（舊描述承諾的「填存取理由才看得到
             // 明文」那個端點從來沒有實作過，而且與 ADR-039 的決定矛盾）。
-            CustomerContactMasked: null);
+            CustomerContactMasked: null,
+            PaymentDueAt: order.PaymentDueAt,
+            CancellationSource: order.CancellationSource);
     }
 
     private static CampaignId? SingleCampaign(OrderView order)
@@ -1377,7 +1379,9 @@ internal static class M1aEndpoints
         string? RecipientName,
         string? RecipientPhone,
         string? RecipientAddress,
-        string? CustomerContactMasked);
+        string? CustomerContactMasked,
+        DateTimeOffset? PaymentDueAt = null,
+        OrderCancellationSource? CancellationSource = null);
 
     internal sealed class StaffRoleFilter(StaffRole requiredRole) : IEndpointFilter
     {

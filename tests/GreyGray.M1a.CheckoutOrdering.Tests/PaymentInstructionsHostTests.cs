@@ -96,6 +96,7 @@ public sealed class PaymentInstructionsHostTests
             Catalog(),
             CustomerDirectory(customer),
             query,
+            new FakeClock(Now),
             NullLogger.Instance,
             TestContext.Current.CancellationToken);
         await result.ExecuteAsync(context);
@@ -206,6 +207,7 @@ public sealed class PaymentInstructionsHostTests
             Catalog(),
             CustomerDirectory(order.CustomerId),
             query,
+            new FakeClock(Now),
             NullLogger.Instance,
             TestContext.Current.CancellationToken);
         await result.ExecuteAsync(context);

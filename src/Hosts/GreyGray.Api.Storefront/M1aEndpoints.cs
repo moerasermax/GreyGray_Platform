@@ -918,6 +918,7 @@ internal static class M1aEndpoints
             ICatalogQuery catalog,
             ICustomerDirectory customers,
             IPaymentInstructionsQuery paymentInstructions,
+            IClock clock,
             CancellationToken cancellationToken) =>
             await GetCustomerOrderAsync(
                 orderId,
@@ -927,6 +928,7 @@ internal static class M1aEndpoints
                 catalog,
                 customers,
                 paymentInstructions,
+                clock,
                 logger,
                 cancellationToken));
 
@@ -961,6 +963,7 @@ internal static class M1aEndpoints
         ICatalogQuery catalog,
         ICustomerDirectory customers,
         IPaymentInstructionsQuery paymentInstructions,
+        IClock clock,
         ILogger logger,
         CancellationToken cancellationToken)
     {
@@ -981,8 +984,9 @@ internal static class M1aEndpoints
             return BffHttp.Problem(result.Error);
         }
 
+        var paymentOverdue = IsPaymentOverdue(result.Value, clock.UtcNow);
         PaymentInstructionsResponse? instructions = null;
-        if (result.Value.Status == OrderStatus.AwaitingPayment)
+        if (result.Value.Status == OrderStatus.AwaitingPayment && !paymentOverdue)
         {
             var queried = await paymentInstructions.GetOutstandingInstructionsAsync(
                 result.Value.Id,
@@ -997,7 +1001,11 @@ internal static class M1aEndpoints
 
         // BE-35：ToOrderAsync 不再會失敗，讀不到 SKU 時回退化值並留下 log。
         var response = await ToOrderAsync(result.Value, catalog, customers, logger, cancellationToken);
-        return Results.Ok(response with { PaymentInstructions = instructions });
+        return Results.Ok(response with
+        {
+            PaymentInstructions = instructions,
+            PaymentOverdue = paymentOverdue,
+        });
     }
 
     /// <summary>
@@ -1059,55 +1067,18 @@ internal static class M1aEndpoints
             IPaymentCommand payments,
             IIdempotencyStore idempotency,
             IConfiguration configuration,
+            IClock clock,
             CancellationToken cancellationToken) =>
-        {
-            var customer = await GetCustomerAsync(context, sessions, cancellationToken);
-            if (customer is null)
-            {
-                return BffHttp.Unauthorized();
-            }
-
-            if (!TryId(orderId, out var parsed))
-            {
-                return BffHttp.Problem(new Error("ordering.order-not-found", "找不到訂單。"));
-            }
-
-            var id = new OrderId(parsed);
-            var clientBackUrl = BuildPaymentResultUrl(configuration, parsed);
-            return await BffHttp.ExecuteIdempotentAsync(
+            await InitiateCustomerPaymentAsync(
+                orderId,
                 context,
+                sessions,
+                ordering,
+                payments,
                 idempotency,
-                "storefront:orders:payment",
-                new { customerId = customer.Value, orderId = id },
-                async token =>
-                {
-                    var order = await ordering.GetCustomerAsync(customer.Value, id, token);
-                    if (order.IsFailure)
-                    {
-                        return Result<PaymentInitiation>.Failure(order.Error);
-                    }
-
-                    if (order.Value.Status == OrderStatus.Cancelled)
-                    {
-                        return Result<PaymentInitiation>.Failure(
-                            "ordering.order-cancelled",
-                            "已取消的訂單不能付款。");
-                    }
-
-                    var returnUrl = BuildEcpayReturnUrl(configuration, context.Request);
-                    return await payments.InitiateAsync(
-                        new PaymentInitiationRequest(
-                            id,
-                            order.Value.GoodsTotal,
-                            order.Value.ShippingFee,
-                            $"GreyGray {order.Value.OrderNumber}",
-                            returnUrl,
-                            clientBackUrl),
-                        token);
-                },
-                StatusCodes.Status200OK,
-                cancellationToken);
-        });
+                configuration,
+                clock,
+                cancellationToken));
 
         // BE-61／#64／ADR-044：驗簽前佔用冪等鍵會讓偽造請求永久封鎖真正通知。
         // Host 必須先走 Payment.Contracts 的只讀驗證入口，再建立付款結果的冪等列；
@@ -1145,6 +1116,72 @@ internal static class M1aEndpoints
                 idempotency,
                 cancellationToken);
         });
+    }
+
+    internal static async Task<IResult> InitiateCustomerPaymentAsync(
+        string orderId,
+        HttpContext context,
+        ISessionStore sessions,
+        IOrderingApplication ordering,
+        IPaymentCommand payments,
+        IIdempotencyStore idempotency,
+        IConfiguration configuration,
+        IClock clock,
+        CancellationToken cancellationToken)
+    {
+        var customer = await GetCustomerAsync(context, sessions, cancellationToken);
+        if (customer is null)
+        {
+            return BffHttp.Unauthorized();
+        }
+
+        if (!TryId(orderId, out var parsed))
+        {
+            return BffHttp.Problem(new Error("ordering.order-not-found", "找不到訂單。"));
+        }
+
+        var id = new OrderId(parsed);
+        var clientBackUrl = BuildPaymentResultUrl(configuration, parsed);
+        return await BffHttp.ExecuteIdempotentAsync(
+            context,
+            idempotency,
+            "storefront:orders:payment",
+            new { customerId = customer.Value, orderId = id },
+            async token =>
+            {
+                var order = await ordering.GetCustomerAsync(customer.Value, id, token);
+                if (order.IsFailure)
+                {
+                    return Result<PaymentInitiation>.Failure(order.Error);
+                }
+
+                if (order.Value.Status == OrderStatus.Cancelled)
+                {
+                    return Result<PaymentInitiation>.Failure(
+                        "ordering.order-cancelled",
+                        "已取消的訂單不能付款。");
+                }
+
+                if (IsPaymentOverdue(order.Value, clock.UtcNow))
+                {
+                    return Result<PaymentInitiation>.Failure(
+                        "ordering.payment-overdue",
+                        "繳費期限已過，正在等待確認付款，不能再付款。");
+                }
+
+                var returnUrl = BuildEcpayReturnUrl(configuration, context.Request);
+                return await payments.InitiateAsync(
+                    new PaymentInitiationRequest(
+                        id,
+                        order.Value.GoodsTotal,
+                        order.Value.ShippingFee,
+                        $"GreyGray {order.Value.OrderNumber}",
+                        returnUrl,
+                        clientBackUrl),
+                    token);
+            },
+            StatusCodes.Status200OK,
+            cancellationToken);
     }
 
     internal static async Task<IResult> HandleEcpayWebhookAsync(
@@ -1529,6 +1566,11 @@ internal static class M1aEndpoints
             "/v1/webhooks/ecpay",
             "綠界的 ReturnURL 要用它組出 /v1/webhooks/ecpay。留空則退回使用這一次請求的 scheme/host。");
 
+    private static bool IsPaymentOverdue(OrderView order, DateTimeOffset now) =>
+        order.Status == OrderStatus.AwaitingPayment
+        && order.PaymentDueAt is { } due
+        && now >= due.AddSeconds(1);
+
     private static bool TryId(string raw, out Guid id) => Guid.TryParseExact(raw, "N", out id);
 
     private static CustomerMe ToMe(CustomerProfile profile) => new(
@@ -1702,7 +1744,9 @@ internal static class M1aEndpoints
             order.RecipientPhone,
             order.PlacedAt,
             order.PaymentDueAt,
-            order.QuoteExplain);
+            order.QuoteExplain,
+            CancelledAt: order.CancelledAt,
+            CancellationSource: order.CancellationSource);
     }
 
     /// <param name="campaign">
@@ -2002,7 +2046,10 @@ internal static class M1aEndpoints
         DateTimeOffset PlacedAt,
         DateTimeOffset? PaymentDueAt,
         IReadOnlyList<string> QuoteExplain,
-        PaymentInstructionsResponse? PaymentInstructions = null);
+        PaymentInstructionsResponse? PaymentInstructions = null,
+        bool PaymentOverdue = false,
+        DateTimeOffset? CancelledAt = null,
+        OrderCancellationSource? CancellationSource = null);
 
     private sealed record PaymentInstructionsResponse(
         PaymentMethod Method,
