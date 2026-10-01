@@ -165,10 +165,11 @@ BFF 的四種結果（對應 `IIdempotencyStore.TryBeginAsync`）：
 
 `GET` 永遠不需要這個 header。
 
-**唯一的例外：`POST /v1/webhooks/ecpay`。** 綠界送的是它自己格式的表單，
-不可能帶我們的 header。那個端點改用**綠界的 `MerchantTradeNo` ＋ 交易編號**當去重鍵，
+**唯一的例外：綠界的通知端點（`POST /v1/webhooks/ecpay` 等）。** 綠界送的是它自己格式的表單，
+不可能帶我們的 header。這類端點改用**綠界的 `MerchantTradeNo` ＋ 交易編號 ＋ `RtnCode`**當去重鍵，
 一樣寫進 `platform.idempotency_key`，只是 key 由後端從 payload 推出來而不是由呼叫端給。
-驗簽與時戳容忍窗照樣要做——三者缺一不可。
+**先驗簽、再去重**（ADR-044）：驗簽失敗直接 `422`、冪等表不寫任何資料；scope 依事件類型分開（付款結果 `webhook:ecpay:payment-result`）。
+時戳容忍窗只套在即時付款的付款結果上（非即時付款的通知可晚兩天，ADR-044）。
 
 ---
 
@@ -278,7 +279,7 @@ GET /v1/orders?cursor=0198c3d4e5f607189abc0123456789ab&limit=20
 | `GET` | `/v1/orders/{orderId}/shipments` | M1b | 物流狀態 |
 | `POST` | `/v1/inquiries/{inquiryId}/reply` | M1b | LINE postback 打進來的漲價回覆 |
 | `POST` | `/v1/support/tickets` | M1a | 客服留言（**匿名可打**，ADR-040）。email 或手機至少一個；防灌超過回 429 |
-| `POST` | `/v1/webhooks/ecpay` | M1a | 綠界回呼。**不是給前端的**，驗簽 ＋ 時戳窗 ＋ event id 去重 |
+| `POST` | `/v1/webhooks/ecpay` | M1a | 綠界付款結果通知。**不是給前端的**，先驗簽、再以 `MerchantTradeNo`＋`TradeNo`＋`RtnCode` 去重（ADR-044） |
 
 ### Admin（:5001）
 
@@ -376,3 +377,5 @@ coverage gate 的唯一過濾來源，不再從 description 猜。
 | 2026-09-19 | `CheckoutRequest` 新增選填 `recipientName`（≤50）與 `recipientPhone`（≤20）：**超商取貨必填、宅配送了會被忽略**（後端從地址簿抄一份凍結）；`Order` 與 `AdminOrder` 各新增 `recipientName`／`recipientPhone`（可為 null，舊訂單為 null）；**`AdminOrder` 另新增 `recipientAddress`**（宅配地址的完整單行字串，下單當時凍結——後台在這之前完全沒有地址欄位，宅配等於寄不出去；超商取貨與舊訂單為 null）；新增 `422 checkout.recipient-required`、`checkout.recipient-name-too-long`、`checkout.recipient-phone-too-long`；`AdminOrder.customerContactMasked` 的描述改寫——舊文字承諾的「另外呼叫並填寫存取理由」端點**從來沒有實作過**，欄位保留相容但恆為 null | ADR-039（第四十波 BE-54／FE-34） | **純新增，向下相容**。舊客戶端不送新欄位時：宅配照常（後端自己抄）、超商取貨會收到 `422 checkout.recipient-required`（這是刻意的——沒有收件人就寄不出去）。⚠ 冪等指紋加入新欄位後，同一把 `Idempotency-Key` 換掉收件人會回 `422 platform.idempotency-key-reused`，而不是回快取的舊回應 |
 | 2026-09-19 | 新增 tag `support` 與四條 operation：`POST /v1/support/tickets`（Storefront，**匿名可打**）、`GET /v1/support/tickets`、`GET /v1/support/tickets/{ticketId}`、`POST /v1/support/tickets/{ticketId}/resolve`（Admin）；新增 schema `SupportTicket`／`SupportTicketStatus`／`SupportTicketPage`；新增 `422 support.contact-required`、`429 support.too-many-requests`、`409 support.already-resolved` | ADR-040（第四十波 BE-55／FE-35） | **純新增**，不動任何既有形狀。模組名是 `CustomerService` 而端點路徑是 `/v1/support/*`，這個不一致是刻意的（見 ADR-040）。前台**沒有**查詢工單的端點——匿名工單沒有安全的查詢方式 |
 | 2026-09-30 | 商品分類固定兩層：admin `CategoryInput`（連帶 `Category`）與 storefront `Category` 新增選填 `parentId`（`Id \| null`）；storefront `GET /v1/products` 新增選填 `includeDescendants`（預設 `false`）；admin `POST /v1/categories`、`PATCH /v1/categories/{categoryId}` 補列 `422`，新增 `catalog.invalid-parent-category`、`catalog.category-depth-exceeded`；**storefront `GET /v1/categories` 的發布條件改成「自己或任一直接子分類有可售商品」** | ADR-041（第四十二波 BE-58；前端 FE-54 接線） | 欄位與參數**純新增**；PATCH 是既有的整筆取代語意，舊客戶端不送 `parentId` 就是根分類。**唯一的語意變更是分類清單的發布條件**（ADR-041 明列為 ADR-032「只准純新增」的例外；回應只會變成原本的超集，不算 §1 的破壞性變更，不開 `/v2`）：平面分類行為不變，只有「有子分類的父分類」會多列出來，而後台在 FE-54 之前沒有設定上層分類的入口。`pnpm api:generate` 由 FE-54 跑 |
+| 2026-09-30 | `POST /v1/webhooks/ecpay` 的描述補「先驗簽、再去重；驗簽失敗 `422`、冪等表零寫入；scope 依事件類型分開」（operation 不變；本節補記 e60a914 那次的說明文字修改） | ADR-044（第四十三波 BE-61，#64） | 無：只改說明，實作同步改成先驗簽 |
+| 2026-10-01 | 純新增：兩份 yaml 新增 `PaymentMethod`、`PaymentInstructions`；`PaymentStatus` 新增 `InstructionsIssued`；storefront `Order` 新增選填 `paymentInstructions`（可為 `null`），`paymentDueAt` 說明補「取號後改成綠界期限」；`POST /v1/orders/{orderId}/payment` 的 `409` 新增 `payment.instructions-already-issued`；admin `PaymentSummary` 新增選填 `method`、`instructions`。webhook 去重鍵說明改成 `MerchantTradeNo`＋`TradeNo`＋`RtnCode` | ADR-044（第四十四波，路線 B） | 前端重新 `api:generate`；新列舉值前端必須容忍（§6）。取號通知端點 `POST /v1/webhooks/ecpay/payment-info` 於 BE-63 有路由時再加列 |

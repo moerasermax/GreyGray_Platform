@@ -51,6 +51,30 @@ Leader 要明講。
 
 ---
 
+## 生效中：FE-57　前台取號資訊呈現＋擋重新付款開新單號（第四十四波第 1 輪，2026-10-01）
+
+訂單有 `paymentInstructions` 時，付款結果頁、付款發動頁、訂單詳情頁改顯示取號卡、不再讓客人重新付款；倒數支援 3 天。先 `pnpm api:generate`。正式站過渡期只收信用卡，這包先休眠，驗收靠單元測試＋型別。
+
+★★ 最容易做錯的三件事：
+① 要擋**兩個**付款入口：付款結果頁的「重新前往付款」與訂單詳情頁的「前往付款」（`handlePay` 直接呼叫 `initiatePayment`）；付款發動頁要先讀訂單、409 `payment.instructions-already-issued` 也改顯示取號卡；
+② 時間一律 `Asia/Taipei`；應繳金額用後端給的含運總額，前端不算；條碼只顯示三段文字，不畫圖（要裝套件）；
+③ 頁面元件測不到——顯示邏輯抽成純函式＋只吃 props 的元件來測；mock 新種子接在陣列最後；`undefined` 當 `null`。
+
+package: FE-57
+doc: docs/71-第四十四波FE-57前台取號資訊派工書.md
+allow: frontend/packages/api-client/src/types.storefront.ts
+allow: frontend/packages/api-client/src/types.admin.ts
+allow: frontend/packages/api-client/src/mock/fixtures.storefront.ts
+allow: frontend/packages/api-client/src/mock/__tests__/
+allow: frontend/apps/storefront/app/(checkout)/payment/
+allow: frontend/apps/storefront/app/(checkout)/_lib/
+allow: frontend/apps/storefront/app/(account)/orders/
+allow: frontend/apps/storefront/app/(account)/_components/PaymentCountdown.tsx
+allow: frontend/apps/storefront/app/(account)/_components/__tests__/
+allow: .dispatch/reports/FE-57.md
+
+---
+
 <!--
 ★ 2026-10-01 撤包：FE-56 驗收——範圍 2 檔＋報告；faq.ts 答案一字不差為「目前僅接受信用卡，透過綠界科技（ECPay）線上刷卡付款。」；新測試先紅（舊句 1 failed）後綠；Leader 重跑 storefront typecheck exit 0、test 634 全過；dev /faq 已顯示新句。原文保留供追溯。
 

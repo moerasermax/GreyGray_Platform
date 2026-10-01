@@ -1219,10 +1219,44 @@ components:
       enum: [Pending, Reserved, Purchased, Unavailable, Shipped, Completed, Cancelled]
     PaymentStatus:
       type: string
-      enum: [Pending, Captured, Failed, Refunded, PartiallyRefunded]
+      description: '`InstructionsIssued`＝ATM／超商代碼／條碼已取號、待繳費（ADR-044）。'
+      enum: [Pending, Captured, Failed, Refunded, PartiallyRefunded, InstructionsIssued]
     PaymentProvider:
       type: string
       enum: [ECPay, NewebPay, LinePay, ExternalSettled]
+    PaymentMethod:
+      type: string
+      description: |
+        付款方式（ADR-044）。`CreditCard` 信用卡、`Atm` ATM 轉帳、`ConvenienceStoreCode` 超商代碼、`Barcode` 超商條碼。
+        前端必須容忍未知值（`docs/05` §6）。
+      enum: [CreditCard, Atm, ConvenienceStoreCode, Barcode]
+    PaymentInstructions:
+      type: object
+      description: |
+        ATM／超商代碼／條碼的取號資訊（ADR-044）。依 `method` 只有一組有值，其餘為 `null`：
+        `Atm` → `bankCode`＋`virtualAccount`；`ConvenienceStoreCode` → `paymentNo`；`Barcode` → `barcodes`。
+        **前端只顯示、不推算期限。**
+      required: [method, expiresAt, issuedAt]
+      properties:
+        method: { $ref: '#/components/schemas/PaymentMethod' }
+        bankCode: { type: [string, 'null'], description: 'ATM 轉入銀行代碼（綠界 `BankCode`）。' }
+        virtualAccount: { type: [string, 'null'], description: 'ATM 虛擬帳號（綠界 `vAccount`）。' }
+        paymentNo: { type: [string, 'null'], description: '超商繳費代碼（綠界 `PaymentNo`）。' }
+        barcodes:
+          type: [array, 'null']
+          description: 超商條碼三段（綠界 `Barcode1`～`Barcode3`），依序顯示。
+          minItems: 3
+          maxItems: 3
+          items: { type: string }
+        expiresAt:
+          type: string
+          format: date-time
+          description: |
+            繳費期限＝綠界期限＝`Order.paymentDueAt`（ADR-044）。ATM 綠界只給日期，後端換算成當天 23:59:59（台北時間）。
+        issuedAt:
+          type: string
+          format: date-time
+          description: 後端收到並驗簽取號通知的時間。
     ShipmentStatus:
       type: string
       enum: [Draft, Packed, Dispatched, InTransit, ArrivedAtStore, Delivered, Returned, Lost]
@@ -1517,6 +1551,16 @@ components:
             - { $ref: '#/components/schemas/Money' }
             - { type: 'null' }
         providerTransactionId: { type: [string, 'null'] }
+        method:
+          description: 付款方式（ADR-044）。ADR-044 之前建立的付款為 `null`。
+          oneOf:
+            - { $ref: '#/components/schemas/PaymentMethod' }
+            - { type: 'null' }
+        instructions:
+          description: ATM／超商代碼／條碼的取號資訊（ADR-044）；信用卡與未取號為 `null`。後台在繳費後仍保留，供對帳。
+          oneOf:
+            - { $ref: '#/components/schemas/PaymentInstructions' }
+            - { type: 'null' }
         capturedAt: { type: [string, 'null'], format: date-time }
         settledAt:
           type: [string, 'null']
