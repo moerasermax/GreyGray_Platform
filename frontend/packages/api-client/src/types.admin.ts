@@ -2013,10 +2013,45 @@ export interface components {
         OrderStatus: "AwaitingPayment" | "PaidAwaitingClose" | "ClosedAwaitingDeparture" | "Purchasing" | "GoodsReceived" | "ReadyToShip" | "Shipped" | "Completed" | "Cancelled";
         /** @enum {string} */
         OrderLineStatus: "Pending" | "Reserved" | "Purchased" | "Unavailable" | "Shipped" | "Completed" | "Cancelled";
-        /** @enum {string} */
-        PaymentStatus: "Pending" | "Captured" | "Failed" | "Refunded" | "PartiallyRefunded";
+        /**
+         * @description `InstructionsIssued`＝ATM／超商代碼／條碼已取號、待繳費（ADR-044）。
+         * @enum {string}
+         */
+        PaymentStatus: "Pending" | "Captured" | "Failed" | "Refunded" | "PartiallyRefunded" | "InstructionsIssued";
         /** @enum {string} */
         PaymentProvider: "ECPay" | "NewebPay" | "LinePay" | "ExternalSettled";
+        /**
+         * @description 付款方式（ADR-044）。`CreditCard` 信用卡、`Atm` ATM 轉帳、`ConvenienceStoreCode` 超商代碼、`Barcode` 超商條碼。
+         *     前端必須容忍未知值（`docs/05` §6）。
+         * @enum {string}
+         */
+        PaymentMethod: "CreditCard" | "Atm" | "ConvenienceStoreCode" | "Barcode";
+        /**
+         * @description ATM／超商代碼／條碼的取號資訊（ADR-044）。依 `method` 只有一組有值，其餘為 `null`：
+         *     `Atm` → `bankCode`＋`virtualAccount`；`ConvenienceStoreCode` → `paymentNo`；`Barcode` → `barcodes`。
+         *     **前端只顯示、不推算期限。**
+         */
+        PaymentInstructions: {
+            method: components["schemas"]["PaymentMethod"];
+            /** @description ATM 轉入銀行代碼（綠界 `BankCode`）。 */
+            bankCode?: string | null;
+            /** @description ATM 虛擬帳號（綠界 `vAccount`）。 */
+            virtualAccount?: string | null;
+            /** @description 超商繳費代碼（綠界 `PaymentNo`）。 */
+            paymentNo?: string | null;
+            /** @description 超商條碼三段（綠界 `Barcode1`～`Barcode3`），依序顯示。 */
+            barcodes?: string[] | null;
+            /**
+             * Format: date-time
+             * @description 繳費期限＝綠界期限＝`Order.paymentDueAt`（ADR-044）。ATM 綠界只給日期，後端換算成當天 23:59:59（台北時間）。
+             */
+            expiresAt: string;
+            /**
+             * Format: date-time
+             * @description 後端收到並驗簽取號通知的時間。
+             */
+            issuedAt: string;
+        };
         /** @enum {string} */
         ShipmentStatus: "Draft" | "Packed" | "Dispatched" | "InTransit" | "ArrivedAtStore" | "Delivered" | "Returned" | "Lost";
         /**
@@ -2210,6 +2245,10 @@ export interface components {
             amount: components["schemas"]["Money"];
             fee?: components["schemas"]["Money"] | null;
             providerTransactionId?: string | null;
+            /** @description 付款方式（ADR-044）。ADR-044 之前建立的付款為 `null`。 */
+            method?: components["schemas"]["PaymentMethod"] | null;
+            /** @description ATM／超商代碼／條碼的取號資訊（ADR-044）；信用卡與未取號為 `null`。後台在繳費後仍保留，供對帳。 */
+            instructions?: components["schemas"]["PaymentInstructions"] | null;
             /** Format: date-time */
             capturedAt?: string | null;
             /**

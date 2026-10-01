@@ -43,7 +43,7 @@ export function mixedOrderShippingMessage(
     : MIXED_ORDER_SHIP_SEPARATELY;
 }
 
-export function formatPlacedAtInTaipei(placedAt: string): string {
+export function formatDateTimeInTaipei(value: string): string {
   return new Intl.DateTimeFormat('zh-TW', {
     year: 'numeric',
     month: '2-digit',
@@ -52,19 +52,30 @@ export function formatPlacedAtInTaipei(placedAt: string): string {
     minute: '2-digit',
     hourCycle: 'h23',
     timeZone: 'Asia/Taipei',
-  }).format(new Date(placedAt));
+  }).format(new Date(value)).replace(/[\u00a0\u2009\u202f]/g, ' ');
 }
 
-export async function copyOrderNumber(
-  orderNumber: string,
+export function formatPlacedAtInTaipei(placedAt: string): string {
+  return formatDateTimeInTaipei(placedAt);
+}
+
+export async function copyText(
+  text: string,
   writeText: ((text: string) => Promise<void>) | undefined,
 ): Promise<typeof COPY_ORDER_NUMBER_SUCCEEDED | typeof COPY_ORDER_NUMBER_FAILED> {
   if (!writeText) return COPY_ORDER_NUMBER_FAILED;
 
   try {
-    await writeText(orderNumber);
+    await writeText(text);
     return COPY_ORDER_NUMBER_SUCCEEDED;
   } catch {
     return COPY_ORDER_NUMBER_FAILED;
   }
+}
+
+export function copyOrderNumber(
+  orderNumber: string,
+  writeText: ((text: string) => Promise<void>) | undefined,
+): Promise<typeof COPY_ORDER_NUMBER_SUCCEEDED | typeof COPY_ORDER_NUMBER_FAILED> {
+  return copyText(orderNumber, writeText);
 }

@@ -691,7 +691,11 @@ interface OrderSeed {
   readonly status: S['OrderStatus'];
   readonly daysAgo: number;
   readonly lineStatuses: readonly S['OrderLineStatus'][];
+  readonly paymentDueAt?: string | null;
+  readonly paymentInstructions?: S['PaymentInstructions'] | null;
 }
+
+const ATM_PAYMENT_DUE_AT = hoursFromNow(72);
 
 const ORDER_SEEDS: readonly OrderSeed[] = [
   { status: 'AwaitingPayment', daysAgo: 0, lineStatuses: ['Pending', 'Pending'] },
@@ -703,6 +707,19 @@ const ORDER_SEEDS: readonly OrderSeed[] = [
   { status: 'Shipped', daysAgo: 18, lineStatuses: ['Shipped', 'Shipped'] },
   { status: 'Completed', daysAgo: 30, lineStatuses: ['Completed', 'Completed'] },
   { status: 'Cancelled', daysAgo: 2, lineStatuses: ['Cancelled', 'Cancelled'] },
+  {
+    status: 'AwaitingPayment',
+    daysAgo: 0,
+    lineStatuses: ['Pending', 'Pending'],
+    paymentDueAt: ATM_PAYMENT_DUE_AT,
+    paymentInstructions: {
+      method: 'Atm',
+      bankCode: '822',
+      virtualAccount: '9912345678901234',
+      expiresAt: ATM_PAYMENT_DUE_AT,
+      issuedAt: new Date().toISOString(),
+    },
+  },
 ];
 
 function buildOrderLine(seedKey: string, quantity: number, status: S['OrderLineStatus']): S['OrderLine'] {
@@ -755,7 +772,13 @@ function buildOrder(seed: OrderSeed, index: number): S['Order'] {
     convenienceStoreName: '7-ELEVEN 信義門市',
     convenienceStoreAddress: '台北市信義區松仁路 100 號',
     placedAt,
-    paymentDueAt: seed.status === 'AwaitingPayment' ? hoursFromNow(2) : null,
+    paymentDueAt:
+      seed.paymentDueAt !== undefined
+        ? seed.paymentDueAt
+        : seed.status === 'AwaitingPayment'
+          ? hoursFromNow(2)
+          : null,
+    paymentInstructions: seed.paymentInstructions ?? null,
     quoteExplain: ['超商取貨一口價 NT$60（ADR-010）。'],
   };
 }

@@ -1299,7 +1299,10 @@ export interface paths {
                     };
                 };
                 404: components["responses"]["NotFound"];
-                /** @description `ordering.order-already-paid` · `ordering.order-cancelled` */
+                /**
+                 * @description `ordering.order-already-paid` · `ordering.order-cancelled` ·
+                 *     `payment.instructions-already-issued`（已取號待繳費，不開新單號；前端重新讀訂單、顯示 `paymentInstructions`，ADR-044）
+                 */
                 409: {
                     headers: {
                         [name: string]: unknown;
@@ -1761,8 +1764,43 @@ export interface components {
          * @enum {string}
          */
         PaymentProvider: "ECPay" | "NewebPay" | "LinePay" | "ExternalSettled";
-        /** @enum {string} */
-        PaymentStatus: "Pending" | "Captured" | "Failed" | "Refunded" | "PartiallyRefunded";
+        /**
+         * @description `InstructionsIssued`＝ATM／超商代碼／條碼已取號、待繳費（ADR-044）。
+         * @enum {string}
+         */
+        PaymentStatus: "Pending" | "Captured" | "Failed" | "Refunded" | "PartiallyRefunded" | "InstructionsIssued";
+        /**
+         * @description 付款方式（ADR-044）。`CreditCard` 信用卡、`Atm` ATM 轉帳、`ConvenienceStoreCode` 超商代碼、`Barcode` 超商條碼。
+         *     前端必須容忍未知值（`docs/05` §6）。
+         * @enum {string}
+         */
+        PaymentMethod: "CreditCard" | "Atm" | "ConvenienceStoreCode" | "Barcode";
+        /**
+         * @description ATM／超商代碼／條碼的取號資訊（ADR-044）。依 `method` 只有一組有值，其餘為 `null`：
+         *     `Atm` → `bankCode`＋`virtualAccount`；`ConvenienceStoreCode` → `paymentNo`；`Barcode` → `barcodes`。
+         *     **前端只顯示、不推算期限。**
+         */
+        PaymentInstructions: {
+            method: components["schemas"]["PaymentMethod"];
+            /** @description ATM 轉入銀行代碼（綠界 `BankCode`）。 */
+            bankCode?: string | null;
+            /** @description ATM 虛擬帳號（綠界 `vAccount`）。 */
+            virtualAccount?: string | null;
+            /** @description 超商繳費代碼（綠界 `PaymentNo`）。 */
+            paymentNo?: string | null;
+            /** @description 超商條碼三段（綠界 `Barcode1`～`Barcode3`），依序顯示。 */
+            barcodes?: string[] | null;
+            /**
+             * Format: date-time
+             * @description 繳費期限＝綠界期限＝`Order.paymentDueAt`（ADR-044）。ATM 綠界只給日期，後端換算成當天 23:59:59（台北時間）。
+             */
+            expiresAt: string;
+            /**
+             * Format: date-time
+             * @description 後端收到並驗簽取號通知的時間。
+             */
+            issuedAt: string;
+        };
         /** @enum {string} */
         ShipmentStatus: "Draft" | "Packed" | "Dispatched" | "InTransit" | "ArrivedAtStore" | "Delivered" | "Returned" | "Lost";
         /**
@@ -2064,8 +2102,14 @@ export interface components {
              * Format: date-time
              * @description 逾期未付會自動取消（Saga Timer）。前端顯示倒數用這個，
              *     **不要自己算**——時限是後端的規則。
+             *     ATM／超商代碼／條碼取號後改成綠界的繳費期限（ADR-044）。
              */
             paymentDueAt?: string | null;
+            /**
+             * @description ATM／超商代碼／條碼**已取號、尚未繳費**時才有值（ADR-044）；信用卡、未取號、已繳費、已取消一律 `null`。
+             *     有值時前端顯示取號資訊，**不要再讓客人重新前往付款**（同一張訂單已有有效的繳費資訊）。
+             */
+            paymentInstructions?: components["schemas"]["PaymentInstructions"] | null;
             /** @description 下單當時凍結的計價說明。運費規則之後改了也不影響這裡。 */
             quoteExplain?: string[];
         };

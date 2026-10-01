@@ -11,6 +11,7 @@ import { usePayloadIdempotency } from '../../../_lib/usePayloadIdempotency';
 import { ConfirmDialog } from '../../_components/ConfirmDialog';
 import { OrderTimeline } from '../../_components/OrderTimeline';
 import { PaymentCountdown } from '../../_components/PaymentCountdown';
+import { PaymentInstructionsCard } from '../_components/PaymentInstructionsCard';
 import { isUnauthorized, loginHrefForCurrentPage } from '../../_lib/authRedirect';
 import { generalErrorMessage, traceIdOf } from '../../_lib/formErrors';
 import {
@@ -18,6 +19,11 @@ import {
 } from '../../_lib/orderStatus';
 import { submitPaymentForm } from '../../_lib/submitPaymentForm';
 import { OrderSummary } from '../_components/OrderSummary';
+import {
+  orderPaymentPresentation,
+  shouldReloadOrderAfterPaymentError,
+} from '../../../(checkout)/_lib/paymentInstructions';
+import { formatPlacedAtInTaipei } from '../../../(checkout)/_lib/paymentResultSummary';
 
 type Order = components['schemas']['Order'];
 
@@ -75,6 +81,12 @@ export default function OrderDetailPage() {
         router.replace(loginHrefForCurrentPage());
         return;
       }
+      if (shouldReloadOrderAfterPaymentError(caught)) {
+        paymentIdempotency.complete();
+        setPaying(false);
+        load();
+        return;
+      }
       setActionError(caught);
     } finally {
       setCancelling(false);
@@ -122,7 +134,8 @@ export default function OrderDetailPage() {
   if (!order) return null;
 
   const canSelfCancel = order.status === 'AwaitingPayment';
-  const canPay = order.status === 'AwaitingPayment';
+  const paymentPresentation = orderPaymentPresentation(order);
+  const canPay = paymentPresentation.canPay;
   return (
     <main className="mx-auto flex max-w-[640px] flex-col gap-[var(--gg-space-5)] px-[var(--gg-space-4)] py-[var(--gg-space-8)]">
       <Link href="/orders" className="text-[length:var(--gg-text-sm)] text-fg-muted">
@@ -137,12 +150,14 @@ export default function OrderDetailPage() {
           <Badge variant={order.status} label={orderStatusLabel(order.status)} />
         </div>
         <p className="text-[length:var(--gg-text-xs)] text-fg-muted">
-          {new Date(order.placedAt).toLocaleString('zh-TW')} 建立
+          {formatPlacedAtInTaipei(order.placedAt)}（台灣時間）建立
         </p>
-        {canPay && order.paymentDueAt && (
+        {paymentPresentation.showCountdown && order.paymentDueAt && (
           <PaymentCountdown paymentDueAt={order.paymentDueAt} onExpire={load} />
         )}
       </header>
+
+      {order.paymentInstructions != null && <PaymentInstructionsCard order={order} />}
 
       <Card>
         <OrderTimeline status={order.status} />

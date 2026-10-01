@@ -19,13 +19,18 @@ import { browserApi } from '../../../_lib/apiClient';
 import { ExplainDisclosure } from '../../_components/ExplainDisclosure';
 import { describeError, type ErrorDisplay } from '../../_lib/errorDisplay';
 import { OrderSummary } from '../../../(account)/orders/_components/OrderSummary';
+import { PaymentInstructionsCard } from '../../../(account)/orders/_components/PaymentInstructionsCard';
 import {
   COPY_ORDER_NUMBER_IDLE,
   COPY_ORDER_NUMBER_SUCCEEDED,
   copyOrderNumber,
   formatPlacedAtInTaipei,
 } from '../../_lib/paymentResultSummary';
-import { pollDelayMs, shouldKeepPolling } from '../../_lib/paymentResultPolling';
+import { pollDelayMs } from '../../_lib/paymentResultPolling';
+import {
+  paymentResultPresentation,
+  shouldPollPaymentResult,
+} from '../../_lib/paymentInstructions';
 
 type S = components['schemas'];
 
@@ -119,9 +124,9 @@ function PaymentResultContent() {
    */
   useEffect(() => {
     if (loading || error || !order) return;
-    if (!shouldKeepPolling(order.status, attempt)) {
+    if (!shouldPollPaymentResult(order, attempt)) {
       // 還是 AwaitingPayment 但排程用完了——停手，把下一步交給使用者。
-      if (order.status === 'AwaitingPayment') setPollExhausted(true);
+      if (order.status === 'AwaitingPayment' && order.paymentInstructions == null) setPollExhausted(true);
       return;
     }
 
@@ -167,7 +172,7 @@ function PaymentResultContent() {
 
   const isPaid = PAID_STATUSES.has(order.status);
   const isCancelled = order.status === 'Cancelled';
-  const isAwaitingPayment = order.status === 'AwaitingPayment';
+  const presentation = paymentResultPresentation(order, pollExhausted);
 
   async function handleCopyOrderNumber(orderNumber: string) {
     const writeText = globalThis.navigator?.clipboard?.writeText.bind(globalThis.navigator.clipboard);
@@ -214,7 +219,12 @@ function PaymentResultContent() {
             <p className="text-fg-muted">訂單 {order.orderNumber} 已取消，如已扣款會依原路退還。</p>
           </>
         )}
-        {isAwaitingPayment && !pollExhausted && (
+        {presentation.hasInstructions && (
+          <h1 className="font-display text-[length:var(--gg-text-xl)] font-bold text-fg">
+            {presentation.title}
+          </h1>
+        )}
+        {presentation.showConfirmingMessage && (
           <>
             <h1 className="font-display text-[length:var(--gg-text-xl)] font-bold text-fg">正在確認付款</h1>
             <p className="text-fg-muted">
@@ -222,12 +232,15 @@ function PaymentResultContent() {
             </p>
           </>
         )}
-        {isAwaitingPayment && pollExhausted && (
+        {presentation.showUnconfirmedMessage && (
           <>
             <h1 className="font-display text-[length:var(--gg-text-xl)] font-bold text-warning-text">尚未確認付款</h1>
             <p className="text-fg-muted">
               還沒收到訂單 {order.orderNumber} 的付款確認，可能還在處理中，或是剛剛付款沒有完成。
-              {order.paymentDueAt && `逾期未付款會自動取消，付款期限：${new Date(order.paymentDueAt).toLocaleString('zh-TW')}。`}
+              {order.paymentDueAt && `逾期未付款會自動取消，付款期限：${formatPlacedAtInTaipei(order.paymentDueAt)}（台灣時間）。`}
+            </p>
+            <p className="text-fg-muted">
+              如果您選擇 ATM 或超商繳費，繳費資訊可能需要一點時間才會出現，請稍後重新查詢。
             </p>
           </>
         )}
@@ -244,9 +257,16 @@ function PaymentResultContent() {
               </Link>
             </div>
           </>
+        ) : presentation.hasInstructions ? (
+          <>
+            <PaymentInstructionsCard order={order} />
+            <Link href="/orders">
+              <Button variant="secondary">查看我的訂單</Button>
+            </Link>
+          </>
         ) : (
           <>
-            <PriceDisplay amount={order.grandTotal} size="lg" />
+            {presentation.showPrice && <PriceDisplay amount={order.grandTotal} size="lg" />}
             <ExplainDisclosure items={order.quoteExplain ?? []} title="這筆金額怎麼算的？" />
 
             <div className="flex flex-wrap items-center justify-center gap-[var(--gg-space-3)]">
@@ -254,12 +274,12 @@ function PaymentResultContent() {
                 * 排程跑完、狀態仍是 AwaitingPayment 時才給「重新查詢」。
                 * 重查期間給它只會讓人重複按，而每一次按都只是把同一個排程再跑一遍。
                 */}
-              {isAwaitingPayment && pollExhausted && (
+              {presentation.showManualRefresh && (
                 <Button variant="primary" onClick={load}>
                   重新查詢
                 </Button>
               )}
-              {isAwaitingPayment && (
+              {presentation.showRetryPayment && (
                 <Link href={`/payment/${order.id}`}>
                   <Button variant={pollExhausted ? 'secondary' : 'primary'}>重新前往付款</Button>
                 </Link>
