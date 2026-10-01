@@ -1,5 +1,17 @@
 # 啟動 prompt
 
+## BE-69 結帳建單競態修正（第四十五波修正包，後端樹，2026-10-02）
+
+```text
+GG_PACKAGE=BE-69
+你是唯一實作者（Codex gpt-5.6-sol high），不開子代理。專案：D:\WorkSpace\01_開發中_wip\GreyGray\GreyGray_Platform（後端樹）。
+開工前讀：AGENTS.md（六條鐵則）、.dispatch/ACTIVE.md 的 BE-69、docs/80-第四十五波BE-69結帳建單競態修正派工書.md（整份）、.dispatch/reports/BE-64.md、.dispatch/reports/README.md，以及派工書 §0 列的程式（OrderingApplicationService.cs 的 CreateFromCheckoutAsync、OrderingDbContext.cs 的 SaveChangesAsync、IdentityCustomerRepository.cs 第 110～119 行的前例、IntegrationEventHandlers.cs 的 CheckoutCompletedHandler、src/Platform/Messaging/IdempotentIntegrationEventHandler.cs）。派工書以 ACTIVE 的 doc: 為準。
+只准寫 BE-69 的 allow（三條）；不准改 src/Hosts/、src/Platform/、其他模組、db/、docs/、其他測試專案；不准改 ModuleShapeTests；不准動 IOrderingApplication 的方法清單。
+最容易做錯的三件事：① 只翻譯 ux_orders_tenant_checkout_cart 與 ux_orders_checkout_event 兩個 constraint 的 23505（先 ChangeTracker.Clear() 再丟新的 OrderingCheckoutAlreadyPlacedException），其他 DbUpdateException 原樣往上拋；Core 不准參考 Npgsql；② CreateFromCheckoutAsync 接住後重讀 GetByCheckoutAsync，判斷要和既有冪等分支共用同一個私有方法（同鍵回既有、異鍵回 ordering.checkout-already-processed），重讀仍是 null 就重拋；③ 相撞用真 PostgreSQL 確定性重現（輸家第一次 GetByCheckoutAsync 回 null 的 repository 包裝），R1 Host 形狀與 R3 Worker 形狀（經 IdempotentIntegrationEventHandler 的交易內）都要測，R6 負向注入要讓 R1、R3 轉紅；交易內重讀做不到就停下來回報，不准改包裝器。
+以 Release 為準；Docker Desktop 要開著，沒開就停下來回報。dev 環境由 Leader 管，不准啟停（Leader 會在派工前停掉 dev，port 與 bin\Release 都是空的）。動手前先 Release 建置並跑 tests 底下全部 13 個測試執行檔（tests\<專案>\bin\Release\net10.0\<專案>.exe）記下現況，改完前景跑完（不要用 dotnet test、不要掛背景就結束），再跑 ops/check-openapi.ps1，報告前→後；B1 每一條既有斷言的修改逐條寫「舊斷言 → 新斷言 → 依據」。
+先列目標，備份要改的既有檔（TEMP 底下 GUID 目錄）。不安裝、不 commit、不 push、不部署、不改閘門。報告 .dispatch/reports/BE-69.md，三個精確標題「## 指令與輸出」「## 逐條自驗」「## 我發現但沒做的事」，逐條自驗以派工書 §1 與 §3（R1～R6、B1、docs/45 邊界六類）為準。預算：工具 140／讀 50／搜 30／改 8 檔／測修 2 輪，達限回報。stop gate 如提示既有 dirty（.dispatch/PROMPTS.md.bak-20260921-211728），只回報不還原，最後重述本包交付證據。
+```
+
 ## BE-68 期限、逾期與取消來源接到 Host（第四十五波第 3 輪，後端樹，2026-10-02）
 
 ```text
