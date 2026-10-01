@@ -52,13 +52,7 @@ internal sealed class OrderingApplicationService(
             cancellationToken);
         if (existing is not null)
         {
-            return StringComparer.Ordinal.Equals(
-                    existing.CheckoutIdempotencyKey,
-                    checkout.IdempotencyKey)
-                ? existing.ToView()
-                : Result<OrderView>.Failure(
-                    "ordering.checkout-already-processed",
-                    "這個購物車已用另一把冪等鍵建立訂單。");
+            return ResolveExistingCheckout(existing, checkout.IdempotencyKey);
         }
 
         var snapshot = await pricing.GetSnapshotAsync(
@@ -105,9 +99,39 @@ internal sealed class OrderingApplicationService(
                 cancellationToken);
         }
 
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+        catch (OrderingCheckoutAlreadyPlacedException)
+        {
+            var concurrentlyPlaced = await orders.GetByCheckoutAsync(
+                checkout.TenantId,
+                checkout.CartId,
+                cancellationToken);
+            if (concurrentlyPlaced is null)
+            {
+                throw;
+            }
+
+            return ResolveExistingCheckout(
+                concurrentlyPlaced,
+                checkout.IdempotencyKey);
+        }
+
         return order.ToView();
     }
+
+    private static Result<OrderView> ResolveExistingCheckout(
+        Order existing,
+        string idempotencyKey) =>
+        StringComparer.Ordinal.Equals(
+                existing.CheckoutIdempotencyKey,
+                idempotencyKey)
+            ? existing.ToView()
+            : Result<OrderView>.Failure(
+                "ordering.checkout-already-processed",
+                "這個購物車已用另一把冪等鍵建立訂單。");
 
     public async Task<Result<OrderPage<OrderView>>> ListCustomerAsync(
         CustomerOrderListRequest request,

@@ -10,6 +10,7 @@ using GreyGray.Platform;
 using GreyGray.Platform.Abstractions.Messaging;
 using GreyGray.Shared.Kernel;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace GreyGray.Modules.Ordering.Infra;
 
@@ -36,7 +37,21 @@ internal sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> opti
                 "訂單已被其他操作更新。",
                 exception);
         }
+        catch (DbUpdateException exception)
+            when (exception.InnerException is PostgresException postgres
+                && IsCheckoutAlreadyPlaced(postgres))
+        {
+            ChangeTracker.Clear();
+            throw new OrderingCheckoutAlreadyPlacedException(
+                "同一購物車或結帳事件已由另一個執行者建立訂單。",
+                exception);
+        }
     }
+
+    internal static bool IsCheckoutAlreadyPlaced(PostgresException exception) =>
+        exception.SqlState == PostgresErrorCodes.UniqueViolation
+        && exception.ConstraintName is
+            "ux_orders_tenant_checkout_cart" or "ux_orders_checkout_event";
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
