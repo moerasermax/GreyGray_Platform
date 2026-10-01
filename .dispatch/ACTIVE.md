@@ -51,7 +51,10 @@ Leader 要明講。
 
 ---
 
-## 生效中：BE-69　結帳建單競態修正：撞到唯一索引時回既有訂單，不再回 500（第四十五波修正包，2026-10-02；BE-68 撤包後才派）
+<!--
+★ 2026-10-02 撤包：BE-69 驗收——範圍 5 檔全在 allow（Ordering 兩檔＋新例外、新測試 OrderingCheckoutRacePostgresTests、報告；既有斷言 0 修改）；Leader 讀 diff：只認兩個 constraint、Core 不碰 Npgsql、重讀與既有冪等分支共用 ResolveExistingCheckout、重讀不到就重拋；重建 Release 0 警告 0 錯誤、13 個測試執行檔 615 條 0 失敗、check-openapi 34／34、30／30；dev Release 連續 5 張畫面下單全部 201、無錯誤畫面，其中 2 次真的相撞（Worker 輸）當場讀回既有訂單、CheckoutCompleted attempts 皆 0；5 車 5 單、事件不重複、無死信。第四十五波全部完成，生效包歸零。原文保留供追溯。
+
+## 已撤包：BE-69　結帳建單競態修正：撞到唯一索引時回既有訂單，不再回 500（第四十五波修正包，2026-10-02；BE-68 撤包後才派）
 
 Storefront 結帳 API 與 Worker 的 `CheckoutCompleted` handler 會同時為同一台購物車建單，Host 輸了客人看到 500。Infra 把兩個唯一索引的 23505 翻成 Ordering 自己的例外，`CreateFromCheckoutAsync` 接住後重讀、走跟冪等分支相同的判斷。只動 Ordering 與它的測試；不碰 Hosts、Platform、db、契約。以 Release 為準。
 
@@ -60,13 +63,16 @@ Storefront 結帳 API 與 Worker 的 `CheckoutCompleted` handler 會同時為同
 ② 重讀後的判斷要和第 53 行的冪等分支**共用同一個私有方法**（同鍵回既有、異鍵回 `ordering.checkout-already-processed`），不准複製；
 ③ 相撞要用真 PostgreSQL **確定性**重現（輸家第一次查詢回 null 的 repository 包裝），Host 形狀與 Worker 形狀（冪等包裝器的交易內）都要測；交易內重讀做不到就停下來回報，不准改包裝器。
 
-package: BE-69
-doc: docs/80-第四十五波BE-69結帳建單競態修正派工書.md
-allow: src/Modules/Ordering/
-allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
-allow: .dispatch/reports/BE-69.md
+(撤包) package: BE-69
+(撤包) doc: docs/80-第四十五波BE-69結帳建單競態修正派工書.md
+(撤包) allow: src/Modules/Ordering/
+(撤包) allow: tests/GreyGray.M1a.CheckoutOrdering.Tests/
+(撤包) allow: .dispatch/reports/BE-69.md
 
 ---
+
+-->
+
 
 <!--
 ★ 2026-10-02 撤包：BE-68 驗收——範圍 5 檔全在 allow（兩支 Host M1aEndpoints.cs、新測試 OrderDeadlineHostTests、PaymentInstructionsHostTests 只補兩處 FakeClock、報告）；Leader 逐行讀 diff（付款處理原樣抽出、逾期檢查在已取消之後與 Payment 之前、route 維持 lambda、單一 IsPaymentOverdue）；重建 Release 0 警告 0 錯誤、13 個測試執行檔 606 條 0 失敗、check-openapi 34／34、30／30；dev Release 畫面走查：期限改成已過 → paymentOverdue=true、付款 422（同 key 仍 422、無新付款）、訂單頁「繳費期限已過，正在確認付款」無「前往付款」、自助取消成功並顯示「你已取消這筆訂單。」＋取消時間；後台 Customer／PaymentExpired／舊資料 null 都對。走查時另外撞到結帳建單競態（Host 與 Worker 同時建單、Host 輸了回 500）——不是 BE-68 的缺陷，開 BE-69 修正。原文保留供追溯。
